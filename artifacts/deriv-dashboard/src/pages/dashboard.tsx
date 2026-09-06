@@ -64,7 +64,10 @@ function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [confirmLiveTrade, setConfirmLiveTrade] = useState(false);
 
-  const selectedAccount = accounts.find((account) => account.id === selectedId) ?? accounts.find((account) => account.type === 'demo') ?? status?.account ?? accounts[0];
+  const selectedAccount = accounts.find((account) => account.id === selectedId)
+    ?? (status?.account ? accounts.find((account) => account.id === status.account?.id) ?? status.account : undefined)
+    ?? accounts.find((account) => account.type === 'demo')
+    ?? accounts[0];
   const isReal = selectedAccount?.type === 'real';
   const serverSelected = status?.account?.id === selectedAccount?.id;
   const liveBalance = status?.account?.id === selectedAccount?.id ? status?.account?.balance : selectedAccount?.balance;
@@ -137,6 +140,7 @@ function Dashboard() {
   const handleSelectAccount = (accountId: string) => {
     const account = accounts.find((item) => item.id === accountId);
     if (!account || account.id === selectedAccount?.id || selectAccount.isPending) return;
+    setSelectedId(account.id);
     setTestMessage(`Switching to ${account.type} account…`);
     setTestFailed(false);
     setConfirmLiveTrade(false);
@@ -149,6 +153,7 @@ function Dashboard() {
           setTestMessage(`${account.type === 'real' ? 'Real' : 'Demo'} account selected.`);
         },
         onError: (error) => {
+          setSelectedId(status?.account?.id ?? null);
           setTestFailed(true);
           setTestMessage(error instanceof Error ? error.message : 'Account selection failed.');
         },
