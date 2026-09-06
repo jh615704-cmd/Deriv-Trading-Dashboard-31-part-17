@@ -1,0 +1,264 @@
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Activity,
+  ArrowDownRight,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  Clock3,
+  Copy,
+  FlaskConical,
+  Gauge,
+  LockKeyhole,
+  Radio,
+  RefreshCw,
+  ShieldCheck,
+  Signal,
+  Sparkles,
+  WalletCards,
+  Wifi,
+} from 'lucide-react';
+import {
+  getGetDerivAccountsQueryKey,
+  getGetDerivStatusQueryKey,
+  useGetDerivAccounts,
+  useGetDerivStatus,
+  useRequestDerivProposal,
+  useTestDerivConnection,
+} from '@workspace/api-client-react';
+
+const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const time = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+function StatusDot({ active, amber = false }: { active: boolean; amber?: boolean }) {
+  return <span className={`status-dot ${active ? (amber ? 'status-dot-amber' : 'status-dot-live') : 'status-dot-off'} `} aria-hidden="true" />;
+}
+
+function MetricSkeleton() {
+  return <div className="h-5 w-24 animate-pulse rounded bg-[hsl(var(--muted))]" />;
+}
+
+function Dashboard() {
+  const queryClient = useQueryClient();
+  const accountsQuery = useGetDerivAccounts();
+  const statusQuery = useGetDerivStatus();
+  const testConnection = useTestDerivConnection();
+  const requestProposal = useRequestDerivProposal();
+  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const status = statusQuery.data;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [amount, setAmount] = useState('1.00');
+  const [duration, setDuration] = useState('5');
+  const [durationUnit, setDurationUnit] = useState<'t' | 's' | 'm'>('t');
+  const [contractType, setContractType] = useState<'CALL' | 'PUT'>('CALL');
+  const [symbol, setSymbol] = useState('');
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [testFailed, setTestFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const selectedAccount = accounts.find((account) => account.id === selectedId) ?? accounts.find((account) => account.type === 'demo') ?? status?.account ?? accounts[0];
+  const isDemo = selectedAccount?.type === 'demo';
+  const effectiveSymbol = symbol || status?.symbol || '';
+  const isInitialLoading = accountsQuery.isLoading || statusQuery.isLoading;
+  const hasError = accountsQuery.isError || statusQuery.isError;
+  const quote = status?.last_tick;
+  const proposal = status?.last_proposal;
+  const isTestPending = testConnection.isPending;
+  const isProposalPending = requestProposal.isPending;
+  const proposalReady = Boolean(status?.authorized && isDemo && effectiveSymbol && Number(amount) > 0 && Number(duration) >= 1);
+
+  const handleTestConnection = () => {
+    setTestMessage(null);
+    setTestFailed(false);
+    testConnection.mutate(undefined, {
+      onSuccess: (result) => {
+        setTestMessage(result.message);
+        setTestFailed(!result.ok);
+        queryClient.setQueryData(getGetDerivAccountsQueryKey(), result.accounts);
+        queryClient.setQueryData(getGetDerivStatusQueryKey(), result.status);
+      },
+      onError: (error) => {
+        setTestFailed(true);
+        setTestMessage(error instanceof Error ? error.message : 'Connection test could not complete.');
+      },
+    });
+  };
+
+  const handleProposal = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!proposalReady) return;
+    requestProposal.mutate(
+      {
+        data: {
+          amount: Number(amount),
+          duration: Number(duration),
+          duration_unit: durationUnit,
+          contract_type: contractType,
+          symbol: effectiveSymbol,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setTestFailed(!result.ok);
+          setTestMessage(result.message);
+          queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
+        },
+        onError: (error) => {
+          setTestFailed(true);
+          setTestMessage(error instanceof Error ? error.message : 'Proposal request could not complete.');
+        },
+      },
+    );
+  };
+
+  const copyLongcode = async () => {
+    if (!proposal?.longcode) return;
+    await navigator.clipboard?.writeText(proposal.longcode);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  if (isInitialLoading) {
+    return (
+      <div className="app-frame">
+        <aside className="sidebar">
+          <div className="brand-lockup"><span className="brand-mark">D</span><span>DERIV <b>OPS</b></span></div>
+          <div className="skeleton-stack"><div /><div /><div /><div /></div>
+        </aside>
+        <main className="main-shell"><div className="page-skeleton"><div className="skeleton-line wide" /><div className="skeleton-line medium" /><div className="skeleton-grid">{[1, 2, 3].map((item) => <div className="skeleton-card" key={item} />)}</div></div></main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-frame">
+      <aside className="sidebar">
+        <div>
+          <div className="brand-lockup"><span className="brand-mark">D</span><span>DERIV <b>OPS</b></span></div>
+          <p className="sidebar-kicker">Connection cockpit</p>
+          <nav className="sidebar-nav" aria-label="Primary navigation">
+            <button type="button" className="nav-item nav-item-active" data-testid="button-nav-dashboard"><Gauge size={17} />Dashboard<span className="nav-live" /></button>
+            <button type="button" className="nav-item" data-testid="button-nav-connection"><Radio size={17} />Connection lab</button>
+            <button type="button" className="nav-item" data-testid="button-nav-accounts"><WalletCards size={17} />Accounts <span className="nav-count">{accounts.length}</span></button>
+          </nav>
+        </div>
+        <div className="sidebar-footer">
+          <div className="secure-note"><LockKeyhole size={15} /><span>Credentials stay server-side.<br /><b>Nothing sensitive in this view.</b></span></div>
+          <div className="build-id"><span>OPS / DERIV OPTIONS</span><span>v0.1.0</span></div>
+        </div>
+      </aside>
+
+      <main className="main-shell">
+        <header className="topbar">
+          <div className="crumbs"><span>WORKSPACE</span><span className="crumb-slash">/</span><strong>LIVE DASHBOARD</strong></div>
+          <div className="topbar-actions">
+            <span className="environment-pill"><span className="environment-dot" />NO CREDENTIALS EXPOSED</span>
+            <button type="button" className="icon-button" title="Refresh data" aria-label="Refresh account data" data-testid="button-refresh-data" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}><RefreshCw size={16} /></button>
+          </div>
+        </header>
+
+        <div className="content-wrap">
+          <section className="intro-row">
+            <div>
+              <div className="eyebrow"><span className="eyebrow-rule" />OPERATIONS / 01</div>
+              <h1>Connection <em>control.</em></h1>
+              <p className="intro-copy">A clear line between your Deriv connection and the next test.</p>
+            </div>
+            <div className="test-action">
+              <div className={`last-check ${testFailed ? 'last-check-failed' : ''}`}>{testMessage ? <>{testFailed ? <CircleAlert size={13} /> : <CircleCheck size={13} />}{testMessage}</> : 'Run a fresh health check before testing'}</div>
+              <button type="button" className="primary-button" data-testid="button-test-connection" onClick={handleTestConnection} disabled={isTestPending}>
+                {isTestPending ? <RefreshCw className="spin" size={16} /> : <Wifi size={16} />}
+                {isTestPending ? 'Testing line…' : 'Test connection'}
+              </button>
+            </div>
+          </section>
+
+          {hasError && (
+            <div className="error-banner" data-testid="status-load-error"><CircleAlert size={18} /><div><strong>We could not read the Deriv workspace.</strong><p>Check the API server, then try the connection test again.</p></div><button type="button" className="text-button" data-testid="button-retry-load" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}>Retry</button></div>
+          )}
+
+          <section className="signal-strip" aria-label="Connection status">
+            <div className="signal-cell">
+              <div className="signal-label"><StatusDot active={Boolean(status?.connected)} />NETWORK</div>
+              <strong data-testid="status-network">{status ? (status.connected ? 'Connected' : 'Offline') : 'Awaiting test'}</strong>
+              <span>{status?.last_tick ? `Last tick ${time.format(new Date(status.last_tick.epoch * 1000))}` : 'No telemetry received'}</span>
+            </div>
+            <div className="signal-cell">
+              <div className="signal-label"><StatusDot active={Boolean(status?.authorized)} />AUTHORIZATION</div>
+              <strong data-testid="status-authorization">{status ? (status.authorized ? 'Authorized' : 'Not authorized') : 'Awaiting test'}</strong>
+              <span>{selectedAccount ? `${selectedAccount.type.toUpperCase()} / ${selectedAccount.currency}` : 'No account selected'}</span>
+            </div>
+            <div className="signal-cell">
+              <div className="signal-label"><StatusDot active={Boolean(status?.bot_running)} amber />BOT STATE</div>
+              <strong data-testid="status-bot">{status?.bot_running ? 'Running' : 'Standby'}</strong>
+              <span>Execution is not initiated here</span>
+            </div>
+            <div className="signal-cell signal-cell-accent">
+              <div className="signal-label"><Signal size={13} />MARKET CHANNEL</div>
+              <strong data-testid="text-symbol">{status?.symbol ?? '—'}</strong>
+              <span>{status?.currency ?? '—'} denomination</span>
+            </div>
+          </section>
+
+          <div className="section-heading"><div><span className="section-index">01</span><h2>Account surface</h2></div><span className="section-note">Compare access without crossing environments</span></div>
+          <section className="account-layout">
+            <div className="account-list-panel panel">
+              <div className="panel-header"><div><span className="panel-overline">AVAILABLE ACCOUNTS</span><h3>{accounts.length ? `${accounts.length} account${accounts.length === 1 ? '' : 's'} in scope` : 'No accounts in scope'}</h3></div><ShieldCheck size={19} className="panel-icon" /></div>
+              {accounts.length ? <div className="account-list">
+                {accounts.map((account) => {
+                  const selected = account.id === selectedAccount?.id;
+                  return <button type="button" className={`account-row ${selected ? 'account-row-selected' : ''}`} key={account.id} data-testid={`button-account-${account.id}`} onClick={() => setSelectedId(account.id)}>
+                    <span className={`account-type-mark ${account.type}`}>{account.type === 'demo' ? 'D' : 'R'}</span>
+                    <span className="account-main"><span className="account-id">{account.id}</span><span className="account-meta"><span className={`status-label ${account.status.toLowerCase() === 'active' ? 'positive' : ''}`}><span />{account.status}</span><span>{account.currency}</span></span></span>
+                    <span className="account-balance"><small>AVAILABLE</small>{money.format(account.balance)}</span>
+                    <ChevronDown size={15} className={`account-chevron ${selected ? 'selected-chevron' : ''}`} />
+                  </button>;
+                })}
+              </div> : <div className="empty-state"><WalletCards size={22} /><strong>No account payload yet</strong><span>Run a connection test to populate the comparison surface.</span><button type="button" className="text-button" onClick={handleTestConnection} data-testid="button-test-from-empty">Test connection</button></div>}
+              <div className="panel-footnote"><LockKeyhole size={14} />Account identifiers are displayed for routing only.</div>
+            </div>
+
+            <div className={`balance-panel panel ${selectedAccount?.type === 'real' ? 'balance-panel-real' : ''}`}>
+              <div className="balance-topline"><span className="panel-overline">SELECTED ACCOUNT</span><span className={`account-mode-badge ${selectedAccount?.type ?? ''}`}>{selectedAccount?.type ?? 'unassigned'}</span></div>
+              {selectedAccount ? <><div className="balance-account">{selectedAccount.id}</div><div className="balance-amount"><span>{selectedAccount.currency}</span>{money.format(selectedAccount.balance)}</div><div className="balance-divider" /><div className="balance-details"><span><small>STATUS</small><b>{selectedAccount.status}</b></span><span><small>ACCOUNT CLASS</small><b>{selectedAccount.type === 'demo' ? 'Simulated funds' : 'Live funds'}</b></span></div><div className="balance-callout"><Sparkles size={16} /><span>{selectedAccount.type === 'demo' ? 'Preferred environment for proposal testing.' : 'Read-only comparison. Proposal testing remains demo-first.'}</span></div></> : <div className="empty-balance"><CircleAlert size={21} /><span>Select an account to inspect its balance.</span></div>}
+            </div>
+          </section>
+
+          <div className="section-heading proposal-heading"><div><span className="section-index">02</span><h2>Quote desk</h2></div><span className="section-note">Build one proposal, then inspect the server response</span></div>
+          <section className="quote-layout">
+            <div className="quote-panel panel">
+              <div className="panel-header"><div><span className="panel-overline">LIVE QUOTE</span><h3>{quote?.symbol ?? status?.symbol ?? 'No symbol selected'}</h3></div><div className="quote-live"><span className="pulse-dot" />{quote ? 'LIVE' : 'QUIET'}</div></div>
+              {quote ? <div className="quote-readout"><div className="quote-value" data-testid="text-quote">{quote.quote.toFixed(4)}</div><div className="quote-time"><Clock3 size={13} />{time.format(new Date(quote.epoch * 1000))}<span>epoch {quote.epoch}</span></div><div className="quote-ticks"><span className="tick-bar bar-a" /><span className="tick-bar bar-b" /><span className="tick-bar bar-c" /><span className="tick-bar bar-d" /><span className="tick-bar bar-e" /><span className="tick-bar bar-f" /><span className="tick-bar bar-g" /><span className="tick-bar bar-h" /></div></div> : <div className="empty-state quote-empty"><Activity size={22} /><strong>Waiting for market telemetry</strong><span>A successful connection test will hydrate the latest quote.</span></div>}
+              <div className="quote-foot"><span>STREAM STATUS</span><b>{status?.connected ? 'WebSocket available' : 'Not connected'}</b></div>
+            </div>
+
+            <form className={`proposal-panel panel ${!isDemo ? 'proposal-disabled' : ''}`} onSubmit={handleProposal}>
+              <div className="panel-header"><div><span className="panel-overline">PROPOSAL REQUEST</span><h3>Demo-first test</h3></div><FlaskConical size={19} className="panel-icon" /></div>
+              {!isDemo && <div className="guardrail"><LockKeyhole size={16} /><span><b>Real account selected.</b> Switch to a demo account to request a proposal.</span></div>}
+              <div className="form-grid">
+                <label className="field"><span>STAKE</span><div className="input-with-prefix"><i>{selectedAccount?.currency ?? '$'}</i><input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!isDemo} data-testid="input-proposal-amount" /></div></label>
+                <label className="field"><span>DURATION</span><div className="input-with-select"><input type="number" min="1" max="1000" value={duration} onChange={(event) => setDuration(event.target.value)} disabled={!isDemo} data-testid="input-proposal-duration" /><select value={durationUnit} onChange={(event) => setDurationUnit(event.target.value as 't' | 's' | 'm')} disabled={!isDemo} data-testid="select-proposal-duration-unit"><option value="t">ticks</option><option value="s">seconds</option><option value="m">minutes</option></select></div></label>
+                <label className="field field-wide"><span>SYMBOL</span><input value={effectiveSymbol} onChange={(event) => setSymbol(event.target.value)} placeholder={status?.symbol ?? 'Symbol from status'} disabled={!isDemo} data-testid="input-proposal-symbol" /></label>
+              </div>
+              <div className="direction-label">CONTRACT DIRECTION</div>
+              <div className="direction-group"><button type="button" className={`direction-button call ${contractType === 'CALL' ? 'direction-selected' : ''}`} onClick={() => setContractType('CALL')} disabled={!isDemo} data-testid="button-contract-call"><ArrowUpRight size={16} /><span>CALL</span><small>Expect higher</small></button><button type="button" className={`direction-button put ${contractType === 'PUT' ? 'direction-selected' : ''}`} onClick={() => setContractType('PUT')} disabled={!isDemo} data-testid="button-contract-put"><ArrowDownRight size={16} /><span>PUT</span><small>Expect lower</small></button></div>
+              <div className="proposal-submit-row"><span className="proposal-hint">{status?.max_trade_amount ? `Max stake ${money.format(status.max_trade_amount)} ${selectedAccount?.currency ?? ''}` : 'Server validates stake limits'}</span><button type="submit" className="primary-button proposal-button" disabled={!proposalReady || isProposalPending} data-testid="button-request-proposal">{isProposalPending ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{isProposalPending ? 'Requesting…' : 'Request proposal'}</button></div>
+            </form>
+          </section>
+
+          <section className="response-panel panel">
+            <div className="response-heading"><div><span className="panel-overline">LAST SERVER RESPONSE</span><h3>Proposal telemetry</h3></div><span className={`response-state ${proposal ? 'response-state-ready' : ''}`}><span />{proposal ? 'Response ready' : 'No response yet'}</span></div>
+            {proposal ? <div className="proposal-output"><div className="output-metric"><span>ASK PRICE</span><strong data-testid="text-ask-price">{money.format(proposal.ask_price)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>PAYOUT</span><strong data-testid="text-payout">{money.format(proposal.payout)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>SPOT</span><strong data-testid="text-spot">{proposal.spot.toFixed(4)}</strong><small>{proposal.id}</small></div><div className="longcode-output"><span>CONTRACT DESCRIPTION</span><div><p>{proposal.longcode ?? 'No longcode returned by Deriv.'}</p>{proposal.longcode && <button type="button" className="copy-button" onClick={copyLongcode} title="Copy contract description" aria-label="Copy contract description" data-testid="button-copy-longcode">{copied ? <Check size={15} /> : <Copy size={15} />}</button>}</div></div></div> : <div className="response-empty"><div className="empty-marker"><span /></div><div><strong>Proposal output will appear here</strong><p>Use the demo account above to request a fresh server-side quote.</p></div></div>}
+          </section>
+
+          <footer className="page-footer"><span><span className="footer-dot" />Connection state is read from the configured Deriv session</span><span>Last UI refresh {time.format(new Date())}</span></footer>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default Dashboard;

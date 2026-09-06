@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: deriv
+    description: Deriv account and connection operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /deriv/accounts:
+    get:
+      operationId: getDerivAccounts
+      tags: [deriv]
+      summary: Load Deriv Options accounts
+      description: Loads the accounts available to the configured Deriv PAT without exposing credentials.
+      responses:
+        "200":
+          description: Available accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DerivAccount"
+        "502":
+          description: Deriv account service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /deriv/status:
+    get:
+      operationId: getDerivStatus
+      tags: [deriv]
+      summary: Get Deriv connection status
+      responses:
+        "200":
+          description: Current connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivStatus"
+  /deriv/test-connection:
+    post:
+      operationId: testDerivConnection
+      tags: [deriv]
+      summary: Test the Deriv REST and WebSocket connection
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivConnectionTest"
+        "502":
+          description: Deriv connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /deriv/proposals:
+    post:
+      operationId: requestDerivProposal
+      tags: [deriv]
+      summary: Request a Deriv proposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivProposalInput"
+      responses:
+        "202":
+          description: Proposal request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivProposalRequest"
+        "400":
+          description: Invalid proposal input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Deriv WebSocket is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +116,118 @@ components:
           type: string
       required:
         - status
+    DerivAccount:
+      type: object
+      required: [id, type, currency, balance, status]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [demo, real]
+        currency:
+          type: string
+        balance:
+          type: number
+        status:
+          type: string
+    DerivTick:
+      type: object
+      required: [symbol, quote, epoch]
+      properties:
+        symbol:
+          type: string
+        quote:
+          type: number
+        epoch:
+          type: integer
+    DerivProposal:
+      type: object
+      required: [id, ask_price, payout, spot]
+      properties:
+        id:
+          type: string
+        ask_price:
+          type: number
+        payout:
+          type: number
+        spot:
+          type: number
+        longcode:
+          type: [string, "null"]
+    DerivStatus:
+      type: object
+      required: [connected, authorized, bot_running, symbol, currency, max_trade_amount]
+      properties:
+        connected:
+          type: boolean
+        authorized:
+          type: boolean
+        account:
+          anyOf:
+            - $ref: "#/components/schemas/DerivAccount"
+            - type: "null"
+        last_tick:
+          anyOf:
+            - $ref: "#/components/schemas/DerivTick"
+            - type: "null"
+        last_proposal:
+          anyOf:
+            - $ref: "#/components/schemas/DerivProposal"
+            - type: "null"
+        bot_running:
+          type: boolean
+        symbol:
+          type: string
+        currency:
+          type: string
+        max_trade_amount:
+          type: number
+    DerivConnectionTest:
+      type: object
+      required: [ok, message, accounts, status]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/DerivAccount"
+        status:
+          $ref: "#/components/schemas/DerivStatus"
+    DerivProposalInput:
+      type: object
+      required: [amount, duration, duration_unit, contract_type]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        duration:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        duration_unit:
+          type: string
+          enum: [t, s, m]
+        contract_type:
+          type: string
+          enum: [CALL, PUT]
+        symbol:
+          type: string
+    DerivProposalRequest:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
 

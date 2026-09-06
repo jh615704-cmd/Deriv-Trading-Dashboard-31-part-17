@@ -1,0 +1,1 @@
+- [Deriv authentication](deriv-authentication.md) — PATs authenticate REST; use the returned OTP URL for the authenticated Options WebSocket.

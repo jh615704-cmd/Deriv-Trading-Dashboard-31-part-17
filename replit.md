@@ -1,15 +1,16 @@
-# [Project name]
+# Deriv Trading Dashboard
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A demo-first operations dashboard for loading Deriv accounts, testing the REST and authenticated WebSocket connection, monitoring live quotes, and requesting proposals without exposing credentials.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/deriv-dashboard run dev` — run the dashboard
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DERIV_APP_ID`, `DERIV_API_TOKEN`, `DASHBOARD_API_KEY`
 
 ## Stack
 
@@ -22,15 +23,20 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/deriv-dashboard` — React/Vite dashboard UI
+- `artifacts/api-server/src/lib/deriv.ts` — Deriv REST/OTP/WebSocket service
+- `artifacts/api-server/src/routes/deriv.ts` — dashboard API routes
+- `lib/api-spec/openapi.yaml` — API contract source of truth
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Deriv PATs authenticate REST requests; the server obtains an OTP WebSocket URL before opening the authenticated stream.
+- Demo accounts are preferred automatically when no `DERIV_ACCOUNT_ID` is configured.
+- Proposal requests are separate from trade execution; this dashboard does not expose a buy endpoint.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The dashboard loads all configured Deriv accounts, shows demo/real account balances, runs a connection health test, displays live `R_75` telemetry, and requests demo-first proposal quotes for inspection.
 
 ## User preferences
 
@@ -38,7 +44,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen`.
+- Keep `DERIV_API_TOKEN` and `DASHBOARD_API_KEY` in Replit Secrets; never commit or display them.
 
 ## Pointers
 

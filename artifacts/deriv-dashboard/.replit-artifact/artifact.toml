@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Deriv Trading Dashboard"
+description = "A secure operations dashboard for loading Deriv accounts, checking connection health, viewing live balances and quotes, and testing proposal requests with demo-first safeguards."
+version = "1.0.0"
+id = "artifacts/deriv-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21404
+
+[services.development]
+run = "pnpm --filter @workspace/deriv-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/deriv-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/deriv-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21404"
+BASE_PATH = "/"
