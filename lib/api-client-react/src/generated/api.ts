@@ -21,6 +21,9 @@ import type {
 
 import type {
   DerivAccount,
+  DerivAccountSelection,
+  DerivBuyInput,
+  DerivBuyResponse,
   DerivConnectionTest,
   DerivProposalInput,
   DerivProposalRequest,
@@ -429,5 +432,148 @@ export const useRequestDerivProposal = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRequestDerivProposalMutationOptions(options));
+    }
+
+export const getSelectDerivAccountUrl = () => {
+
+
+
+
+  return `/api/deriv/select-account`
+}
+
+/**
+ * @summary Select the account used by the authenticated WebSocket
+ */
+export const selectDerivAccount = async (derivAccountSelection: DerivAccountSelection, options?: Parameters<typeof customFetch>[1]): Promise<DerivStatus> => {
+
+  return customFetch<DerivStatus>(getSelectDerivAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivAccountSelection)
+  }
+);}
+
+
+
+
+
+export const getSelectDerivAccountMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectDerivAccount>>, TError,{data: BodyType<DerivAccountSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof selectDerivAccount>>, TError,{data: BodyType<DerivAccountSelection>}, TContext> => {
+
+const mutationKey = ['selectDerivAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof selectDerivAccount>>, {data: BodyType<DerivAccountSelection>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  selectDerivAccount(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SelectDerivAccountMutationResult = NonNullable<Awaited<ReturnType<typeof selectDerivAccount>>>
+    export type SelectDerivAccountMutationBody = BodyType<DerivAccountSelection>
+    export type SelectDerivAccountMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Select the account used by the authenticated WebSocket
+ */
+export const useSelectDerivAccount = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectDerivAccount>>, TError,{data: BodyType<DerivAccountSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof selectDerivAccount>>,
+        TError,
+        {data: BodyType<DerivAccountSelection>},
+        TContext
+      > => {
+      return useMutation(getSelectDerivAccountMutationOptions(options));
+    }
+
+export const getBuyDerivContractUrl = () => {
+
+
+
+
+  return `/api/deriv/buy`
+}
+
+/**
+ * Buys a previously returned proposal on a selected real account. Requires explicit confirmation and the live-trading server flag.
+ * @summary Buy a contract after explicit live-trade confirmation
+ */
+export const buyDerivContract = async (derivBuyInput: DerivBuyInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivBuyResponse> => {
+
+  return customFetch<DerivBuyResponse>(getBuyDerivContractUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivBuyInput)
+  }
+);}
+
+
+
+
+
+export const getBuyDerivContractMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof buyDerivContract>>, TError,{data: BodyType<DerivBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof buyDerivContract>>, TError,{data: BodyType<DerivBuyInput>}, TContext> => {
+
+const mutationKey = ['buyDerivContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof buyDerivContract>>, {data: BodyType<DerivBuyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  buyDerivContract(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BuyDerivContractMutationResult = NonNullable<Awaited<ReturnType<typeof buyDerivContract>>>
+    export type BuyDerivContractMutationBody = BodyType<DerivBuyInput>
+    export type BuyDerivContractMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Buy a contract after explicit live-trade confirmation
+ */
+export const useBuyDerivContract = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof buyDerivContract>>, TError,{data: BodyType<DerivBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof buyDerivContract>>,
+        TError,
+        {data: BodyType<DerivBuyInput>},
+        TContext
+      > => {
+      return useMutation(getBuyDerivContractMutationOptions(options));
     }
 

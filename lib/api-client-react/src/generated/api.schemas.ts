@@ -40,16 +40,41 @@ export interface DerivProposal {
   longcode?: string | null;
 }
 
+export interface DerivBuy {
+  contract_id: string;
+  buy_price: number;
+  payout: number;
+  /** @nullable */
+  start_time?: number | null;
+}
+
+export interface DerivContract {
+  contract_id: string;
+  status: string;
+  is_sold: boolean;
+  profit: number;
+  buy_price: number;
+  payout: number;
+  sell_price?: number;
+  entry_spot?: number;
+  current_spot?: number;
+  /** @nullable */
+  expiry_time?: number | null;
+}
+
 export interface DerivStatus {
   connected: boolean;
   authorized: boolean;
   account?: DerivAccount | null;
   last_tick?: DerivTick | null;
   last_proposal?: DerivProposal | null;
+  last_buy?: DerivBuy | null;
+  last_contract?: DerivContract | null;
   bot_running: boolean;
   symbol: string;
   currency: string;
   max_trade_amount: number;
+  live_trading_enabled?: boolean;
 }
 
 export interface DerivConnectionTest {
@@ -72,8 +97,8 @@ export type DerivProposalInputContractType = typeof DerivProposalInputContractTy
 
 
 export const DerivProposalInputContractType = {
-  CALL: 'CALL',
-  PUT: 'PUT',
+  DIGITEVEN: 'DIGITEVEN',
+  DIGITODD: 'DIGITODD',
 } as const;
 
 export interface DerivProposalInput {
@@ -92,6 +117,25 @@ export interface DerivProposalInput {
 export interface DerivProposalRequest {
   ok: boolean;
   message: string;
+}
+
+export interface DerivAccountSelection {
+  /** @minLength 1 */
+  account_id: string;
+}
+
+export interface DerivBuyInput {
+  /** @minLength 1 */
+  proposal_id: string;
+  /** @exclusiveMinimum 0 */
+  price: number;
+  confirm_live_trade: true;
+}
+
+export interface DerivBuyResponse {
+  ok: boolean;
+  message: string;
+  buy?: DerivBuy | null;
 }
 
 export interface ErrorResponse {

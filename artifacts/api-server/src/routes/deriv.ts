@@ -4,12 +4,18 @@ import {
   GetDerivStatusResponse,
   RequestDerivProposalBody,
   RequestDerivProposalResponse,
+  BuyDerivContractBody,
+  BuyDerivContractResponse,
+  SelectDerivAccountBody,
+  SelectDerivAccountResponse,
   TestDerivConnectionResponse,
 } from "@workspace/api-zod";
 import {
   getAccounts,
   getStatus,
   requestProposal,
+  buyContract,
+  selectAccount,
   startDeriv,
   testConnection,
 } from "../lib/deriv";
@@ -52,6 +58,38 @@ router.post("/deriv/proposals", async (req, res) => {
   } catch (error) {
     req.log.error({ err: error }, "Deriv proposal request failed");
     return res.status(503).json({ error: "Deriv WebSocket is not ready" });
+  }
+});
+
+router.post("/deriv/select-account", async (req, res) => {
+  const parsed = SelectDerivAccountBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid account selection" });
+
+  try {
+    const result = SelectDerivAccountResponse.parse(await selectAccount(parsed.data.account_id));
+    return res.json(result);
+  } catch (error) {
+    req.log.error({ err: error }, "Deriv account selection failed");
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Unable to select account" });
+  }
+});
+
+router.post("/deriv/buy", async (req, res) => {
+  const parsed = BuyDerivContractBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Explicit live-trade confirmation is required" });
+
+  try {
+    const result = BuyDerivContractResponse.parse(await buyContract(parsed.data));
+    return res.status(202).json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Live buy request failed";
+    req.log.error({ err: error }, "Deriv live buy request failed");
+    const status = message.includes("disabled") || message.includes("real account")
+      ? 403
+      : message.includes("not available") || message.includes("confirmation")
+        ? 400
+        : 503;
+    return res.status(status).json({ error: message });
   }
 });
 

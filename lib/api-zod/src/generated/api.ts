@@ -56,10 +56,29 @@ export const GetDerivStatusResponse = zod.object({
   "spot": zod.number(),
   "longcode": zod.string().nullish()
 }),zod.null()]).optional(),
+  "last_buy": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
+  "last_contract": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "status": zod.string(),
+  "is_sold": zod.boolean(),
+  "profit": zod.number(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "sell_price": zod.number().optional(),
+  "entry_spot": zod.number().optional(),
+  "current_spot": zod.number().optional(),
+  "expiry_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
   "bot_running": zod.boolean(),
   "symbol": zod.string(),
   "currency": zod.string(),
-  "max_trade_amount": zod.number()
+  "max_trade_amount": zod.number(),
+  "live_trading_enabled": zod.boolean().optional()
 })
 
 
@@ -98,10 +117,29 @@ export const TestDerivConnectionResponse = zod.object({
   "spot": zod.number(),
   "longcode": zod.string().nullish()
 }),zod.null()]).optional(),
+  "last_buy": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
+  "last_contract": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "status": zod.string(),
+  "is_sold": zod.boolean(),
+  "profit": zod.number(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "sell_price": zod.number().optional(),
+  "entry_spot": zod.number().optional(),
+  "current_spot": zod.number().optional(),
+  "expiry_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
   "bot_running": zod.boolean(),
   "symbol": zod.string(),
   "currency": zod.string(),
-  "max_trade_amount": zod.number()
+  "max_trade_amount": zod.number(),
+  "live_trading_enabled": zod.boolean().optional()
 })
 })
 
@@ -119,13 +157,98 @@ export const RequestDerivProposalBody = zod.object({
   "amount": zod.number().gt(requestDerivProposalBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(requestDerivProposalBodyDurationMax),
   "duration_unit": zod.enum(['t', 's', 'm']),
-  "contract_type": zod.enum(['CALL', 'PUT']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD']),
   "symbol": zod.string().optional()
 })
 
 export const RequestDerivProposalResponse = zod.object({
   "ok": zod.boolean(),
   "message": zod.string()
+})
+
+
+/**
+ * @summary Select the account used by the authenticated WebSocket
+ */
+
+
+
+export const SelectDerivAccountBody = zod.object({
+  "account_id": zod.string().min(1)
+})
+
+export const SelectDerivAccountResponse = zod.object({
+  "connected": zod.boolean(),
+  "authorized": zod.boolean(),
+  "account": zod.union([zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['demo', 'real']),
+  "currency": zod.string(),
+  "balance": zod.number(),
+  "status": zod.string()
+}),zod.null()]).optional(),
+  "last_tick": zod.union([zod.object({
+  "symbol": zod.string(),
+  "quote": zod.number(),
+  "epoch": zod.number().int()
+}),zod.null()]).optional(),
+  "last_proposal": zod.union([zod.object({
+  "id": zod.string(),
+  "ask_price": zod.number(),
+  "payout": zod.number(),
+  "spot": zod.number(),
+  "longcode": zod.string().nullish()
+}),zod.null()]).optional(),
+  "last_buy": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
+  "last_contract": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "status": zod.string(),
+  "is_sold": zod.boolean(),
+  "profit": zod.number(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "sell_price": zod.number().optional(),
+  "entry_spot": zod.number().optional(),
+  "current_spot": zod.number().optional(),
+  "expiry_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
+  "bot_running": zod.boolean(),
+  "symbol": zod.string(),
+  "currency": zod.string(),
+  "max_trade_amount": zod.number(),
+  "live_trading_enabled": zod.boolean().optional()
+})
+
+
+/**
+ * Buys a previously returned proposal on a selected real account. Requires explicit confirmation and the live-trading server flag.
+ * @summary Buy a contract after explicit live-trade confirmation
+ */
+
+export const buyDerivContractBodyPriceExclusiveMin = 0;
+
+
+
+export const BuyDerivContractBody = zod.object({
+  "proposal_id": zod.string().min(1),
+  "price": zod.number().gt(buyDerivContractBodyPriceExclusiveMin),
+  "confirm_live_trade": zod.literal(true)
+})
+
+export const BuyDerivContractResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string(),
+  "buy": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
+}),zod.null()]).optional()
 })
 
 

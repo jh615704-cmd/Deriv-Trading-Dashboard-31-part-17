@@ -10,6 +10,6 @@ export type DerivProposalInputContractType = typeof DerivProposalInputContractTy
 
 
 export const DerivProposalInputContractType = {
-  CALL: 'CALL',
-  PUT: 'PUT',
+  DIGITEVEN: 'DIGITEVEN',
+  DIGITODD: 'DIGITODD',
 } as const;

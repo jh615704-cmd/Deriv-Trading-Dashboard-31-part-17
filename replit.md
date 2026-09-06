@@ -10,7 +10,7 @@ A demo-first operations dashboard for loading Deriv accounts, testing the REST a
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DERIV_APP_ID`, `DERIV_API_TOKEN`, `DASHBOARD_API_KEY`
+- Required env: `DERIV_APP_ID`, `DERIV_API_TOKEN`, `DASHBOARD_API_KEY`, `DERIV_ALLOW_LIVE_TRADING`
 
 ## Stack
 
@@ -33,6 +33,7 @@ A demo-first operations dashboard for loading Deriv accounts, testing the REST a
 - Deriv PATs authenticate REST requests; the server obtains an OTP WebSocket URL before opening the authenticated stream.
 - Demo accounts are preferred automatically when no `DERIV_ACCOUNT_ID` is configured.
 - Proposal requests are separate from trade execution; this dashboard does not expose a buy endpoint.
+- Live buys require a selected real account, the server live-trading flag, a matching proposal, and explicit UI confirmation.
 
 ## Product
 

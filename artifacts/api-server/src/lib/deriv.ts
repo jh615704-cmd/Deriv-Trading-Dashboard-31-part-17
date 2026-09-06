@@ -8,6 +8,7 @@ const defaultSymbol = process.env.DERIV_SYMBOL ?? "R_75";
 const defaultCurrency = process.env.DERIV_CURRENCY ?? "USD";
 const maxTradeAmount = Number(process.env.MAX_TRADE_AMOUNT ?? "100");
 const configuredAccountId = process.env.DERIV_ACCOUNT_ID;
+const liveTradingEnabled = process.env.DERIV_ALLOW_LIVE_TRADING === "true";
 
 export type DerivAccount = {
   id: string;
@@ -31,24 +32,53 @@ export type DerivProposal = {
   longcode: string | null;
 };
 
+export type DerivBuy = {
+  contract_id: string;
+  buy_price: number;
+  payout: number;
+  start_time: number | null;
+};
+
+export type DerivContract = {
+  contract_id: string;
+  status: string;
+  is_sold: boolean;
+  profit: number;
+  buy_price: number;
+  payout: number;
+  sell_price: number;
+  entry_spot: number;
+  current_spot: number;
+  expiry_time: number | null;
+};
+
 export type DerivStatus = {
   connected: boolean;
   authorized: boolean;
   account: DerivAccount | null;
   last_tick: DerivTick | null;
   last_proposal: DerivProposal | null;
+  last_buy: DerivBuy | null;
+  last_contract: DerivContract | null;
   bot_running: boolean;
   symbol: string;
   currency: string;
   max_trade_amount: number;
+  live_trading_enabled: boolean;
 };
 
 type ProposalInput = {
   amount: number;
   duration: number;
   duration_unit: "t" | "s" | "m";
-  contract_type: "CALL" | "PUT";
+  contract_type: "DIGITEVEN" | "DIGITODD";
   symbol?: string;
+};
+
+type BuyInput = {
+  proposal_id: string;
+  price: number;
+  confirm_live_trade: true;
 };
 
 type DerivResponse = {
@@ -65,6 +95,10 @@ const state = {
   accounts: [] as DerivAccount[],
   lastTick: null as DerivTick | null,
   lastProposal: null as DerivProposal | null,
+  proposalIds: new Set<string>(),
+  lastBuy: null as DerivBuy | null,
+  lastContract: null as DerivContract | null,
+  selectedAccountId: configuredAccountId ?? null as string | null,
   botRunning: false,
   shuttingDown: false,
 };
@@ -134,8 +168,12 @@ async function loadAccountsFromDeriv() {
   const response = await derivRequest("/trading/v1/options/accounts");
   const accounts = extractAccounts(response);
   if (!accounts.length) throw new Error("Deriv returned no Options accounts");
-  state.accounts = accounts;
-  return accounts;
+  state.accounts = accounts.map((account) =>
+    account.id === state.account?.id
+      ? { ...account, balance: state.account.balance, currency: state.account.currency }
+      : account,
+  );
+  return state.accounts;
 }
 
 async function getOtpUrl(accountId: string) {
@@ -151,6 +189,11 @@ async function getOtpUrl(accountId: string) {
 }
 
 function preferredAccount(accounts: DerivAccount[]) {
+  if (state.selectedAccountId) {
+    const selected = accounts.find((account) => account.id === state.selectedAccountId);
+    if (!selected) throw new Error("Selected account was not found in the account list");
+    return selected;
+  }
   if (configuredAccountId) {
     const configured = accounts.find((account) => account.id === configuredAccountId);
     if (!configured) throw new Error("DERIV_ACCOUNT_ID was not found in the account list");
@@ -217,6 +260,37 @@ async function connectInternal() {
           spot: Number(message.proposal?.spot ?? 0),
           longcode: message.proposal?.longcode ?? null,
         };
+        if (state.lastProposal.id) state.proposalIds.add(state.lastProposal.id);
+      } else if (message.msg_type === "buy") {
+        state.lastBuy = {
+          contract_id: String(message.buy?.contract_id ?? ""),
+          buy_price: Number(message.buy?.buy_price ?? 0),
+          payout: Number(message.buy?.payout ?? 0),
+          start_time: message.buy?.start_time == null ? null : Number(message.buy.start_time),
+        };
+        if (state.lastBuy.contract_id) {
+          send({
+            proposal_open_contract: 1,
+            contract_id: state.lastBuy.contract_id,
+            subscribe: 1,
+          });
+        }
+      } else if (message.msg_type === "proposal_open_contract") {
+        const contract = message.proposal_open_contract;
+        if (contract) {
+          state.lastContract = {
+            contract_id: String(contract.contract_id ?? ""),
+            status: String(contract.status ?? "open"),
+            is_sold: Boolean(contract.is_sold),
+            profit: Number(contract.profit ?? 0),
+            buy_price: Number(contract.buy_price ?? state.lastBuy?.buy_price ?? 0),
+            payout: Number(contract.payout ?? state.lastBuy?.payout ?? 0),
+            sell_price: Number(contract.sell_price ?? 0),
+            entry_spot: Number(contract.entry_spot ?? 0),
+            current_spot: Number(contract.current_spot ?? 0),
+            expiry_time: contract.expiry_time == null ? null : Number(contract.expiry_time),
+          };
+        }
       }
     });
 
@@ -260,10 +334,13 @@ export function getStatus(): DerivStatus {
     account: state.account,
     last_tick: state.lastTick,
     last_proposal: state.lastProposal,
+    last_buy: state.lastBuy,
+    last_contract: state.lastContract,
     bot_running: state.botRunning,
     symbol: defaultSymbol,
     currency: defaultCurrency,
     max_trade_amount: maxTradeAmount,
+    live_trading_enabled: liveTradingEnabled,
   };
 }
 
@@ -302,6 +379,50 @@ export async function requestProposal(input: ProposalInput) {
   return {
     ok: true,
     message: "Proposal requested. Review the returned quote before any trade action.",
+  };
+}
+
+export async function selectAccount(accountId: string) {
+  const accounts = state.accounts.length ? state.accounts : await loadAccountsFromDeriv();
+  const account = accounts.find((item) => item.id === accountId);
+  if (!account) throw new Error("That account is not available");
+  if (account.type === "real" && !liveTradingEnabled) {
+    throw new Error("Live trading is disabled on this server");
+  }
+
+  state.selectedAccountId = account.id;
+  state.socket?.close();
+  state.socket = null;
+  state.account = null;
+  state.lastProposal = null;
+  state.lastBuy = null;
+  state.lastContract = null;
+  await connect();
+  return getStatus();
+}
+
+export async function buyContract(input: BuyInput) {
+  if (!liveTradingEnabled) throw new Error("Live trading is disabled on this server");
+  if (state.account?.type !== "real") {
+    throw new Error("Select a real account before buying a contract");
+  }
+  if (!input.confirm_live_trade) {
+    throw new Error("Explicit live-trade confirmation is required");
+  }
+  if (!state.proposalIds.has(input.proposal_id)) {
+    throw new Error("That proposal is not available for this session");
+  }
+  if (input.price > maxTradeAmount) {
+    throw new Error(`Price exceeds the configured maximum of ${maxTradeAmount}`);
+  }
+  const connected = await connect();
+  if (!connected || !send({ buy: input.proposal_id, price: input.price })) {
+    throw new Error("Deriv WebSocket is not ready");
+  }
+  return {
+    ok: true,
+    message: "Live buy request sent. Contract and balance updates will appear here.",
+    buy: state.lastBuy,
   };
 }
 

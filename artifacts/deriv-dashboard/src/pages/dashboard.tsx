@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
@@ -24,9 +24,11 @@ import {
 import {
   getGetDerivAccountsQueryKey,
   getGetDerivStatusQueryKey,
+  useBuyDerivContract,
   useGetDerivAccounts,
   useGetDerivStatus,
   useRequestDerivProposal,
+  useSelectDerivAccount,
   useTestDerivConnection,
 } from '@workspace/api-client-react';
 
@@ -43,24 +45,30 @@ function MetricSkeleton() {
 
 function Dashboard() {
   const queryClient = useQueryClient();
-  const accountsQuery = useGetDerivAccounts();
-  const statusQuery = useGetDerivStatus();
+  const accountsQuery = useGetDerivAccounts({ query: { queryKey: getGetDerivAccountsQueryKey(), refetchInterval: 5000 } });
+  const statusQuery = useGetDerivStatus({ query: { queryKey: getGetDerivStatusQueryKey(), refetchInterval: 1500 } });
   const testConnection = useTestDerivConnection();
   const requestProposal = useRequestDerivProposal();
+  const selectAccount = useSelectDerivAccount();
+  const buyContract = useBuyDerivContract();
   const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
   const status = statusQuery.data;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [amount, setAmount] = useState('1.00');
   const [duration, setDuration] = useState('5');
   const [durationUnit, setDurationUnit] = useState<'t' | 's' | 'm'>('t');
-  const [contractType, setContractType] = useState<'CALL' | 'PUT'>('CALL');
+  const [contractType, setContractType] = useState<'DIGITEVEN' | 'DIGITODD'>('DIGITEVEN');
   const [symbol, setSymbol] = useState('');
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [testFailed, setTestFailed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmLiveTrade, setConfirmLiveTrade] = useState(false);
 
   const selectedAccount = accounts.find((account) => account.id === selectedId) ?? accounts.find((account) => account.type === 'demo') ?? status?.account ?? accounts[0];
-  const isDemo = selectedAccount?.type === 'demo';
+  const isReal = selectedAccount?.type === 'real';
+  const serverSelected = status?.account?.id === selectedAccount?.id;
+  const liveBalance = status?.account?.id === selectedAccount?.id ? status?.account?.balance : selectedAccount?.balance;
+  const selectedAccountWithLiveBalance = selectedAccount ? { ...selectedAccount, balance: liveBalance ?? selectedAccount.balance } : undefined;
   const effectiveSymbol = symbol || status?.symbol || '';
   const isInitialLoading = accountsQuery.isLoading || statusQuery.isLoading;
   const hasError = accountsQuery.isError || statusQuery.isError;
@@ -68,7 +76,19 @@ function Dashboard() {
   const proposal = status?.last_proposal;
   const isTestPending = testConnection.isPending;
   const isProposalPending = requestProposal.isPending;
-  const proposalReady = Boolean(status?.authorized && isDemo && effectiveSymbol && Number(amount) > 0 && Number(duration) >= 1);
+  const proposalReady = Boolean(status?.authorized && serverSelected && effectiveSymbol && Number(amount) > 0 && Number(duration) >= 1);
+
+  useEffect(() => {
+    if (status?.account) {
+      queryClient.setQueryData(getGetDerivAccountsQueryKey(), (current: typeof accounts) =>
+        current?.map((account) =>
+          account.id === status.account?.id
+            ? { ...account, balance: status.account.balance }
+            : account,
+        ) ?? current,
+      );
+    }
+  }, [accounts, queryClient, status?.account]);
 
   const handleTestConnection = () => {
     setTestMessage(null);
@@ -109,6 +129,54 @@ function Dashboard() {
         onError: (error) => {
           setTestFailed(true);
           setTestMessage(error instanceof Error ? error.message : 'Proposal request could not complete.');
+        },
+      },
+    );
+  };
+
+  const handleSelectAccount = (accountId: string) => {
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account || account.id === selectedAccount?.id || selectAccount.isPending) return;
+    setTestMessage(`Switching to ${account.type} account…`);
+    setTestFailed(false);
+    setConfirmLiveTrade(false);
+    selectAccount.mutate(
+      { data: { account_id: account.id } },
+      {
+        onSuccess: (result) => {
+          setSelectedId(account.id);
+          queryClient.setQueryData(getGetDerivStatusQueryKey(), result);
+          setTestMessage(`${account.type === 'real' ? 'Real' : 'Demo'} account selected.`);
+        },
+        onError: (error) => {
+          setTestFailed(true);
+          setTestMessage(error instanceof Error ? error.message : 'Account selection failed.');
+        },
+      },
+    );
+  };
+
+  const handleBuy = () => {
+    if (!proposal || !isReal || !confirmLiveTrade) return;
+    buyContract.mutate(
+      {
+        data: {
+          proposal_id: proposal.id,
+          price: proposal.ask_price,
+          confirm_live_trade: true,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setTestFailed(false);
+          setTestMessage(result.message);
+          setConfirmLiveTrade(false);
+          queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
+        },
+        onError: (error) => {
+          setTestFailed(true);
+          setTestMessage(error instanceof Error ? error.message : 'Live buy request failed.');
         },
       },
     );
@@ -210,10 +278,10 @@ function Dashboard() {
               {accounts.length ? <div className="account-list">
                 {accounts.map((account) => {
                   const selected = account.id === selectedAccount?.id;
-                  return <button type="button" className={`account-row ${selected ? 'account-row-selected' : ''}`} key={account.id} data-testid={`button-account-${account.id}`} onClick={() => setSelectedId(account.id)}>
+                  return <button type="button" className={`account-row ${selected ? 'account-row-selected' : ''}`} key={account.id} data-testid={`button-account-${account.id}`} onClick={() => handleSelectAccount(account.id)}>
                     <span className={`account-type-mark ${account.type}`}>{account.type === 'demo' ? 'D' : 'R'}</span>
                     <span className="account-main"><span className="account-id">{account.id}</span><span className="account-meta"><span className={`status-label ${account.status.toLowerCase() === 'active' ? 'positive' : ''}`}><span />{account.status}</span><span>{account.currency}</span></span></span>
-                    <span className="account-balance"><small>AVAILABLE</small>{money.format(account.balance)}</span>
+                    <span className="account-balance"><small>AVAILABLE</small>{money.format(account.id === selectedAccount?.id ? (liveBalance ?? account.balance) : account.balance)}</span>
                     <ChevronDown size={15} className={`account-chevron ${selected ? 'selected-chevron' : ''}`} />
                   </button>;
                 })}
@@ -223,7 +291,7 @@ function Dashboard() {
 
             <div className={`balance-panel panel ${selectedAccount?.type === 'real' ? 'balance-panel-real' : ''}`}>
               <div className="balance-topline"><span className="panel-overline">SELECTED ACCOUNT</span><span className={`account-mode-badge ${selectedAccount?.type ?? ''}`}>{selectedAccount?.type ?? 'unassigned'}</span></div>
-              {selectedAccount ? <><div className="balance-account">{selectedAccount.id}</div><div className="balance-amount"><span>{selectedAccount.currency}</span>{money.format(selectedAccount.balance)}</div><div className="balance-divider" /><div className="balance-details"><span><small>STATUS</small><b>{selectedAccount.status}</b></span><span><small>ACCOUNT CLASS</small><b>{selectedAccount.type === 'demo' ? 'Simulated funds' : 'Live funds'}</b></span></div><div className="balance-callout"><Sparkles size={16} /><span>{selectedAccount.type === 'demo' ? 'Preferred environment for proposal testing.' : 'Read-only comparison. Proposal testing remains demo-first.'}</span></div></> : <div className="empty-balance"><CircleAlert size={21} /><span>Select an account to inspect its balance.</span></div>}
+              {selectedAccountWithLiveBalance ? <><div className="balance-account">{selectedAccountWithLiveBalance.id}</div><div className="balance-amount"><span>{selectedAccountWithLiveBalance.currency}</span>{money.format(selectedAccountWithLiveBalance.balance)}</div><div className="balance-divider" /><div className="balance-details"><span><small>STATUS</small><b>{selectedAccountWithLiveBalance.status}</b></span><span><small>ACCOUNT CLASS</small><b>{selectedAccountWithLiveBalance.type === 'demo' ? 'Simulated funds' : 'Live funds'}</b></span></div><div className="balance-callout"><Sparkles size={16} /><span>{selectedAccountWithLiveBalance.type === 'demo' ? 'Preferred environment for proposal testing.' : 'Live account selected. Every buy requires confirmation.'}</span></div></> : <div className="empty-balance"><CircleAlert size={21} /><span>Select an account to inspect its balance.</span></div>}
             </div>
           </section>
 
@@ -235,23 +303,26 @@ function Dashboard() {
               <div className="quote-foot"><span>STREAM STATUS</span><b>{status?.connected ? 'WebSocket available' : 'Not connected'}</b></div>
             </div>
 
-            <form className={`proposal-panel panel ${!isDemo ? 'proposal-disabled' : ''}`} onSubmit={handleProposal}>
-              <div className="panel-header"><div><span className="panel-overline">PROPOSAL REQUEST</span><h3>Demo-first test</h3></div><FlaskConical size={19} className="panel-icon" /></div>
-              {!isDemo && <div className="guardrail"><LockKeyhole size={16} /><span><b>Real account selected.</b> Switch to a demo account to request a proposal.</span></div>}
+            <form className={`proposal-panel panel ${!serverSelected ? 'proposal-disabled' : ''}`} onSubmit={handleProposal}>
+              <div className="panel-header"><div><span className="panel-overline">PROPOSAL REQUEST</span><h3>{isReal ? 'Live account test' : 'Demo-first test'}</h3></div><FlaskConical size={19} className="panel-icon" /></div>
+              {!serverSelected && <div className="guardrail"><LockKeyhole size={16} /><span><b>Account switch in progress.</b> Wait for the selected session to connect.</span></div>}
               <div className="form-grid">
-                <label className="field"><span>STAKE</span><div className="input-with-prefix"><i>{selectedAccount?.currency ?? '$'}</i><input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!isDemo} data-testid="input-proposal-amount" /></div></label>
-                <label className="field"><span>DURATION</span><div className="input-with-select"><input type="number" min="1" max="1000" value={duration} onChange={(event) => setDuration(event.target.value)} disabled={!isDemo} data-testid="input-proposal-duration" /><select value={durationUnit} onChange={(event) => setDurationUnit(event.target.value as 't' | 's' | 'm')} disabled={!isDemo} data-testid="select-proposal-duration-unit"><option value="t">ticks</option><option value="s">seconds</option><option value="m">minutes</option></select></div></label>
-                <label className="field field-wide"><span>SYMBOL</span><input value={effectiveSymbol} onChange={(event) => setSymbol(event.target.value)} placeholder={status?.symbol ?? 'Symbol from status'} disabled={!isDemo} data-testid="input-proposal-symbol" /></label>
+                <label className="field"><span>STAKE</span><div className="input-with-prefix"><i>{selectedAccount?.currency ?? '$'}</i><input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={!serverSelected} data-testid="input-proposal-amount" /></div></label>
+                <label className="field"><span>DURATION</span><div className="input-with-select"><input type="number" min="1" max="1000" value={duration} onChange={(event) => setDuration(event.target.value)} disabled={!serverSelected} data-testid="input-proposal-duration" /><select value={durationUnit} onChange={(event) => setDurationUnit(event.target.value as 't' | 's' | 'm')} disabled={!serverSelected} data-testid="select-proposal-duration-unit"><option value="t">ticks</option><option value="s">seconds</option><option value="m">minutes</option></select></div></label>
+                <label className="field field-wide"><span>SYMBOL</span><input value={effectiveSymbol} onChange={(event) => setSymbol(event.target.value)} placeholder={status?.symbol ?? 'Symbol from status'} disabled={!serverSelected} data-testid="input-proposal-symbol" /></label>
               </div>
-              <div className="direction-label">CONTRACT DIRECTION</div>
-              <div className="direction-group"><button type="button" className={`direction-button call ${contractType === 'CALL' ? 'direction-selected' : ''}`} onClick={() => setContractType('CALL')} disabled={!isDemo} data-testid="button-contract-call"><ArrowUpRight size={16} /><span>CALL</span><small>Expect higher</small></button><button type="button" className={`direction-button put ${contractType === 'PUT' ? 'direction-selected' : ''}`} onClick={() => setContractType('PUT')} disabled={!isDemo} data-testid="button-contract-put"><ArrowDownRight size={16} /><span>PUT</span><small>Expect lower</small></button></div>
+              <div className="direction-label">DIGIT CONTRACT</div>
+              <div className="direction-group"><button type="button" className={`direction-button call ${contractType === 'DIGITEVEN' ? 'direction-selected' : ''}`} onClick={() => setContractType('DIGITEVEN')} disabled={!serverSelected} data-testid="button-contract-even"><ArrowUpRight size={16} /><span>EVEN</span><small>Last digit is even</small></button><button type="button" className={`direction-button put ${contractType === 'DIGITODD' ? 'direction-selected' : ''}`} onClick={() => setContractType('DIGITODD')} disabled={!serverSelected} data-testid="button-contract-odd"><ArrowDownRight size={16} /><span>ODD</span><small>Last digit is odd</small></button></div>
+              {isReal && <label className="live-confirm"><input type="checkbox" checked={confirmLiveTrade} onChange={(event) => setConfirmLiveTrade(event.target.checked)} /><span><b>I understand this can spend real funds.</b> Require explicit confirmation before buying this proposal.</span></label>}
               <div className="proposal-submit-row"><span className="proposal-hint">{status?.max_trade_amount ? `Max stake ${money.format(status.max_trade_amount)} ${selectedAccount?.currency ?? ''}` : 'Server validates stake limits'}</span><button type="submit" className="primary-button proposal-button" disabled={!proposalReady || isProposalPending} data-testid="button-request-proposal">{isProposalPending ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{isProposalPending ? 'Requesting…' : 'Request proposal'}</button></div>
+              {isReal && <button type="button" className="live-buy-button" disabled={!proposal || !confirmLiveTrade || buyContract.isPending || !status?.live_trading_enabled} onClick={handleBuy} data-testid="button-buy-contract">{buyContract.isPending ? 'Sending live buy…' : `Buy ${proposal ? money.format(proposal.ask_price) : ''} ${selectedAccount.currency}`}</button>}
             </form>
           </section>
 
           <section className="response-panel panel">
             <div className="response-heading"><div><span className="panel-overline">LAST SERVER RESPONSE</span><h3>Proposal telemetry</h3></div><span className={`response-state ${proposal ? 'response-state-ready' : ''}`}><span />{proposal ? 'Response ready' : 'No response yet'}</span></div>
-            {proposal ? <div className="proposal-output"><div className="output-metric"><span>ASK PRICE</span><strong data-testid="text-ask-price">{money.format(proposal.ask_price)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>PAYOUT</span><strong data-testid="text-payout">{money.format(proposal.payout)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>SPOT</span><strong data-testid="text-spot">{proposal.spot.toFixed(4)}</strong><small>{proposal.id}</small></div><div className="longcode-output"><span>CONTRACT DESCRIPTION</span><div><p>{proposal.longcode ?? 'No longcode returned by Deriv.'}</p>{proposal.longcode && <button type="button" className="copy-button" onClick={copyLongcode} title="Copy contract description" aria-label="Copy contract description" data-testid="button-copy-longcode">{copied ? <Check size={15} /> : <Copy size={15} />}</button>}</div></div></div> : <div className="response-empty"><div className="empty-marker"><span /></div><div><strong>Proposal output will appear here</strong><p>Use the demo account above to request a fresh server-side quote.</p></div></div>}
+            {proposal ? <div className="proposal-output"><div className="output-metric"><span>ASK PRICE</span><strong data-testid="text-ask-price">{money.format(proposal.ask_price)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>PAYOUT</span><strong data-testid="text-payout">{money.format(proposal.payout)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>SPOT</span><strong data-testid="text-spot">{proposal.spot.toFixed(4)}</strong><small>{proposal.id}</small></div><div className="longcode-output"><span>CONTRACT DESCRIPTION</span><div><p>{proposal.longcode ?? 'No longcode returned by Deriv.'}</p>{proposal.longcode && <button type="button" className="copy-button" onClick={copyLongcode} title="Copy contract description" aria-label="Copy contract description" data-testid="button-copy-longcode">{copied ? <Check size={15} /> : <Copy size={15} />}</button>}</div></div></div> : <div className="response-empty"><div className="empty-marker"><span /></div><div><strong>Proposal output will appear here</strong><p>Select a session and request a fresh server-side quote.</p></div></div>}
+            {status?.last_contract && <div className="contract-live-card" data-testid="live-contract-card"><div><span className="panel-overline">LIVE CONTRACT</span><strong>{status.last_contract.status}</strong><small>Contract {status.last_contract.contract_id}</small></div><div><span>PROFIT / LOSS</span><b className={status.last_contract.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(status.last_contract.profit)} {selectedAccount?.currency ?? status.currency}</b></div><div><span>LIVE BALANCE</span><b>{money.format(liveBalance ?? 0)} {selectedAccount?.currency ?? status.currency}</b></div></div>}
           </section>
 
           <footer className="page-footer"><span><span className="footer-dot" />Connection state is read from the configured Deriv session</span><span>Last UI refresh {time.format(new Date())}</span></footer>

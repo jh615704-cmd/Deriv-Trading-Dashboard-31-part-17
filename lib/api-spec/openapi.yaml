@@ -107,6 +107,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /deriv/select-account:
+    post:
+      operationId: selectDerivAccount
+      tags: [deriv]
+      summary: Select the account used by the authenticated WebSocket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivAccountSelection"
+      responses:
+        "200":
+          description: Account selected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivStatus"
+        "400":
+          description: Invalid account selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Unable to connect to the selected account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /deriv/buy:
+    post:
+      operationId: buyDerivContract
+      tags: [deriv]
+      summary: Buy a contract after explicit live-trade confirmation
+      description: Buys a previously returned proposal on a selected real account. Requires explicit confirmation and the live-trading server flag.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivBuyInput"
+      responses:
+        "202":
+          description: Buy request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivBuyResponse"
+        "400":
+          description: Invalid buy request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Live trading is disabled or the selected account is not real
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Deriv WebSocket is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -175,6 +242,14 @@ components:
           anyOf:
             - $ref: "#/components/schemas/DerivProposal"
             - type: "null"
+        last_buy:
+          anyOf:
+            - $ref: "#/components/schemas/DerivBuy"
+            - type: "null"
+        last_contract:
+          anyOf:
+            - $ref: "#/components/schemas/DerivContract"
+            - type: "null"
         bot_running:
           type: boolean
         symbol:
@@ -183,6 +258,8 @@ components:
           type: string
         max_trade_amount:
           type: number
+        live_trading_enabled:
+          type: boolean
     DerivConnectionTest:
       type: object
       required: [ok, message, accounts, status]
@@ -213,7 +290,7 @@ components:
           enum: [t, s, m]
         contract_type:
           type: string
-          enum: [CALL, PUT]
+          enum: [DIGITEVEN, DIGITODD]
         symbol:
           type: string
     DerivProposalRequest:
@@ -224,6 +301,74 @@ components:
           type: boolean
         message:
           type: string
+    DerivAccountSelection:
+      type: object
+      required: [account_id]
+      properties:
+        account_id:
+          type: string
+          minLength: 1
+    DerivBuyInput:
+      type: object
+      required: [proposal_id, price, confirm_live_trade]
+      properties:
+        proposal_id:
+          type: string
+          minLength: 1
+        price:
+          type: number
+          exclusiveMinimum: 0
+        confirm_live_trade:
+          type: boolean
+          const: true
+    DerivBuy:
+      type: object
+      required: [contract_id, buy_price, payout]
+      properties:
+        contract_id:
+          type: string
+        buy_price:
+          type: number
+        payout:
+          type: number
+        start_time:
+          type: [integer, "null"]
+    DerivBuyResponse:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+        buy:
+          anyOf:
+            - $ref: "#/components/schemas/DerivBuy"
+            - type: "null"
+    DerivContract:
+      type: object
+      required: [contract_id, status, is_sold, profit, buy_price, payout]
+      properties:
+        contract_id:
+          type: string
+        status:
+          type: string
+        is_sold:
+          type: boolean
+        profit:
+          type: number
+        buy_price:
+          type: number
+        payout:
+          type: number
+        sell_price:
+          type: number
+        entry_spot:
+          type: number
+        current_spot:
+          type: number
+        expiry_time:
+          type: [integer, "null"]
     ErrorResponse:
       type: object
       required: [error]

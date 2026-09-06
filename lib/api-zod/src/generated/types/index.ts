@@ -7,8 +7,13 @@
  */
 
 export * from './derivAccount';
+export * from './derivAccountSelection';
 export * from './derivAccountType';
+export * from './derivBuy';
+export * from './derivBuyInput';
+export * from './derivBuyResponse';
 export * from './derivConnectionTest';
+export * from './derivContract';
 export * from './derivProposal';
 export * from './derivProposalInput';
 export * from './derivProposalInputContractType';

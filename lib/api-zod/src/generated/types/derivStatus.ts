@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DerivAccount } from './derivAccount';
+import type { DerivBuy } from './derivBuy';
+import type { DerivContract } from './derivContract';
 import type { DerivProposal } from './derivProposal';
 import type { DerivTick } from './derivTick';
 
@@ -15,8 +17,11 @@ export interface DerivStatus {
   account?: DerivAccount | null;
   last_tick?: DerivTick | null;
   last_proposal?: DerivProposal | null;
+  last_buy?: DerivBuy | null;
+  last_contract?: DerivContract | null;
   bot_running: boolean;
   symbol: string;
   currency: string;
   max_trade_amount: number;
+  live_trading_enabled?: boolean;
 }
