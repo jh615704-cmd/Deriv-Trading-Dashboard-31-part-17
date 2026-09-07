@@ -13,6 +13,7 @@ import {
 import {
   getAccounts,
   getStatus,
+  getLiveStatus,
   requestProposal,
   buyContract,
   selectAccount,
@@ -25,6 +26,7 @@ const router: IRouter = Router();
 router.get("/deriv/accounts", async (req, res) => {
   try {
     const accounts = GetDerivAccountsResponse.parse(await getAccounts());
+    res.set("Cache-Control", "no-store");
     res.json(accounts);
   } catch (error) {
     req.log.error({ err: error }, "Unable to load Deriv accounts");
@@ -33,7 +35,14 @@ router.get("/deriv/accounts", async (req, res) => {
 });
 
 router.get("/deriv/status", (_req, res) => {
-  res.json(GetDerivStatusResponse.parse(getStatus()));
+  void getLiveStatus()
+    .then((status) => {
+      res.set("Cache-Control", "no-store");
+      res.json(GetDerivStatusResponse.parse(status));
+    })
+    .catch((error) => {
+      res.status(502).json({ error: "Unable to refresh Deriv balance" });
+    });
 });
 
 router.post("/deriv/test-connection", async (req, res) => {

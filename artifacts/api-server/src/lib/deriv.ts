@@ -91,6 +91,8 @@ const state = {
   socket: null as WebSocket | null,
   connecting: null as Promise<boolean> | null,
   reconnectTimer: null as NodeJS.Timeout | null,
+  balanceRefreshAt: 0,
+  balanceRefreshPromise: null as Promise<void> | null,
   account: null as DerivAccount | null,
   accounts: [] as DerivAccount[],
   lastTick: null as DerivTick | null,
@@ -168,12 +170,35 @@ async function loadAccountsFromDeriv() {
   const response = await derivRequest("/trading/v1/options/accounts");
   const accounts = extractAccounts(response);
   if (!accounts.length) throw new Error("Deriv returned no Options accounts");
-  state.accounts = accounts.map((account) =>
-    account.id === state.account?.id
-      ? { ...account, balance: state.account.balance, currency: state.account.currency }
-      : account,
-  );
+  state.accounts = accounts;
+  const selected = state.account && accounts.find((account) => account.id === state.account?.id);
+  if (selected && state.account) {
+    state.account = {
+      ...state.account,
+      balance: selected.balance,
+      currency: selected.currency,
+      status: selected.status,
+    };
+  }
   return state.accounts;
+}
+
+async function refreshSelectedBalance() {
+  if (!state.account) return;
+  const now = Date.now();
+  if (now - state.balanceRefreshAt < 2000) return;
+  if (state.balanceRefreshPromise) return state.balanceRefreshPromise;
+
+  state.balanceRefreshAt = now;
+  state.balanceRefreshPromise = loadAccountsFromDeriv()
+    .then(() => undefined)
+    .catch((error) => {
+      logger.warn({ err: error }, "Deriv REST balance refresh failed");
+    })
+    .finally(() => {
+      state.balanceRefreshPromise = null;
+    });
+  return state.balanceRefreshPromise;
 }
 
 async function getOtpUrl(accountId: string) {
@@ -269,6 +294,7 @@ async function connectInternal() {
           start_time: message.buy?.start_time == null ? null : Number(message.buy.start_time),
         };
         if (state.lastBuy.contract_id) {
+          send({ balance: 1 });
           send({
             proposal_open_contract: 1,
             contract_id: state.lastBuy.contract_id,
@@ -344,6 +370,11 @@ export function getStatus(): DerivStatus {
   };
 }
 
+export async function getLiveStatus() {
+  await refreshSelectedBalance();
+  return getStatus();
+}
+
 export async function getAccounts() {
   return loadAccountsFromDeriv();
 }
@@ -357,7 +388,7 @@ export async function testConnection() {
       ? "Deriv REST and WebSocket connection are healthy"
       : "Deriv accounts loaded, but the WebSocket is still reconnecting",
     accounts,
-    status: getStatus(),
+    status: await getLiveStatus(),
   };
 }
 
@@ -372,7 +403,6 @@ export async function requestProposal(input: ProposalInput) {
     duration: input.duration,
     duration_unit: input.duration_unit,
     underlying_symbol: input.symbol ?? defaultSymbol,
-    subscribe: 1,
   })) {
     throw new Error("Deriv WebSocket is not ready");
   }
