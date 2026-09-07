@@ -5,11 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DerivBuyInputContractType } from './derivBuyInputContractType';
+import type { DerivBuyInputDurationUnit } from './derivBuyInputDurationUnit';
 
 export interface DerivBuyInput {
-  /** @minLength 1 */
-  proposal_id: string;
   /** @exclusiveMinimum 0 */
-  price: number;
+  amount: number;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  duration: number;
+  duration_unit: DerivBuyInputDurationUnit;
+  contract_type: DerivBuyInputContractType;
+  symbol?: string;
   confirm_live_trade: true;
 }

@@ -24,4 +24,7 @@ export interface DerivStatus {
   currency: string;
   max_trade_amount: number;
   live_trading_enabled?: boolean;
+  digit_even_percentage?: number;
+  digit_odd_percentage?: number;
+  digit_sample_count?: number;
 }

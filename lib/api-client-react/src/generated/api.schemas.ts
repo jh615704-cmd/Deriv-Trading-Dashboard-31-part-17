@@ -75,6 +75,9 @@ export interface DerivStatus {
   currency: string;
   max_trade_amount: number;
   live_trading_enabled?: boolean;
+  digit_even_percentage?: number;
+  digit_odd_percentage?: number;
+  digit_sample_count?: number;
 }
 
 export interface DerivConnectionTest {
@@ -124,17 +127,39 @@ export interface DerivAccountSelection {
   account_id: string;
 }
 
+export type DerivBuyInputDurationUnit = typeof DerivBuyInputDurationUnit[keyof typeof DerivBuyInputDurationUnit];
+
+
+export const DerivBuyInputDurationUnit = {
+  t: 't',
+} as const;
+
+export type DerivBuyInputContractType = typeof DerivBuyInputContractType[keyof typeof DerivBuyInputContractType];
+
+
+export const DerivBuyInputContractType = {
+  DIGITEVEN: 'DIGITEVEN',
+  DIGITODD: 'DIGITODD',
+} as const;
+
 export interface DerivBuyInput {
-  /** @minLength 1 */
-  proposal_id: string;
   /** @exclusiveMinimum 0 */
-  price: number;
+  amount: number;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  duration: number;
+  duration_unit: DerivBuyInputDurationUnit;
+  contract_type: DerivBuyInputContractType;
+  symbol?: string;
   confirm_live_trade: true;
 }
 
 export interface DerivBuyResponse {
   ok: boolean;
   message: string;
+  proposal?: DerivProposal | null;
   buy?: DerivBuy | null;
 }
 
@@ -163,6 +188,11 @@ export interface DerivHistoryItem {
 }
 
 export type DerivHistoryResponse = DerivHistoryItem[];
+
+export interface DerivHistoryClearResponse {
+  ok: boolean;
+  message: string;
+}
 
 export interface ErrorResponse {
   error: string;

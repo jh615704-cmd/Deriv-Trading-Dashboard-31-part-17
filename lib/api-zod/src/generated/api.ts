@@ -78,7 +78,10 @@ export const GetDerivStatusResponse = zod.object({
   "symbol": zod.string(),
   "currency": zod.string(),
   "max_trade_amount": zod.number(),
-  "live_trading_enabled": zod.boolean().optional()
+  "live_trading_enabled": zod.boolean().optional(),
+  "digit_even_percentage": zod.number().optional(),
+  "digit_odd_percentage": zod.number().optional(),
+  "digit_sample_count": zod.number().int().optional()
 })
 
 
@@ -139,7 +142,10 @@ export const TestDerivConnectionResponse = zod.object({
   "symbol": zod.string(),
   "currency": zod.string(),
   "max_trade_amount": zod.number(),
-  "live_trading_enabled": zod.boolean().optional()
+  "live_trading_enabled": zod.boolean().optional(),
+  "digit_even_percentage": zod.number().optional(),
+  "digit_odd_percentage": zod.number().optional(),
+  "digit_sample_count": zod.number().int().optional()
 })
 })
 
@@ -221,28 +227,42 @@ export const SelectDerivAccountResponse = zod.object({
   "symbol": zod.string(),
   "currency": zod.string(),
   "max_trade_amount": zod.number(),
-  "live_trading_enabled": zod.boolean().optional()
+  "live_trading_enabled": zod.boolean().optional(),
+  "digit_even_percentage": zod.number().optional(),
+  "digit_odd_percentage": zod.number().optional(),
+  "digit_sample_count": zod.number().int().optional()
 })
 
 
 /**
- * Buys a previously returned proposal on a selected real account. Requires explicit confirmation and the live-trading server flag.
- * @summary Buy a contract after explicit live-trade confirmation
+ * Requests a fresh proposal for the selected duration and digit contract, then buys it immediately. Real accounts require explicit confirmation and the live-trading server flag.
+ * @summary Request a fresh proposal and buy immediately
  */
+export const buyDerivContractBodyAmountExclusiveMin = 0;
 
-export const buyDerivContractBodyPriceExclusiveMin = 0;
+export const buyDerivContractBodyDurationMax = 5;
 
 
 
 export const BuyDerivContractBody = zod.object({
-  "proposal_id": zod.string().min(1),
-  "price": zod.number().gt(buyDerivContractBodyPriceExclusiveMin),
+  "amount": zod.number().gt(buyDerivContractBodyAmountExclusiveMin),
+  "duration": zod.number().int().min(1).max(buyDerivContractBodyDurationMax),
+  "duration_unit": zod.enum(['t']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD']),
+  "symbol": zod.string().optional(),
   "confirm_live_trade": zod.literal(true)
 })
 
 export const BuyDerivContractResponse = zod.object({
   "ok": zod.boolean(),
   "message": zod.string(),
+  "proposal": zod.union([zod.object({
+  "id": zod.string(),
+  "ask_price": zod.number(),
+  "payout": zod.number(),
+  "spot": zod.number(),
+  "longcode": zod.string().nullish()
+}),zod.null()]).optional(),
   "buy": zod.union([zod.object({
   "contract_id": zod.string(),
   "buy_price": zod.number(),
@@ -269,5 +289,15 @@ export const GetDerivHistoryResponseItem = zod.object({
   "sell_time": zod.number().int().nullish()
 })
 export const GetDerivHistoryResponse = zod.array(GetDerivHistoryResponseItem)
+
+
+/**
+ * Clears the dashboard's locally held recent rows. This does not delete records from Deriv.
+ * @summary Clear recent trade rows from the dashboard
+ */
+export const ClearDerivHistoryResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string()
+})
 
 

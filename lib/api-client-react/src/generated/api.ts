@@ -25,6 +25,7 @@ import type {
   DerivBuyInput,
   DerivBuyResponse,
   DerivConnectionTest,
+  DerivHistoryClearResponse,
   DerivHistoryResponse,
   DerivProposalInput,
   DerivProposalRequest,
@@ -515,8 +516,8 @@ export const getBuyDerivContractUrl = () => {
 }
 
 /**
- * Buys a previously returned proposal on a selected real account. Requires explicit confirmation and the live-trading server flag.
- * @summary Buy a contract after explicit live-trade confirmation
+ * Requests a fresh proposal for the selected duration and digit contract, then buys it immediately. Real accounts require explicit confirmation and the live-trading server flag.
+ * @summary Request a fresh proposal and buy immediately
  */
 export const buyDerivContract = async (derivBuyInput: DerivBuyInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivBuyResponse> => {
 
@@ -565,7 +566,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BuyDerivContractMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Buy a contract after explicit live-trade confirmation
+ * @summary Request a fresh proposal and buy immediately
  */
 export const useBuyDerivContract = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof buyDerivContract>>, TError,{data: BodyType<DerivBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -654,4 +655,76 @@ export function useGetDerivHistory<TData = Awaited<ReturnType<typeof getDerivHis
 
 
 
+
+export const getClearDerivHistoryUrl = () => {
+
+
+
+
+  return `/api/deriv/history`
+}
+
+/**
+ * Clears the dashboard's locally held recent rows. This does not delete records from Deriv.
+ * @summary Clear recent trade rows from the dashboard
+ */
+export const clearDerivHistory = async ( options?: Parameters<typeof customFetch>[1]): Promise<DerivHistoryClearResponse> => {
+
+  return customFetch<DerivHistoryClearResponse>(getClearDerivHistoryUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getClearDerivHistoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearDerivHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearDerivHistory>>, TError,void, TContext> => {
+
+const mutationKey = ['clearDerivHistory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearDerivHistory>>, void> = () => {
+
+
+          return  clearDerivHistory(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearDerivHistoryMutationResult = NonNullable<Awaited<ReturnType<typeof clearDerivHistory>>>
+
+    export type ClearDerivHistoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear recent trade rows from the dashboard
+ */
+export const useClearDerivHistory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearDerivHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearDerivHistory>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearDerivHistoryMutationOptions(options));
+    }
 

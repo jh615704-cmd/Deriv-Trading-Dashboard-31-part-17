@@ -1,1 +1,2 @@
 - [Deriv authentication](deriv-authentication.md) — PATs authenticate REST; use the returned OTP URL for the authenticated Options WebSocket.
+- [Deriv proposal correlation](deriv-proposal-correlation.md) — immediate buys must correlate async proposal responses to the exact request.

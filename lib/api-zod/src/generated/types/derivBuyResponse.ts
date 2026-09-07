@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DerivBuy } from './derivBuy';
+import type { DerivProposal } from './derivProposal';
 
 export interface DerivBuyResponse {
   ok: boolean;
   message: string;
+  proposal?: DerivProposal | null;
   buy?: DerivBuy | null;
 }

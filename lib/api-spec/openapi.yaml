@@ -141,8 +141,8 @@ paths:
     post:
       operationId: buyDerivContract
       tags: [deriv]
-      summary: Buy a contract after explicit live-trade confirmation
-      description: Buys a previously returned proposal on a selected real account. Requires explicit confirmation and the live-trading server flag.
+      summary: Request a fresh proposal and buy immediately
+      description: Requests a fresh proposal for the selected duration and digit contract, then buys it immediately. Real accounts require explicit confirmation and the live-trading server flag.
       requestBody:
         required: true
         content:
@@ -163,7 +163,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Live trading is disabled or the selected account is not real
+          description: Live trading is disabled or the selected account is not allowed to buy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Buy cooldown is active
           content:
             application/json:
               schema:
@@ -186,6 +192,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DerivHistoryResponse"
+    delete:
+      operationId: clearDerivHistory
+      tags: [deriv]
+      summary: Clear recent trade rows from the dashboard
+      description: Clears the dashboard's locally held recent rows. This does not delete records from Deriv.
+      responses:
+        "200":
+          description: Recent rows cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivHistoryClearResponse"
 components:
   schemas:
     HealthStatus:
@@ -272,6 +290,12 @@ components:
           type: number
         live_trading_enabled:
           type: boolean
+        digit_even_percentage:
+          type: number
+        digit_odd_percentage:
+          type: number
+        digit_sample_count:
+          type: integer
     DerivConnectionTest:
       type: object
       required: [ok, message, accounts, status]
@@ -322,14 +346,23 @@ components:
           minLength: 1
     DerivBuyInput:
       type: object
-      required: [proposal_id, price, confirm_live_trade]
+      required: [amount, duration, duration_unit, contract_type, confirm_live_trade]
       properties:
-        proposal_id:
-          type: string
-          minLength: 1
-        price:
+        amount:
           type: number
           exclusiveMinimum: 0
+        duration:
+          type: integer
+          minimum: 1
+          maximum: 5
+        duration_unit:
+          type: string
+          enum: [t]
+        contract_type:
+          type: string
+          enum: [DIGITEVEN, DIGITODD]
+        symbol:
+          type: string
         confirm_live_trade:
           type: boolean
           const: true
@@ -353,6 +386,10 @@ components:
           type: boolean
         message:
           type: string
+        proposal:
+          anyOf:
+            - $ref: "#/components/schemas/DerivProposal"
+            - type: "null"
         buy:
           anyOf:
             - $ref: "#/components/schemas/DerivBuy"
@@ -412,6 +449,14 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/DerivHistoryItem"
+    DerivHistoryClearResponse:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
     ErrorResponse:
       type: object
       required: [error]

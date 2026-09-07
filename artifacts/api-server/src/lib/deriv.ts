@@ -79,6 +79,9 @@ export type DerivStatus = {
   currency: string;
   max_trade_amount: number;
   live_trading_enabled: boolean;
+  digit_even_percentage: number;
+  digit_odd_percentage: number;
+  digit_sample_count: number;
 };
 
 type ProposalInput = {
@@ -90,8 +93,11 @@ type ProposalInput = {
 };
 
 type BuyInput = {
-  proposal_id: string;
-  price: number;
+  amount: number;
+  duration: number;
+  duration_unit: "t";
+  contract_type: "DIGITEVEN" | "DIGITODD";
+  symbol?: string;
   confirm_live_trade: true;
 };
 
@@ -117,6 +123,14 @@ const state = {
   history: [] as DerivHistoryItem[],
   lastProposalContractType: "",
   lastProposalSymbol: defaultSymbol,
+  lastProposalInput: null as ProposalInput | null,
+  lastProposalRefreshAt: 0,
+  proposalSequence: 0,
+  proposalWaiters: new Map<number, { resolve: (proposal: DerivProposal) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>(),
+  lastBuyAt: 0,
+  digitEvenCount: 0,
+  digitOddCount: 0,
+  hiddenHistoryIds: new Set<string>(),
   selectedAccountId: configuredAccountId ?? null as string | null,
   botRunning: false,
   shuttingDown: false,
@@ -166,6 +180,7 @@ function extractAccounts(body: DerivResponse): DerivAccount[] {
 }
 
 function upsertHistory(item: DerivHistoryItem) {
+  if (state.hiddenHistoryIds.has(item.contract_id)) return;
   const existing = state.history.findIndex((entry) => entry.contract_id === item.contract_id);
   if (existing >= 0) {
     state.history[existing] = { ...state.history[existing], ...item };
@@ -174,6 +189,23 @@ function upsertHistory(item: DerivHistoryItem) {
   }
   state.history.sort((left, right) => (right.buy_time ?? 0) - (left.buy_time ?? 0));
   state.history = state.history.slice(0, 100);
+}
+
+function recordLastDigit(quote: unknown) {
+  const digits = String(quote ?? "").replace(/\D/g, "");
+  const lastDigit = digits.at(-1);
+  if (!lastDigit) return;
+  if (Number(lastDigit) % 2 === 0) state.digitEvenCount += 1;
+  else state.digitOddCount += 1;
+}
+
+function getDigitPercentages() {
+  const total = state.digitEvenCount + state.digitOddCount;
+  if (!total) return { even: 50, odd: 50 };
+  return {
+    even: Number(((state.digitEvenCount / total) * 100).toFixed(1)),
+    odd: Number(((state.digitOddCount / total) * 100).toFixed(1)),
+  };
 }
 
 function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistoryItem | null {
@@ -284,6 +316,22 @@ function send(message: Record<string, unknown>) {
   return true;
 }
 
+function sendProposalRequest(input: ProposalInput) {
+  const reqId = ++state.proposalSequence;
+  const sent = send({
+    proposal: 1,
+    amount: input.amount,
+    basis: "stake",
+    contract_type: input.contract_type,
+    currency: defaultCurrency,
+    duration: input.duration,
+    duration_unit: input.duration_unit,
+    underlying_symbol: input.symbol ?? defaultSymbol,
+    req_id: reqId,
+  });
+  return sent ? reqId : null;
+}
+
 function scheduleReconnect() {
   if (state.shuttingDown || state.reconnectTimer) return;
   state.reconnectTimer = setTimeout(() => {
@@ -330,6 +378,11 @@ async function connectInternal() {
           quote: Number(message.tick?.quote ?? 0),
           epoch: Number(message.tick?.epoch ?? 0),
         };
+        recordLastDigit(message.tick?.quote);
+        if (state.lastProposalInput && Date.now() - state.lastProposalRefreshAt >= 1000) {
+          state.lastProposalRefreshAt = Date.now();
+          sendProposalRequest(state.lastProposalInput);
+        }
       } else if (message.msg_type === "proposal") {
         state.lastProposal = {
           id: String(message.proposal?.id ?? ""),
@@ -338,7 +391,16 @@ async function connectInternal() {
           spot: Number(message.proposal?.spot ?? 0),
           longcode: message.proposal?.longcode ?? null,
         };
-        if (state.lastProposal.id) state.proposalIds.add(state.lastProposal.id);
+        if (state.lastProposal.id) {
+          state.proposalIds.add(state.lastProposal.id);
+          const reqId = Number(message.req_id ?? message.echo_req?.req_id);
+          const waiter = state.proposalWaiters.get(reqId);
+          if (waiter) {
+            clearTimeout(waiter.timer);
+            state.proposalWaiters.delete(reqId);
+            waiter.resolve(state.lastProposal);
+          }
+        }
       } else if (message.msg_type === "buy") {
         state.lastBuy = {
           contract_id: String(message.buy?.contract_id ?? ""),
@@ -444,6 +506,7 @@ async function connect() {
 }
 
 export function getStatus(): DerivStatus {
+  const digitPercentages = getDigitPercentages();
   return {
     connected: state.socket?.readyState === WebSocket.OPEN,
     authorized: state.socket?.readyState === WebSocket.OPEN,
@@ -457,6 +520,9 @@ export function getStatus(): DerivStatus {
     currency: defaultCurrency,
     max_trade_amount: maxTradeAmount,
     live_trading_enabled: liveTradingEnabled,
+    digit_even_percentage: digitPercentages.even,
+    digit_odd_percentage: digitPercentages.odd,
+    digit_sample_count: state.digitEvenCount + state.digitOddCount,
   };
 }
 
@@ -485,23 +551,36 @@ export async function testConnection() {
 export async function requestProposal(input: ProposalInput) {
   state.lastProposalContractType = input.contract_type;
   state.lastProposalSymbol = input.symbol ?? defaultSymbol;
+  state.lastProposalInput = input;
   const connected = await connect();
-  if (!connected || !send({
-    proposal: 1,
-    amount: input.amount,
-    basis: "stake",
-    contract_type: input.contract_type,
-    currency: defaultCurrency,
-    duration: input.duration,
-    duration_unit: input.duration_unit,
-    underlying_symbol: input.symbol ?? defaultSymbol,
-  })) {
+  if (!connected || !sendProposalRequest(input)) {
     throw new Error("Deriv WebSocket is not ready");
   }
   return {
     ok: true,
     message: "Proposal requested. Review the returned quote before any trade action.",
   };
+}
+
+async function requestFreshProposal(input: ProposalInput) {
+  state.lastProposalContractType = input.contract_type;
+  state.lastProposalSymbol = input.symbol ?? defaultSymbol;
+  state.lastProposalInput = input;
+  const connected = await connect();
+  if (!connected) throw new Error("Deriv WebSocket is not ready");
+
+  return await new Promise<DerivProposal>((resolve, reject) => {
+    const reqId = sendProposalRequest(input);
+    if (!reqId) {
+      reject(new Error("Deriv WebSocket is not ready"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      state.proposalWaiters.delete(reqId);
+      reject(new Error("Deriv did not return a proposal in time"));
+    }, 5000);
+    state.proposalWaiters.set(reqId, { resolve, reject, timer });
+  });
 }
 
 export async function selectAccount(accountId: string) {
@@ -521,6 +600,10 @@ export async function selectAccount(accountId: string) {
   state.lastContract = null;
   state.lastProposalContractType = "";
   state.lastProposalSymbol = defaultSymbol;
+  state.lastProposalInput = null;
+  state.lastProposalRefreshAt = 0;
+  state.digitEvenCount = 0;
+  state.digitOddCount = 0;
   await connect();
   return getStatus();
 }
@@ -533,14 +616,23 @@ export async function buyContract(input: BuyInput) {
   if (state.account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
-  if (!state.proposalIds.has(input.proposal_id)) {
-    throw new Error("That proposal is not available for this session");
+  const remainingCooldown = 1000 - (Date.now() - state.lastBuyAt);
+  if (remainingCooldown > 0) {
+    throw new Error(`Buy cooldown active. Wait ${Math.ceil(remainingCooldown / 1000)} second.`);
   }
-  if (input.price > maxTradeAmount) {
+  state.lastBuyAt = Date.now();
+  const proposal = await requestFreshProposal({
+    amount: input.amount,
+    duration: input.duration,
+    duration_unit: input.duration_unit,
+    contract_type: input.contract_type,
+    symbol: input.symbol,
+  });
+  if (proposal.ask_price > maxTradeAmount) {
     throw new Error(`Price exceeds the configured maximum of ${maxTradeAmount}`);
   }
   const connected = await connect();
-  if (!connected || !send({ buy: input.proposal_id, price: input.price })) {
+  if (!connected || !send({ buy: proposal.id, price: proposal.ask_price })) {
     throw new Error("Deriv WebSocket is not ready");
   }
   return {
@@ -548,12 +640,19 @@ export async function buyContract(input: BuyInput) {
     message: state.account.type === "real"
       ? "Live buy request sent. Contract and balance updates will appear here."
       : "Demo buy request sent to Deriv. Contract and balance updates will appear here.",
+    proposal,
     buy: state.lastBuy,
   };
 }
 
 export function getHistory() {
   return state.history;
+}
+
+export function clearHistory() {
+  for (const item of state.history) state.hiddenHistoryIds.add(item.contract_id);
+  state.history = [];
+  return { ok: true, message: "Recent dashboard trade rows cleared. Deriv records were not deleted." };
 }
 
 export function startDeriv() {

@@ -15,6 +15,7 @@ import {
   getStatus,
   getLiveStatus,
   getHistory,
+  clearHistory,
   requestProposal,
   buyContract,
   selectAccount,
@@ -49,6 +50,11 @@ router.get("/deriv/status", (_req, res) => {
 router.get("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
   res.json(getHistory());
+});
+
+router.delete("/deriv/history", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(clearHistory());
 });
 
 router.post("/deriv/test-connection", async (req, res) => {
@@ -97,10 +103,12 @@ router.post("/deriv/buy", async (req, res) => {
     const result = BuyDerivContractResponse.parse(await buyContract(parsed.data));
     return res.status(202).json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Live buy request failed";
+    const message = error instanceof Error ? error.message : "Buy request failed";
     req.log.error({ err: error }, "Deriv live buy request failed");
     const status = message.includes("disabled") || message.includes("real account")
       ? 403
+      : message.includes("cooldown")
+        ? 429
       : message.includes("not available") || message.includes("confirmation")
         ? 400
         : 503;
