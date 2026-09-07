@@ -252,3 +252,22 @@ export const BuyDerivContractResponse = zod.object({
 })
 
 
+/**
+ * @summary Get Deriv trade history observed for real and demo accounts
+ */
+export const GetDerivHistoryResponseItem = zod.object({
+  "contract_id": zod.string(),
+  "account_id": zod.string(),
+  "account_type": zod.enum(['demo', 'real']),
+  "contract_type": zod.string(),
+  "symbol": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "profit": zod.number(),
+  "status": zod.string(),
+  "buy_time": zod.number().int().nullish(),
+  "sell_time": zod.number().int().nullish()
+})
+export const GetDerivHistoryResponse = zod.array(GetDerivHistoryResponseItem)
+
+

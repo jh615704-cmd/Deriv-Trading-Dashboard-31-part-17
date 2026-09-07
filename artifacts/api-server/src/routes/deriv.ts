@@ -14,6 +14,7 @@ import {
   getAccounts,
   getStatus,
   getLiveStatus,
+  getHistory,
   requestProposal,
   buyContract,
   selectAccount,
@@ -43,6 +44,11 @@ router.get("/deriv/status", (_req, res) => {
     .catch((error) => {
       res.status(502).json({ error: "Unable to refresh Deriv balance" });
     });
+});
+
+router.get("/deriv/history", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(getHistory());
 });
 
 router.post("/deriv/test-connection", async (req, res) => {

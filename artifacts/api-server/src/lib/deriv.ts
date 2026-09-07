@@ -52,6 +52,20 @@ export type DerivContract = {
   expiry_time: number | null;
 };
 
+export type DerivHistoryItem = {
+  contract_id: string;
+  account_id: string;
+  account_type: "demo" | "real";
+  contract_type: string;
+  symbol: string;
+  buy_price: number;
+  payout: number;
+  profit: number;
+  status: string;
+  buy_time: number | null;
+  sell_time: number | null;
+};
+
 export type DerivStatus = {
   connected: boolean;
   authorized: boolean;
@@ -100,6 +114,9 @@ const state = {
   proposalIds: new Set<string>(),
   lastBuy: null as DerivBuy | null,
   lastContract: null as DerivContract | null,
+  history: [] as DerivHistoryItem[],
+  lastProposalContractType: "",
+  lastProposalSymbol: defaultSymbol,
   selectedAccountId: configuredAccountId ?? null as string | null,
   botRunning: false,
   shuttingDown: false,
@@ -146,6 +163,40 @@ function extractAccounts(body: DerivResponse): DerivAccount[] {
           : [];
 
   return candidates.map(normalizeAccount).filter((account): account is DerivAccount => Boolean(account));
+}
+
+function upsertHistory(item: DerivHistoryItem) {
+  const existing = state.history.findIndex((entry) => entry.contract_id === item.contract_id);
+  if (existing >= 0) {
+    state.history[existing] = { ...state.history[existing], ...item };
+  } else {
+    state.history.push(item);
+  }
+  state.history.sort((left, right) => (right.buy_time ?? 0) - (left.buy_time ?? 0));
+  state.history = state.history.slice(0, 100);
+}
+
+function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistoryItem | null {
+  if (!raw || typeof raw !== "object" || !state.account) return null;
+  const record = raw as Record<string, unknown>;
+  const contractId = record.contract_id ?? record.id;
+  if (typeof contractId !== "string" || !contractId) return null;
+
+  return {
+    contract_id: contractId,
+    account_id: state.account.id,
+    account_type: state.account.type,
+    contract_type: String((record.contract_type ?? state.lastProposalContractType) || "unknown"),
+    symbol: String(record.underlying_symbol ?? record.symbol ?? state.lastProposalSymbol),
+    buy_price: Number(record.buy_price ?? record.purchase_price ?? 0),
+    payout: Number(record.payout ?? 0),
+    profit: Number(record.profit ?? 0),
+    status: String(record.status ?? (record.is_sold ? "closed" : fallbackStatus)),
+    buy_time: record.purchase_time == null && record.buy_time == null
+      ? null
+      : Number(record.purchase_time ?? record.buy_time),
+    sell_time: record.sell_time == null ? null : Number(record.sell_time),
+  };
 }
 
 async function derivRequest(pathname: string, init: RequestInit = {}) {
@@ -255,6 +306,8 @@ async function connectInternal() {
       logger.info({ accountId: account.id }, "Deriv WebSocket connected");
       send({ balance: 1, subscribe: 1 });
       send({ ticks: defaultSymbol, subscribe: 1 });
+      send({ portfolio: 1 });
+      send({ profit_table: 1, limit: 50, description: 1, sort: "DESC" });
       resolve(true);
     });
 
@@ -293,6 +346,16 @@ async function connectInternal() {
           payout: Number(message.buy?.payout ?? 0),
           start_time: message.buy?.start_time == null ? null : Number(message.buy.start_time),
         };
+        const historyItem = normalizeHistory({
+          contract_id: state.lastBuy.contract_id,
+          buy_price: state.lastBuy.buy_price,
+          payout: state.lastBuy.payout,
+          purchase_time: state.lastBuy.start_time,
+          contract_type: state.lastProposalContractType,
+          underlying_symbol: state.lastProposalSymbol,
+          status: "open",
+        }, "open");
+        if (historyItem) upsertHistory(historyItem);
         if (state.lastBuy.contract_id) {
           send({ balance: 1 });
           send({
@@ -316,6 +379,33 @@ async function connectInternal() {
             current_spot: Number(contract.current_spot ?? 0),
             expiry_time: contract.expiry_time == null ? null : Number(contract.expiry_time),
           };
+          const historyItem = normalizeHistory({
+            ...contract,
+            buy_price: state.lastContract.buy_price,
+            payout: state.lastContract.payout,
+            contract_id: state.lastContract.contract_id,
+            status: state.lastContract.status,
+            sell_time: contract.sell_time,
+            contract_type: state.lastProposalContractType,
+            underlying_symbol: state.lastProposalSymbol,
+          }, state.lastContract.is_sold ? "closed" : "open");
+          if (historyItem) upsertHistory(historyItem);
+        }
+      } else if (message.msg_type === "profit_table") {
+        const transactions = Array.isArray(message.profit_table?.transactions)
+          ? message.profit_table.transactions
+          : [];
+        for (const transaction of transactions) {
+          const historyItem = normalizeHistory(transaction);
+          if (historyItem) upsertHistory(historyItem);
+        }
+      } else if (message.msg_type === "portfolio") {
+        const contracts = Array.isArray(message.portfolio?.contracts)
+          ? message.portfolio.contracts
+          : [];
+        for (const contract of contracts) {
+          const historyItem = normalizeHistory(contract, "open");
+          if (historyItem) upsertHistory(historyItem);
         }
       }
     });
@@ -393,6 +483,8 @@ export async function testConnection() {
 }
 
 export async function requestProposal(input: ProposalInput) {
+  state.lastProposalContractType = input.contract_type;
+  state.lastProposalSymbol = input.symbol ?? defaultSymbol;
   const connected = await connect();
   if (!connected || !send({
     proposal: 1,
@@ -427,16 +519,18 @@ export async function selectAccount(accountId: string) {
   state.lastProposal = null;
   state.lastBuy = null;
   state.lastContract = null;
+  state.lastProposalContractType = "";
+  state.lastProposalSymbol = defaultSymbol;
   await connect();
   return getStatus();
 }
 
 export async function buyContract(input: BuyInput) {
-  if (!liveTradingEnabled) throw new Error("Live trading is disabled on this server");
-  if (state.account?.type !== "real") {
-    throw new Error("Select a real account before buying a contract");
+  if (!state.account) throw new Error("Select an account before buying a contract");
+  if (state.account.type === "real" && !liveTradingEnabled) {
+    throw new Error("Live trading is disabled on this server");
   }
-  if (!input.confirm_live_trade) {
+  if (state.account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
   if (!state.proposalIds.has(input.proposal_id)) {
@@ -451,9 +545,15 @@ export async function buyContract(input: BuyInput) {
   }
   return {
     ok: true,
-    message: "Live buy request sent. Contract and balance updates will appear here.",
+    message: state.account.type === "real"
+      ? "Live buy request sent. Contract and balance updates will appear here."
+      : "Demo buy request sent to Deriv. Contract and balance updates will appear here.",
     buy: state.lastBuy,
   };
+}
+
+export function getHistory() {
+  return state.history;
 }
 
 export function startDeriv() {

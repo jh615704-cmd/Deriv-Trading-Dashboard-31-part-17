@@ -138,6 +138,32 @@ export interface DerivBuyResponse {
   buy?: DerivBuy | null;
 }
 
+export type DerivHistoryItemAccountType = typeof DerivHistoryItemAccountType[keyof typeof DerivHistoryItemAccountType];
+
+
+export const DerivHistoryItemAccountType = {
+  demo: 'demo',
+  real: 'real',
+} as const;
+
+export interface DerivHistoryItem {
+  contract_id: string;
+  account_id: string;
+  account_type: DerivHistoryItemAccountType;
+  contract_type: string;
+  symbol: string;
+  buy_price: number;
+  payout: number;
+  profit: number;
+  status: string;
+  /** @nullable */
+  buy_time?: number | null;
+  /** @nullable */
+  sell_time?: number | null;
+}
+
+export type DerivHistoryResponse = DerivHistoryItem[];
+
 export interface ErrorResponse {
   error: string;
 }

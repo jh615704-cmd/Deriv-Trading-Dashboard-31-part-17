@@ -25,6 +25,7 @@ import type {
   DerivBuyInput,
   DerivBuyResponse,
   DerivConnectionTest,
+  DerivHistoryResponse,
   DerivProposalInput,
   DerivProposalRequest,
   DerivStatus,
@@ -576,4 +577,81 @@ export const useBuyDerivContract = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getBuyDerivContractMutationOptions(options));
     }
+
+export const getGetDerivHistoryUrl = () => {
+
+
+
+
+  return `/api/deriv/history`
+}
+
+/**
+ * @summary Get Deriv trade history observed for real and demo accounts
+ */
+export const getDerivHistory = async ( options?: Parameters<typeof customFetch>[1]): Promise<DerivHistoryResponse> => {
+
+  return customFetch<DerivHistoryResponse>(getGetDerivHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDerivHistoryQueryKey = () => {
+    return [
+    `/api/deriv/history`
+    ] as const;
+    }
+
+
+export const getGetDerivHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getDerivHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDerivHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDerivHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDerivHistory>>> = ({ signal }) => getDerivHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDerivHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDerivHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getDerivHistory>>>
+export type GetDerivHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get Deriv trade history observed for real and demo accounts
+ */
+
+export function useGetDerivHistory<TData = Awaited<ReturnType<typeof getDerivHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDerivHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDerivHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

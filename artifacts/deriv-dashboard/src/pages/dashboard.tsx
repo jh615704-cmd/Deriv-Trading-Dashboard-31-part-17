@@ -13,19 +13,23 @@ import {
   FlaskConical,
   Gauge,
   LockKeyhole,
+  Moon,
   Radio,
   RefreshCw,
   ShieldCheck,
   Signal,
   Sparkles,
+  Sun,
   WalletCards,
   Wifi,
 } from 'lucide-react';
 import {
   getGetDerivAccountsQueryKey,
+  getGetDerivHistoryQueryKey,
   getGetDerivStatusQueryKey,
   useBuyDerivContract,
   useGetDerivAccounts,
+  useGetDerivHistory,
   useGetDerivStatus,
   useRequestDerivProposal,
   useSelectDerivAccount,
@@ -47,6 +51,7 @@ function Dashboard() {
   const queryClient = useQueryClient();
   const accountsQuery = useGetDerivAccounts({ query: { queryKey: getGetDerivAccountsQueryKey(), refetchInterval: 5000 } });
   const statusQuery = useGetDerivStatus({ query: { queryKey: getGetDerivStatusQueryKey(), refetchInterval: 1500 } });
+  const historyQuery = useGetDerivHistory({ query: { queryKey: getGetDerivHistoryQueryKey(), refetchInterval: 5000 } });
   const testConnection = useTestDerivConnection();
   const requestProposal = useRequestDerivProposal();
   const selectAccount = useSelectDerivAccount();
@@ -63,6 +68,7 @@ function Dashboard() {
   const [testFailed, setTestFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirmLiveTrade, setConfirmLiveTrade] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => window.localStorage.getItem('deriv-ops-theme') === 'dark');
 
   const selectedAccount = accounts.find((account) => account.id === selectedId)
     ?? (status?.account ? accounts.find((account) => account.id === status.account?.id) ?? status.account : undefined)
@@ -77,9 +83,15 @@ function Dashboard() {
   const hasError = accountsQuery.isError || statusQuery.isError;
   const quote = status?.last_tick;
   const proposal = status?.last_proposal;
+  const history = historyQuery.data ?? [];
   const isTestPending = testConnection.isPending;
   const isProposalPending = requestProposal.isPending;
   const proposalReady = Boolean(status?.authorized && serverSelected && effectiveSymbol && Number(amount) > 0 && Number(duration) >= 1);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    window.localStorage.setItem('deriv-ops-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   useEffect(() => {
     if (status?.account) {
@@ -128,6 +140,7 @@ function Dashboard() {
           setTestFailed(!result.ok);
           setTestMessage(result.message);
           queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDerivHistoryQueryKey() });
         },
         onError: (error) => {
           setTestFailed(true);
@@ -162,7 +175,7 @@ function Dashboard() {
   };
 
   const handleBuy = () => {
-    if (!proposal || !isReal || !confirmLiveTrade) return;
+    if (!proposal || (isReal && !confirmLiveTrade)) return;
     buyContract.mutate(
       {
         data: {
@@ -178,6 +191,7 @@ function Dashboard() {
           setConfirmLiveTrade(false);
           queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDerivHistoryQueryKey() });
         },
         onError: (error) => {
           setTestFailed(true);
@@ -228,7 +242,8 @@ function Dashboard() {
         <header className="topbar">
           <div className="crumbs"><span>WORKSPACE</span><span className="crumb-slash">/</span><strong>LIVE DASHBOARD</strong></div>
           <div className="topbar-actions">
-            <span className="environment-pill"><span className="environment-dot" />NO CREDENTIALS EXPOSED</span>
+            <span className={`environment-pill ${isReal ? 'environment-pill-live' : ''}`}><span className="environment-dot" />{isReal ? 'LIVE DERIV ACCOUNT CONNECTED' : 'DERIV DEMO ACCOUNT'}</span>
+            <button type="button" className="icon-button theme-toggle" title={darkMode ? 'Use light theme' : 'Use dark theme'} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'} onClick={() => setDarkMode((value) => !value)} data-testid="button-toggle-theme">{darkMode ? <Sun size={16} /> : <Moon size={16} />}</button>
             <button type="button" className="icon-button" title="Refresh data" aria-label="Refresh account data" data-testid="button-refresh-data" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}><RefreshCw size={16} /></button>
           </div>
         </header>
@@ -262,7 +277,7 @@ function Dashboard() {
             <div className="signal-cell">
               <div className="signal-label"><StatusDot active={Boolean(status?.authorized)} />AUTHORIZATION</div>
               <strong data-testid="status-authorization">{status ? (status.authorized ? 'Authorized' : 'Not authorized') : 'Awaiting test'}</strong>
-              <span>{selectedAccount ? `${selectedAccount.type.toUpperCase()} / ${selectedAccount.currency}` : 'No account selected'}</span>
+              <span>{selectedAccount ? `${selectedAccount.type === 'real' ? 'LIVE DERIV' : 'DERIV DEMO'} / ${selectedAccount.currency}` : 'No account selected'}</span>
             </div>
             <div className="signal-cell">
               <div className="signal-label"><StatusDot active={Boolean(status?.bot_running)} amber />BOT STATE</div>
@@ -296,7 +311,7 @@ function Dashboard() {
 
             <div className={`balance-panel panel ${selectedAccount?.type === 'real' ? 'balance-panel-real' : ''}`}>
               <div className="balance-topline"><span className="panel-overline">SELECTED ACCOUNT</span><span className={`account-mode-badge ${selectedAccount?.type ?? ''}`}>{selectedAccount?.type ?? 'unassigned'}</span></div>
-              {selectedAccountWithLiveBalance ? <><div className="balance-account">{selectedAccountWithLiveBalance.id}</div><div className="balance-amount"><span>{selectedAccountWithLiveBalance.currency}</span>{money.format(selectedAccountWithLiveBalance.balance)}</div><div className="balance-divider" /><div className="balance-details"><span><small>STATUS</small><b>{selectedAccountWithLiveBalance.status}</b></span><span><small>ACCOUNT CLASS</small><b>{selectedAccountWithLiveBalance.type === 'demo' ? 'Simulated funds' : 'Live funds'}</b></span></div><div className="balance-callout"><Sparkles size={16} /><span>{selectedAccountWithLiveBalance.type === 'demo' ? 'Preferred environment for proposal testing.' : 'Live account selected. Every buy requires confirmation.'}</span></div></> : <div className="empty-balance"><CircleAlert size={21} /><span>Select an account to inspect its balance.</span></div>}
+              {selectedAccountWithLiveBalance ? <><div className="balance-account">{selectedAccountWithLiveBalance.id}</div><div className="balance-amount"><span>{selectedAccountWithLiveBalance.currency}</span>{money.format(selectedAccountWithLiveBalance.balance)}</div><div className="balance-divider" /><div className="balance-details"><span><small>STATUS</small><b>{selectedAccountWithLiveBalance.status}</b></span><span><small>ACCOUNT CLASS</small><b>{selectedAccountWithLiveBalance.type === 'demo' ? 'Deriv demo funds' : 'Live Deriv funds'}</b></span></div><div className="balance-callout"><Sparkles size={16} /><span>{selectedAccountWithLiveBalance.type === 'demo' ? 'This is a Deriv demo account. It is not real money.' : 'Live Deriv account connected. Every buy requires confirmation.'}</span></div></> : <div className="empty-balance"><CircleAlert size={21} /><span>Select an account to inspect its balance.</span></div>}
             </div>
           </section>
 
@@ -320,7 +335,7 @@ function Dashboard() {
               <div className="direction-group"><button type="button" className={`direction-button call ${contractType === 'DIGITEVEN' ? 'direction-selected' : ''}`} onClick={() => setContractType('DIGITEVEN')} disabled={!serverSelected} data-testid="button-contract-even"><ArrowUpRight size={16} /><span>EVEN</span><small>Last digit is even</small></button><button type="button" className={`direction-button put ${contractType === 'DIGITODD' ? 'direction-selected' : ''}`} onClick={() => setContractType('DIGITODD')} disabled={!serverSelected} data-testid="button-contract-odd"><ArrowDownRight size={16} /><span>ODD</span><small>Last digit is odd</small></button></div>
               {isReal && <label className="live-confirm"><input type="checkbox" checked={confirmLiveTrade} onChange={(event) => setConfirmLiveTrade(event.target.checked)} /><span><b>I understand this can spend real funds.</b> Require explicit confirmation before buying this proposal.</span></label>}
               <div className="proposal-submit-row"><span className="proposal-hint">{status?.max_trade_amount ? `Max stake ${money.format(status.max_trade_amount)} ${selectedAccount?.currency ?? ''}` : 'Server validates stake limits'}</span><button type="submit" className="primary-button proposal-button" disabled={!proposalReady || isProposalPending} data-testid="button-request-proposal">{isProposalPending ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{isProposalPending ? 'Requesting…' : 'Request proposal'}</button></div>
-              {isReal && <button type="button" className="live-buy-button" disabled={!proposal || !confirmLiveTrade || buyContract.isPending || !status?.live_trading_enabled} onClick={handleBuy} data-testid="button-buy-contract">{buyContract.isPending ? 'Sending live buy…' : `Buy ${proposal ? money.format(proposal.ask_price) : ''} ${selectedAccount.currency}`}</button>}
+              {selectedAccount && <button type="button" className="live-buy-button" disabled={!proposal || (isReal && !confirmLiveTrade) || buyContract.isPending || (isReal && !status?.live_trading_enabled)} onClick={handleBuy} data-testid="button-buy-contract">{buyContract.isPending ? 'Sending buy…' : `Buy ${proposal ? money.format(proposal.ask_price) : ''} ${selectedAccount.currency} (${isReal ? 'LIVE' : 'DEMO'})`}</button>}
             </form>
           </section>
 
@@ -328,6 +343,11 @@ function Dashboard() {
             <div className="response-heading"><div><span className="panel-overline">LAST SERVER RESPONSE</span><h3>Proposal telemetry</h3></div><span className={`response-state ${proposal ? 'response-state-ready' : ''}`}><span />{proposal ? 'Response ready' : 'No response yet'}</span></div>
             {proposal ? <div className="proposal-output"><div className="output-metric"><span>ASK PRICE</span><strong data-testid="text-ask-price">{money.format(proposal.ask_price)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>PAYOUT</span><strong data-testid="text-payout">{money.format(proposal.payout)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>SPOT</span><strong data-testid="text-spot">{proposal.spot.toFixed(4)}</strong><small>{proposal.id}</small></div><div className="longcode-output"><span>CONTRACT DESCRIPTION</span><div><p>{proposal.longcode ?? 'No longcode returned by Deriv.'}</p>{proposal.longcode && <button type="button" className="copy-button" onClick={copyLongcode} title="Copy contract description" aria-label="Copy contract description" data-testid="button-copy-longcode">{copied ? <Check size={15} /> : <Copy size={15} />}</button>}</div></div></div> : <div className="response-empty"><div className="empty-marker"><span /></div><div><strong>Proposal output will appear here</strong><p>Select a session and request a fresh server-side quote.</p></div></div>}
             {status?.last_contract && <div className="contract-live-card" data-testid="live-contract-card"><div><span className="panel-overline">LIVE CONTRACT</span><strong>{status.last_contract.status}</strong><small>Contract {status.last_contract.contract_id}</small></div><div><span>PROFIT / LOSS</span><b className={status.last_contract.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(status.last_contract.profit)} {selectedAccount?.currency ?? status.currency}</b></div><div><span>LIVE BALANCE</span><b>{money.format(liveBalance ?? 0)} {selectedAccount?.currency ?? status.currency}</b></div></div>}
+          </section>
+
+          <section className="history-panel panel">
+            <div className="response-heading"><div><span className="panel-overline">DERIV ACCOUNT ACTIVITY</span><h3>Trading history</h3></div><span className="response-state"><span />{history.length} recorded</span></div>
+            {history.length ? <div className="history-table-wrap"><table className="history-table"><thead><tr><th>ACCOUNT</th><th>CONTRACT</th><th>SYMBOL</th><th>STAKE</th><th>PROFIT / LOSS</th><th>STATUS</th><th>TIME</th></tr></thead><tbody>{history.map((trade) => <tr key={`${trade.account_id}-${trade.contract_id}`}><td><span className={`history-account ${trade.account_type}`}>{trade.account_type === 'real' ? 'LIVE' : 'DEMO'}</span><small>{trade.account_id}</small></td><td>{trade.contract_type}</td><td>{trade.symbol}</td><td>{money.format(trade.buy_price)}</td><td className={trade.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(trade.profit)}</td><td><span className="history-status">{trade.status}</span></td><td>{trade.buy_time ? time.format(new Date(trade.buy_time * 1000)) : '—'}</td></tr>)}</tbody></table></div> : <div className="response-empty history-empty"><div className="empty-marker"><span /></div><div><strong>No Deriv trades recorded yet</strong><p>Buy a demo or live proposal and the actual Deriv contract will appear here.</p></div></div>}
           </section>
 
           <footer className="page-footer"><span><span className="footer-dot" />Connection state is read from the configured Deriv session</span><span>Last UI refresh {time.format(new Date())}</span></footer>
