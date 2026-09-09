@@ -5,6 +5,45 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type AuthAccessRole = typeof AuthAccessRole[keyof typeof AuthAccessRole];
+
+
+export const AuthAccessRole = {
+  admin: 'admin',
+  user: 'user',
+} as const;
+
+export interface AuthAccess {
+  user_id: string;
+  email: string;
+  role: AuthAccessRole;
+}
+
+export type ApprovedUserRole = typeof ApprovedUserRole[keyof typeof ApprovedUserRole];
+
+
+export const ApprovedUserRole = {
+  admin: 'admin',
+  user: 'user',
+} as const;
+
+export interface ApprovedUser {
+  user_id: string;
+  email: string;
+  role: ApprovedUserRole;
+  active: boolean;
+  created_at: string;
+}
+
+export interface AdminUserInput {
+  email: string;
+  /**
+     * @minLength 8
+     * @maxLength 72
+     */
+  password: string;
+}
+
 export interface DerivTokenInput {
   /** @minLength 1 */
   token: string;

@@ -16,6 +16,10 @@ tags:
     description: Deriv account and connection operations
   - name: token
     description: Deriv credential management
+  - name: auth
+    description: Current approved access
+  - name: admin
+    description: Administrator user management
 paths:
   /healthz:
     get:
@@ -31,6 +35,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/access:
+    get:
+      operationId: getAuthAccess
+      tags: [auth]
+      summary: Get approved access for the current user
+      responses:
+        "200":
+          description: Current approved identity and role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthAccess"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Signed in but not approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List approved users
+      responses:
+        "200":
+          description: Approved users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApprovedUser"
+    post:
+      operationId: createAdminUser
+      tags: [admin]
+      summary: Create an approved Clerk user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovedUser"
+        "400":
+          description: Invalid user or duplicate email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /token/test:
     post:
       operationId: testDerivToken
@@ -265,6 +336,28 @@ components:
       name: __session
       description: Clerk browser session cookie
   schemas:
+    AuthAccess:
+      type: object
+      required: [user_id, email, role]
+      properties:
+        user_id: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, user] }
+    ApprovedUser:
+      type: object
+      required: [user_id, email, role, active, created_at]
+      properties:
+        user_id: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, user] }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+    AdminUserInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 72 }
     DerivTokenInput:
       type: object
       required: [token]

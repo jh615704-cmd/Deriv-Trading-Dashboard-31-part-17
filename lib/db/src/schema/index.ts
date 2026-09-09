@@ -18,3 +18,4 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./deriv-credentials";
+export * from "./approved-users";

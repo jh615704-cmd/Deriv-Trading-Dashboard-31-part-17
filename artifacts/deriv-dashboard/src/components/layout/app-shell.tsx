@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
+import { useGetAuthAccess, getGetAuthAccessQueryKey } from '@workspace/api-client-react';
 import {
   Gauge,
   LockKeyhole,
@@ -26,6 +27,8 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
   const { user } = useUser();
+  const authAccess = useGetAuthAccess({ query: { enabled: !!user, retry: false, queryKey: getGetAuthAccessQueryKey() } });
+  const isAdmin = authAccess.data?.role === 'admin';
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
@@ -33,10 +36,10 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
       <aside className="sidebar">
         <div>
           <div className="brand-lockup">
-            <span className="brand-mark">D</span>
-            <span>DERIV <b>OPS</b></span>
+            <span className="brand-mark">J</span>
+            <span>JDY <b>AI</b></span>
           </div>
-          <p className="sidebar-kicker">Connection cockpit</p>
+          <p className="sidebar-kicker">Connection center</p>
           <nav className="sidebar-nav" aria-label="Primary navigation">
             <Link 
               href="/app" 
@@ -46,6 +49,16 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
               <Gauge size={17} />Dashboard
               {location === '/app' && <span className="nav-live" />}
             </Link>
+            {isAdmin && (
+              <Link 
+                href="/admin/users" 
+                className={`nav-item ${location === '/admin/users' ? 'nav-item-active' : ''}`} 
+                data-testid="link-nav-users"
+              >
+                <UserIcon size={17} />Users
+                {location === '/admin/users' && <span className="nav-live" />}
+              </Link>
+            )}
             <Link 
               href="/settings" 
               className={`nav-item ${location === '/settings' ? 'nav-item-active' : ''}`} 
@@ -55,16 +68,6 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
               {location === '/settings' && <span className="nav-live" />}
             </Link>
           </nav>
-        </div>
-        <div className="sidebar-footer">
-          <div className="secure-note">
-            <LockKeyhole size={15} />
-            <span>Credentials stay server-side.<br /><b>Nothing sensitive in this view.</b></span>
-          </div>
-          <div className="build-id">
-            <span>OPS / DERIV OPTIONS</span>
-            <span>v0.1.0</span>
-          </div>
         </div>
       </aside>
 

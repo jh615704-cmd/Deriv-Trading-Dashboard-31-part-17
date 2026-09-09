@@ -6,6 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './adminUserInput';
+export * from './approvedUser';
+export * from './approvedUserRole';
+export * from './authAccess';
+export * from './authAccessRole';
 export * from './derivAccount';
 export * from './derivAccountSelection';
 export * from './derivAccountType';

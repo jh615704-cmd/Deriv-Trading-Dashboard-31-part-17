@@ -18,6 +18,51 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get approved access for the current user
+ */
+export const GetAuthAccessResponse = zod.object({
+  "user_id": zod.string(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'user'])
+})
+
+
+/**
+ * @summary List approved users
+ */
+export const ListAdminUsersResponseItem = zod.object({
+  "user_id": zod.string(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'user']),
+  "active": zod.boolean(),
+  "created_at": zod.coerce.date()
+})
+export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem)
+
+
+/**
+ * @summary Create an approved Clerk user
+ */
+export const createAdminUserBodyPasswordMin = 8;
+export const createAdminUserBodyPasswordMax = 72;
+
+
+
+export const CreateAdminUserBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(createAdminUserBodyPasswordMin).max(createAdminUserBodyPasswordMax)
+})
+
+export const CreateAdminUserResponse = zod.object({
+  "user_id": zod.string(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'user']),
+  "active": zod.boolean(),
+  "created_at": zod.coerce.date()
+})
+
+
+/**
  * @summary Validate and save a Deriv personal access token
  */
 

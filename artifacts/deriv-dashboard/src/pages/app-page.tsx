@@ -329,7 +329,6 @@ export default function AppPage() {
         {history.length ? <div className="history-table-wrap"><table className="history-table"><thead><tr><th>ACCOUNT</th><th>CONTRACT</th><th>SYMBOL</th><th>STAKE</th><th>PROFIT / LOSS</th><th>STATUS</th><th>TIME</th></tr></thead><tbody>{history.map((trade) => <tr key={`${trade.account_id}-${trade.contract_id}`}><td><span className={`history-account ${trade.account_type}`}>{trade.account_type === 'real' ? 'LIVE' : 'DEMO'}</span><small>{trade.account_id}</small></td><td>{trade.contract_type}</td><td>{trade.symbol}</td><td>{money.format(trade.buy_price)}</td><td className={trade.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(trade.profit)}</td><td><span className="history-status">{trade.status}</span></td><td>{trade.buy_time ? time.format(new Date(trade.buy_time * 1000)) : '—'}</td></tr>)}</tbody></table></div> : <div className="response-empty history-empty"><div className="empty-marker"><span /></div><div><strong>No Deriv trades recorded yet</strong><p>Buy a demo or live proposal and the actual Deriv contract will appear here.</p></div></div>}
       </section>
 
-      <footer className="page-footer"><span><span className="footer-dot" />Connection state is read from the configured Deriv session</span><span>Last UI refresh {time.format(new Date())}</span></footer>
     </AppShell>
   );
 }

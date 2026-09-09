@@ -1,8 +1,7 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { ClerkProvider, useClerk, useAuth } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
-import { dark } from '@clerk/themes';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -10,8 +9,12 @@ import NotFound from '@/pages/not-found';
 import Landing from '@/pages/landing';
 import AppPage from '@/pages/app-page';
 import SettingsPage from '@/pages/settings';
+import SignInPage from '@/pages/sign-in';
+import AdminUsersPage from '@/pages/admin-users';
 import { Route, Switch, useLocation, Router as WouterRouter, Redirect } from 'wouter';
-import { ThemeProvider, useTheme } from '@/components/theme-provider';
+import { ThemeProvider } from '@/components/theme-provider';
+import { useGetAuthAccess, getGetAuthAccessQueryKey } from '@workspace/api-client-react';
+import { RefreshCw, CircleAlert } from 'lucide-react';
 
 const queryClient = new QueryClient();
 
@@ -55,43 +58,72 @@ function ClerkQueryClientCacheInvalidator() {
 }
 
 function HomeRedirect() {
-  return (
-    <>
-      <Show when="signed-in">
-        <Redirect to="/app" />
-      </Show>
-      <Show when="signed-out">
-        <Landing />
-      </Show>
-    </>
-  );
+  const { isSignedIn } = useAuth();
+  return isSignedIn ? <Redirect to="/app" /> : <Landing />;
 }
 
-function SignInPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--paper)] dark:bg-[#0b1a20] px-4">
-      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
-    </div>
-  );
+function ProtectedGuard({ children, requireAdmin = false }: { children: ReactNode, requireAdmin?: boolean }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const authAccess = useGetAuthAccess({
+    query: {
+      enabled: isLoaded && !!isSignedIn,
+      retry: false,
+      queryKey: getGetAuthAccessQueryKey(),
+    }
+  });
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn && authAccess.isError) {
+      signOut().then(() => {
+        setAuthError('Access not approved. Contact the administrator.');
+      });
+    }
+  }, [isLoaded, isSignedIn, authAccess.isError, signOut]);
+
+  if (!isLoaded) {
+    return <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--paper)] dark:bg-[#0b1a20]"><RefreshCw className="spin text-[var(--teal)]" size={24} /></div>;
+  }
+
+  if (authError) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--paper)] dark:bg-[#0b1a20] px-4">
+        <div className="panel p-8 text-center max-w-sm w-full border border-[var(--line)] shadow-xl bg-[var(--paper)] dark:bg-[#102f38] dark:border-[#31545a]">
+           <CircleAlert size={32} className="text-[var(--coral)] mx-auto mb-4" />
+           <h2 className="text-lg font-bold text-[var(--ink-deep)] dark:text-[#d8ece9] mb-2">Access Denied</h2>
+           <p className="text-sm text-[var(--ink-mid)] dark:text-[#7f9d9d] mb-6">{authError}</p>
+           <button onClick={() => setAuthError(null)} className="text-[var(--teal)] hover:underline font-bold bg-transparent border-0 cursor-pointer">Return to Login</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Redirect to="/sign-in" />;
+  }
+
+  if (authAccess.isPending) {
+    return <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--paper)] dark:bg-[#0b1a20]"><RefreshCw className="spin text-[var(--teal)]" size={24} /></div>;
+  }
+
+  if (authAccess.isSuccess) {
+    if (requireAdmin && authAccess.data.role !== 'admin') {
+      return <Redirect to="/app" />;
+    }
+    return <>{children}</>;
+  }
+
+  return null;
 }
 
-function SignUpPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--paper)] dark:bg-[#0b1a20] px-4">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
-    </div>
-  );
-}
-
-function ProtectedRoute({ component: Component, path }: { component: any, path: string }) {
+function ProtectedRoute({ component: Component, path, requireAdmin = false }: { component: any, path: string, requireAdmin?: boolean }) {
   return (
     <Route path={path}>
-      <Show when="signed-in">
+      <ProtectedGuard requireAdmin={requireAdmin}>
         <Component />
-      </Show>
-      <Show when="signed-out">
-        <Redirect to="/" />
-      </Show>
+      </ProtectedGuard>
     </Route>
   );
 }
@@ -102,9 +134,9 @@ function Router() {
       <Switch>
         <Route path="/" component={HomeRedirect} />
         <Route path="/sign-in/*?" component={SignInPage} />
-        <Route path="/sign-up/*?" component={SignUpPage} />
         <ProtectedRoute path="/app" component={AppPage} />
         <ProtectedRoute path="/settings" component={SettingsPage} />
+        <ProtectedRoute path="/admin/users" component={AdminUsersPage} requireAdmin={true} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>
@@ -118,51 +150,12 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
-  const { theme } = useTheme();
 
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}
       proxyUrl={clerkProxyUrl}
-      appearance={{
-        theme: theme === 'dark' ? dark : undefined,
-        cssLayerName: "clerk",
-        options: {
-          logoPlacement: "inside",
-          logoLinkUrl: basePath || "/",
-          logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
-        },
-        variables: {
-          colorPrimary: "#22b8a3",
-          colorForeground: theme === 'dark' ? "#eaf7f5" : "#102f38",
-          colorMutedForeground: theme === 'dark' ? "#a8c5c2" : "#587577",
-          colorBackground: theme === 'dark' ? "#12343d" : "#f8fcfb",
-          colorInput: theme === 'dark' ? "#0b252d" : "#ffffff",
-          colorInputForeground: theme === 'dark' ? "#f4fffd" : "#102f38",
-          colorDanger: "#ef6a5b",
-          colorNeutral: theme === 'dark' ? "#d8ece9" : "#31545a",
-          fontFamily: "var(--app-font-sans)",
-        },
-        elements: {
-          rootBox: "w-full flex justify-center",
-          cardBox: "rounded-2xl w-[440px] max-w-full overflow-hidden shadow-xl bg-[var(--paper)] dark:bg-[#102f38] border border-[var(--line)] dark:border-[#31545a]",
-          card: "!shadow-none !border-0 !bg-transparent !rounded-none",
-          footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
-          headerTitle: "!text-[#eaf7f5]",
-          headerSubtitle: "!text-[#a8c5c2]",
-          formFieldLabel: "!text-[#d8ece9]",
-          formFieldInput: "!bg-[#0b252d] !text-[#f4fffd] !border-[#41666d]",
-          formButtonPrimary: "!bg-[#22b8a3] !text-[#061b20] hover:!bg-[#49d1bc]",
-          socialButtonsBlockButton: "!border-[#41666d] !text-[#eaf7f5]",
-          socialButtonsBlockButtonText: "!text-[#eaf7f5]",
-          dividerText: "!text-[#a8c5c2]",
-          dividerLine: "!bg-[#41666d]",
-          footerActionText: "!text-[#a8c5c2]",
-          footerActionLink: "!text-[#49d1bc]",
-        },
-      }}
       signInUrl={`${basePath}/sign-in`}
-      signUpUrl={`${basePath}/sign-up`}
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
