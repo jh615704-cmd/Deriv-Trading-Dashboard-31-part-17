@@ -1,0 +1,442 @@
+require('dotenv').config();
+const express = require('express');
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const cors = require('cors');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-please';
+const ENCRYPTION_KEY = (process.env.ENCRYPTION_KEY || '12345678901234567890123456789012').slice(0, 32);
+const DERIV_APP_ID = process.env.DERIV_APP_ID || '34khmki4wO4sOu08TgZZ5';
+
+app.use(cors());
+app.use(express.json());
+
+// ---------- Database ----------
+const db = new Database('derivops.db');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT DEFAULT 'user',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    last_login_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS user_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    encrypted_token TEXT NOT NULL,
+    token_expires_at TEXT,
+    last_verified_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+`);
+
+// ---------- Helpers ----------
+function encrypt(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decrypt(text) {
+  const parts = text.split(':');
+  const iv = Buffer.from(parts.shift(), 'hex');
+  const encryptedText = Buffer.from(parts.join(':'), 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
+
+function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// ---------- Create first admin user (run once) ----------
+function createUser(email, password, role = 'user') {
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (existing) {
+    console.log('User already exists:', email);
+    return;
+  }
+  const hash = bcrypt.hashSync(password, 10);
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)').run(id, email, hash, role);
+  console.log('✅ User created:', email, '| role:', role);
+}
+
+// CREATE YOUR FIRST ADMIN HERE (change email & password)
+createUser('admin@example.com', 'Admin123!', 'admin');
+
+// ---------- Auth routes ----------
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND is_active = 1').get(email);
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+  db.prepare('UPDATE users SET last_login_at = datetime("now") WHERE id = ?').run(user.id);
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT id, email, role FROM users WHERE id = ?').get(req.user.id);
+  const tokenRow = db.prepare('SELECT token_expires_at, last_verified_at FROM user_tokens WHERE user_id = ?').get(req.user.id);
+  res.json({
+    user,
+    hasToken: !!tokenRow,
+    tokenExpiresAt: tokenRow?.token_expires_at || null,
+    lastVerifiedAt: tokenRow?.last_verified_at || null
+  });
+});
+
+// ---------- Token routes ----------
+app.post('/api/token/test', authMiddleware, async (req, res) => {
+  const { token, expires_at } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token is required' });
+
+  try {
+    const response = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Deriv-App-ID': DERIV_APP_ID,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({
+        error: data.message || data.error || 'Token invalid or missing required scopes',
+        details: data
+      });
+    }
+
+    // Save encrypted token
+    const encrypted = encrypt(token);
+    const existing = db.prepare('SELECT id FROM user_tokens WHERE user_id = ?').get(req.user.id);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE user_tokens 
+        SET encrypted_token = ?, token_expires_at = ?, last_verified_at = datetime('now')
+        WHERE user_id = ?
+      `).run(encrypted, expires_at || null, req.user.id);
+    } else {
+      db.prepare(`
+        INSERT INTO user_tokens (id, user_id, encrypted_token, token_expires_at, last_verified_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+      `).run(crypto.randomUUID(), req.user.id, encrypted, expires_at || null);
+    }
+
+    res.json({
+      success: true,
+      message: 'Connection successful – token saved',
+      accounts: data
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Connection test failed', details: err.message });
+  }
+});
+
+app.get('/api/token/status', authMiddleware, (req, res) => {
+  const row = db.prepare('SELECT token_expires_at, last_verified_at FROM user_tokens WHERE user_id = ?').get(req.user.id);
+  if (!row) return res.json({ hasToken: false });
+  res.json({
+    hasToken: true,
+    expiresAt: row.token_expires_at,
+    lastVerifiedAt: row.last_verified_at
+  });
+});
+
+app.delete('/api/token', authMiddleware, (req, res) => {
+  db.prepare('DELETE FROM user_tokens WHERE user_id = ?').run(req.user.id);
+  res.json({ success: true });
+});
+
+// ---------- Serve the full frontend ----------
+app.get('*', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deriv OPS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1b1e;
+      color: #e0f2f1;
+      min-height: 100vh;
+    }
+    .container { max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+    .card {
+      background: #132a2e;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+      border: 1px solid #1e3a3f;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; color: #26a69a; }
+    h2 { font-size: 1.1rem; margin-bottom: 16px; color: #80cbc4; }
+    label { display: block; font-size: 0.85rem; color: #80cbc4; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #1e3a3f;
+      background: #0d1b1e;
+      color: #e0f2f1;
+      font-size: 1rem;
+      margin-bottom: 16px;
+    }
+    input:focus { outline: none; border-color: #26a69a; }
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      background: #26a69a;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #1e3a3f; }
+    .error { color: #ef5350; font-size: 0.9rem; margin-top: 8px; }
+    .success { color: #66bb6a; font-size: 0.9rem; margin-top: 8px; }
+    .status-bar {
+      background: #1a3338;
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #1e3a3f;
+    }
+    .account-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: #0d1b1e;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .hidden { display: none; }
+    .logo { text-align: center; margin-bottom: 24px; }
+    .logo span { color: #26a69a; font-weight: 700; font-size: 1.4rem; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="container">
+      <div class="logo"><span>DERIV OPS</span></div>
+      <div class="card">
+        <h1>Sign in</h1>
+        <p style="color:#80cbc4;margin-bottom:20px;font-size:0.9rem">Enter the email and password given to you</p>
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="you@example.com" />
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" />
+        <button onclick="doLogin()">Login</button>
+        <div id="loginError" class="error"></div>
+      </div>
+    </div>
+
+    <!-- CONNECT SCREEN -->
+    <div id="connectScreen" class="hidden">
+      <div class="status-bar">
+        <span id="userEmail"></span>
+        <button class="secondary" style="width:auto;padding:6px 12px;font-size:0.8rem" onclick="logout()">Logout</button>
+      </div>
+      <div class="container">
+        <div class="card">
+          <h2>01 Connect your Deriv account</h2>
+          <p style="color:#80cbc4;margin-bottom:16px;font-size:0.9rem">Paste your Personal Access Token and test the connection</p>
+          <label>Personal Access Token</label>
+          <input type="password" id="patToken" placeholder="Paste your PAT here" />
+          <label>Token expires on (optional)</label>
+          <input type="date" id="patExpiry" />
+          <button onclick="testConnection()" id="testBtn">Test connection</button>
+          <div id="connectMsg"></div>
+        </div>
+
+        <div id="accountsCard" class="card hidden">
+          <h2>Available Accounts</h2>
+          <div id="accountsList"></div>
+          <button style="margin-top:16px" onclick="goToDashboard()">Continue to Trade Desk →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DASHBOARD PLACEHOLDER -->
+    <div id="dashboardScreen" class="hidden">
+      <div class="status-bar">
+        <span id="tokenStatus">PAT Token • Loading...</span>
+        <button class="secondary" style="width:auto;padding:6px 12px;font-size:0.8rem" onclick="logout()">Logout</button>
+      </div>
+      <div class="container">
+        <div class="card">
+          <h1>Trade Desk</h1>
+          <p style="color:#80cbc4">Connection successful. You can now add your existing live quote + buy logic here.</p>
+          <p style="margin-top:12px;font-size:0.9rem">Your App ID is being used: <code>${DERIV_APP_ID}</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let authToken = localStorage.getItem('authToken') || null;
+
+    async function doLogin() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const err = document.getElementById('loginError');
+      err.textContent = '';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+
+        authToken = data.token;
+        localStorage.setItem('authToken', authToken);
+        document.getElementById('userEmail').textContent = data.user.email;
+        showScreen('connect');
+        checkTokenStatus();
+      } catch (e) {
+        err.textContent = e.message;
+      }
+    }
+
+    async function testConnection() {
+      const token = document.getElementById('patToken').value.trim();
+      const expires = document.getElementById('patExpiry').value || null;
+      const msg = document.getElementById('connectMsg');
+      const btn = document.getElementById('testBtn');
+      msg.innerHTML = '';
+      btn.disabled = true;
+      btn.textContent = 'Testing...';
+
+      try {
+        const res = await fetch('/api/token/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + authToken
+          },
+          body: JSON.stringify({ token, expires_at: expires })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Test failed');
+
+        msg.innerHTML = '<div class="success">✓ ' + data.message + '</div>';
+        document.getElementById('accountsCard').classList.remove('hidden');
+        renderAccounts(data.accounts);
+      } catch (e) {
+        msg.innerHTML = '<div class="error">' + e.message + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test connection';
+      }
+    }
+
+    function renderAccounts(data) {
+      const list = document.getElementById('accountsList');
+      // Adjust this according to the real response shape from Deriv
+      list.innerHTML = '<pre style="font-size:0.8rem;overflow:auto">' + JSON.stringify(data, null, 2) + '</pre>';
+    }
+
+    async function checkTokenStatus() {
+      if (!authToken) return;
+      try {
+        const res = await fetch('/api/token/status', {
+          headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const data = await res.json();
+        if (data.hasToken) {
+          document.getElementById('tokenStatus').textContent =
+            data.expiresAt ? 'PAT expires: ' + data.expiresAt : 'PAT Token • Active (no expiry set)';
+        }
+      } catch {}
+    }
+
+    function goToDashboard() {
+      showScreen('dashboard');
+      checkTokenStatus();
+    }
+
+    function logout() {
+      localStorage.removeItem('authToken');
+      authToken = null;
+      showScreen('login');
+    }
+
+    function showScreen(name) {
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('connectScreen').classList.add('hidden');
+      document.getElementById('dashboardScreen').classList.add('hidden');
+      if (name === 'login') document.getElementById('loginScreen').classList.remove('hidden');
+      if (name === 'connect') document.getElementById('connectScreen').classList.remove('hidden');
+      if (name === 'dashboard') document.getElementById('dashboardScreen').classList.remove('hidden');
+    }
+
+    // Auto-login if token exists
+    if (authToken) {
+      fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + authToken } })
+        .then(r => r.json())
+        .then(data => {
+          if (data.user) {
+            document.getElementById('userEmail').textContent = data.user.email;
+            showScreen(data.hasToken ? 'dashboard' : 'connect');
+            checkTokenStatus();
+          } else {
+            logout();
+          }
+        })
+        .catch(logout);
+    }
+  </script>
+</body>
+</html>`);
+});
+
+app.listen(PORT, () => {
+  console.log('=================================');
+  console.log('  DERIV OPS is running');
+  console.log('  Port:', PORT);
+  console.log('  App ID:', DERIV_APP_ID);
+  console.log('  Login with: admin@example.com / Admin123!');
+  console.log('=================================');
+});
