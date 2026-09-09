@@ -22,7 +22,16 @@ export async function bootstrapAdmin(): Promise<void> {
   try {
     const existingApproved = await db.select().from(approvedUsersTable)
       .where(eq(approvedUsersTable.email, email)).limit(1);
-    if (existingApproved[0]?.active && existingApproved[0].role === "admin") return;
+    if (existingApproved[0]) {
+      const existingClerkUser = await clerk.users.getUser(existingApproved[0].userId).catch(() => null);
+      const stillMatches = existingClerkUser?.emailAddresses.some(
+        (address) => normalizedEmail(address.emailAddress) === email,
+      );
+      if (existingApproved[0].active && existingApproved[0].role === "admin" && stillMatches) {
+        return;
+      }
+      await db.delete(approvedUsersTable).where(eq(approvedUsersTable.email, email));
+    }
 
     const found = await clerk.users.getUserList({ emailAddress: [email], limit: 1 });
     let user = found.data[0];
@@ -35,7 +44,13 @@ export async function bootstrapAdmin(): Promise<void> {
         password: initialPassword,
         publicMetadata: { role: "admin" },
       });
+    } else if (initialPassword) {
+      user = await clerk.users.updateUser(user.id, {
+        password: initialPassword,
+        signOutOfOtherSessions: true,
+      });
     }
+    await clerk.users.updateUserMetadata(user.id, { publicMetadata: { role: "admin" } });
     await db.insert(approvedUsersTable).values({
       userId: user.id, email, role: "admin", active: true,
     }).onConflictDoUpdate({

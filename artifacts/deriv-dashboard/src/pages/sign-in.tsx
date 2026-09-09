@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useSignIn, useClerk, useAuth } from '@clerk/react';
+import { useSignIn, useAuth } from '@clerk/react';
 import { useLocation } from 'wouter';
 import { RefreshCw, LockKeyhole, Mail, KeyRound } from 'lucide-react';
 
 export default function SignInPage() {
   const { signIn } = useSignIn();
-  const { setActive } = useClerk();
   const { isLoaded } = useAuth();
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
@@ -20,27 +19,27 @@ export default function SignInPage() {
     setError('');
 
     try {
-      const { error: signInError } = await signIn.create({
+      const result = await signIn.password({
         identifier: emailAddress,
         password,
       });
 
-      if (signInError) {
-        setError(signInError.longMessage || signInError.message || 'Sign in failed.');
+      if (result.error) {
+        setError(result.error.longMessage || result.error.message || 'Sign in failed.');
         setIsLoading(false);
         return;
       }
 
       if (signIn.status === 'complete' && signIn.createdSessionId) {
-        await setActive({ session: signIn.createdSessionId });
+        await signIn.finalize();
+        setPassword('');
         setLocation('/app');
       } else {
-        console.log(signIn);
         setError('Sign in requires further verification.');
       }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.errors?.[0]?.longMessage || err.message || 'Sign in failed.');
+    } catch (err: unknown) {
+      const clerkError = err as { errors?: Array<{ longMessage?: string; message?: string }> };
+      setError(clerkError.errors?.[0]?.longMessage || clerkError.errors?.[0]?.message || 'Sign in failed.');
     } finally {
       setIsLoading(false);
     }
