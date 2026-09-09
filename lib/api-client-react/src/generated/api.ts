@@ -30,8 +30,12 @@ import type {
   DerivProposalInput,
   DerivProposalRequest,
   DerivStatus,
+  DerivTokenInput,
+  DerivTokenStatus,
+  DerivTokenTestResponse,
   ErrorResponse,
-  HealthStatus
+  HealthStatus,
+  TokenDeleteResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -138,6 +142,225 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getTestDerivTokenUrl = () => {
+
+
+
+
+  return `/api/token/test`
+}
+
+/**
+ * @summary Validate and save a Deriv personal access token
+ */
+export const testDerivToken = async (derivTokenInput: DerivTokenInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivTokenTestResponse> => {
+
+  return customFetch<DerivTokenTestResponse>(getTestDerivTokenUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivTokenInput)
+  }
+);}
+
+
+
+
+
+export const getTestDerivTokenMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testDerivToken>>, TError,{data: BodyType<DerivTokenInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testDerivToken>>, TError,{data: BodyType<DerivTokenInput>}, TContext> => {
+
+const mutationKey = ['testDerivToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testDerivToken>>, {data: BodyType<DerivTokenInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  testDerivToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestDerivTokenMutationResult = NonNullable<Awaited<ReturnType<typeof testDerivToken>>>
+    export type TestDerivTokenMutationBody = BodyType<DerivTokenInput>
+    export type TestDerivTokenMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Validate and save a Deriv personal access token
+ */
+export const useTestDerivToken = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testDerivToken>>, TError,{data: BodyType<DerivTokenInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testDerivToken>>,
+        TError,
+        {data: BodyType<DerivTokenInput>},
+        TContext
+      > => {
+      return useMutation(getTestDerivTokenMutationOptions(options));
+    }
+
+export const getGetDerivTokenStatusUrl = () => {
+
+
+
+
+  return `/api/token/status`
+}
+
+/**
+ * @summary Get saved Deriv token metadata
+ */
+export const getDerivTokenStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<DerivTokenStatus> => {
+
+  return customFetch<DerivTokenStatus>(getGetDerivTokenStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDerivTokenStatusQueryKey = () => {
+    return [
+    `/api/token/status`
+    ] as const;
+    }
+
+
+export const getGetDerivTokenStatusQueryOptions = <TData = Awaited<ReturnType<typeof getDerivTokenStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDerivTokenStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDerivTokenStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDerivTokenStatus>>> = ({ signal }) => getDerivTokenStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDerivTokenStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDerivTokenStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getDerivTokenStatus>>>
+export type GetDerivTokenStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get saved Deriv token metadata
+ */
+
+export function useGetDerivTokenStatus<TData = Awaited<ReturnType<typeof getDerivTokenStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDerivTokenStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDerivTokenStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteDerivTokenUrl = () => {
+
+
+
+
+  return `/api/token`
+}
+
+/**
+ * @summary Remove saved Deriv token
+ */
+export const deleteDerivToken = async ( options?: Parameters<typeof customFetch>[1]): Promise<TokenDeleteResponse> => {
+
+  return customFetch<TokenDeleteResponse>(getDeleteDerivTokenUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDerivTokenMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDerivToken>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDerivToken>>, TError,void, TContext> => {
+
+const mutationKey = ['deleteDerivToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDerivToken>>, void> = () => {
+
+
+          return  deleteDerivToken(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDerivTokenMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDerivToken>>>
+
+    export type DeleteDerivTokenMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove saved Deriv token
+ */
+export const useDeleteDerivToken = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDerivToken>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDerivToken>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteDerivTokenMutationOptions(options));
+    }
 
 export const getGetDerivAccountsUrl = () => {
 

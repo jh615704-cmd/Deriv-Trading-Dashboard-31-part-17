@@ -5,8 +5,23 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
+export interface DerivTokenInput {
+  /** @minLength 1 */
+  token: string;
+  /** @nullable */
+  expires_at?: string | null;
+}
+
+export interface DerivTokenStatus {
+  has_token: boolean;
+  /** @nullable */
+  expires_at: string | null;
+  /** @nullable */
+  last_verified_at: string | null;
+}
+
+export interface TokenDeleteResponse {
+  success: boolean;
 }
 
 export type DerivAccountType = typeof DerivAccountType[keyof typeof DerivAccountType];
@@ -22,6 +37,16 @@ export interface DerivAccount {
   type: DerivAccountType;
   currency: string;
   balance: number;
+  status: string;
+}
+
+export interface DerivTokenTestResponse {
+  success: boolean;
+  message: string;
+  accounts: DerivAccount[];
+}
+
+export interface HealthStatus {
   status: string;
 }
 

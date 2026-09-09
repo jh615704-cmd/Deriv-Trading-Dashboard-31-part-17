@@ -1,2 +1,3 @@
 - [Deriv authentication](deriv-authentication.md) — PATs authenticate REST; use the returned OTP URL for the authenticated Options WebSocket.
 - [Deriv proposal correlation](deriv-proposal-correlation.md) — immediate buys must correlate async proposal responses to the exact request.
+- [Per-user Deriv lifecycle](per-user-deriv-lifecycle.md) — credential changes, reconnects, account switches, and buys share one stable user lock.

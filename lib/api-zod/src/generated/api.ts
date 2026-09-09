@@ -18,6 +18,48 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Validate and save a Deriv personal access token
+ */
+
+
+
+export const TestDerivTokenBody = zod.object({
+  "token": zod.string().min(1),
+  "expires_at": zod.coerce.date().nullish()
+})
+
+export const TestDerivTokenResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string(),
+  "accounts": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['demo', 'real']),
+  "currency": zod.string(),
+  "balance": zod.number(),
+  "status": zod.string()
+}))
+})
+
+
+/**
+ * @summary Get saved Deriv token metadata
+ */
+export const GetDerivTokenStatusResponse = zod.object({
+  "has_token": zod.boolean(),
+  "expires_at": zod.string().nullable(),
+  "last_verified_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Remove saved Deriv token
+ */
+export const DeleteDerivTokenResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * Loads the accounts available to the configured Deriv PAT without exposing credentials.
  * @summary Load Deriv Options accounts
  */

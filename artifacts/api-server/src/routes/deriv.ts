@@ -19,49 +19,88 @@ import {
   requestProposal,
   buyContract,
   selectAccount,
-  startDeriv,
   testConnection,
+  withUserSerialized,
+  setUserPat,
 } from "../lib/deriv";
+import { requireAuth } from "../middlewares/requireAuth";
+import { db, derivCredentialsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { decryptPat } from "../lib/pat-crypto";
 
 const router: IRouter = Router();
+router.use(requireAuth);
+
+class MissingDerivCredentialError extends Error {}
+
+async function withCredential<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+  return withUserSerialized(userId, async () => {
+    const [credential] = await db
+      .select()
+      .from(derivCredentialsTable)
+      .where(eq(derivCredentialsTable.clerkUserId, userId))
+      .limit(1);
+    if (!credential) throw new MissingDerivCredentialError("Connect a Deriv token first");
+    setUserPat(userId, decryptPat(credential.encryptedPat));
+    return operation();
+  });
+}
 
 router.get("/deriv/accounts", async (req, res) => {
   try {
-    const accounts = GetDerivAccountsResponse.parse(await getAccounts());
+    const accounts = GetDerivAccountsResponse.parse(await withCredential(res.locals.userId, getAccounts));
     res.set("Cache-Control", "no-store");
     res.json(accounts);
   } catch (error) {
+    if (error instanceof MissingDerivCredentialError) {
+      res.status(401).json({ error: error.message });
+      return;
+    }
     req.log.error({ err: error }, "Unable to load Deriv accounts");
     res.status(502).json({ error: "Unable to load Deriv accounts from Deriv" });
   }
 });
 
 router.get("/deriv/status", (_req, res) => {
-  void getLiveStatus()
+  void withCredential(res.locals.userId, getLiveStatus)
     .then((status) => {
       res.set("Cache-Control", "no-store");
       res.json(GetDerivStatusResponse.parse(status));
     })
     .catch((error) => {
-      res.status(502).json({ error: "Unable to refresh Deriv balance" });
+      res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({
+        error: error instanceof MissingDerivCredentialError ? error.message : "Unable to refresh Deriv balance",
+      });
     });
 });
 
 router.get("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json(getHistory());
+  withCredential(res.locals.userId, async () => getHistory())
+    .then((history) => res.json(history))
+    .catch((error) => res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({
+      error: error instanceof Error ? error.message : "Unable to load Deriv history",
+    }));
 });
 
 router.delete("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json(clearHistory());
+  withCredential(res.locals.userId, async () => clearHistory())
+    .then((result) => res.json(result))
+    .catch((error) => res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({
+      error: error instanceof Error ? error.message : "Unable to clear Deriv history",
+    }));
 });
 
 router.post("/deriv/test-connection", async (req, res) => {
   try {
-    const result = TestDerivConnectionResponse.parse(await testConnection());
+    const result = TestDerivConnectionResponse.parse(await withCredential(res.locals.userId, testConnection));
     res.json(result);
   } catch (error) {
+    if (error instanceof MissingDerivCredentialError) {
+      res.status(401).json({ error: error.message });
+      return;
+    }
     req.log.error({ err: error }, "Deriv connection test failed");
     res.status(502).json({ error: "Deriv connection test failed" });
   }
@@ -74,11 +113,13 @@ router.post("/deriv/proposals", async (req, res) => {
   }
 
   try {
-    const result = RequestDerivProposalResponse.parse(await requestProposal(parsed.data));
+    const result = RequestDerivProposalResponse.parse(await withCredential(res.locals.userId, () => requestProposal(parsed.data)));
     return res.status(202).json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv proposal request failed");
-    return res.status(503).json({ error: "Deriv WebSocket is not ready" });
+    return res.status(error instanceof MissingDerivCredentialError ? 401 : 503).json({
+      error: error instanceof MissingDerivCredentialError ? error.message : "Deriv WebSocket is not ready",
+    });
   }
 });
 
@@ -87,11 +128,11 @@ router.post("/deriv/select-account", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid account selection" });
 
   try {
-    const result = SelectDerivAccountResponse.parse(await selectAccount(parsed.data.account_id));
+    const result = SelectDerivAccountResponse.parse(await withCredential(res.locals.userId, () => selectAccount(parsed.data.account_id)));
     return res.json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv account selection failed");
-    return res.status(502).json({ error: error instanceof Error ? error.message : "Unable to select account" });
+    return res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({ error: error instanceof Error ? error.message : "Unable to select account" });
   }
 });
 
@@ -100,12 +141,14 @@ router.post("/deriv/buy", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Explicit live-trade confirmation is required" });
 
   try {
-    const result = BuyDerivContractResponse.parse(await buyContract(parsed.data));
+    const result = BuyDerivContractResponse.parse(await withCredential(res.locals.userId, () => buyContract(parsed.data)));
     return res.status(202).json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Buy request failed";
     req.log.error({ err: error }, "Deriv live buy request failed");
-    const status = message.includes("disabled") || message.includes("real account")
+    const status = error instanceof MissingDerivCredentialError
+      ? 401
+      : message.includes("disabled") || message.includes("real account")
       ? 403
       : message.includes("cooldown")
         ? 429
@@ -115,7 +158,5 @@ router.post("/deriv/buy", async (req, res) => {
     return res.status(status).json({ error: message });
   }
 });
-
-startDeriv();
 
 export default router;

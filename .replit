@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -27,3 +27,6 @@ DERIV_CURRENCY = "USD"
 DERIV_SYMBOL = "R_75"
 MAX_TRADE_AMOUNT = "100"
 DERIV_ALLOW_LIVE_TRADING = "true"
+
+[nix]
+channel = "stable-25_05"

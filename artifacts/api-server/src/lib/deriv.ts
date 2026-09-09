@@ -1,9 +1,10 @@
 import WebSocket from "ws";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "./logger";
 
 const API_BASE = "https://api.derivws.com";
 const appId = process.env.DERIV_APP_ID;
-const token = process.env.DERIV_API_TOKEN;
+const token = null;
 const defaultSymbol = process.env.DERIV_SYMBOL ?? "R_75";
 const defaultCurrency = process.env.DERIV_CURRENCY ?? "USD";
 const maxTradeAmount = Number(process.env.MAX_TRADE_AMOUNT ?? "100");
@@ -107,7 +108,8 @@ type DerivResponse = {
   accounts?: unknown;
 };
 
-const state = {
+function createState() {
+return {
   socket: null as WebSocket | null,
   connecting: null as Promise<boolean> | null,
   reconnectTimer: null as NodeJS.Timeout | null,
@@ -134,10 +136,103 @@ const state = {
   selectedAccountId: configuredAccountId ?? null as string | null,
   botRunning: false,
   shuttingDown: false,
+  pat: null as string | null,
+  lastAccessAt: Date.now(),
+  generation: 0,
 };
+}
+
+const runtimes = new Map<string, ReturnType<typeof createState>>();
+const operationTails = new Map<string, Promise<void>>();
+const userContext = new AsyncLocalStorage<string>();
+let generationSequence = 0;
+const runtimeIdleTimeoutMs = 30 * 60 * 1000;
+const runtimeReaper = setInterval(() => {
+  const cutoff = Date.now() - runtimeIdleTimeoutMs;
+  for (const [userId, runtime] of runtimes) {
+    if (runtime.lastAccessAt < cutoff) {
+      void withUserSerialized(userId, async () => {
+        if (runtimes.get(userId) === runtime && runtime.lastAccessAt < cutoff) {
+          disposeUser(userId);
+        }
+      });
+    }
+  }
+}, 5 * 60 * 1000);
+runtimeReaper.unref();
+
+function getState(): any {
+  const activeUser = userContext.getStore();
+  if (!activeUser) throw new Error("Authenticated Deriv user is required");
+  let runtime = runtimes.get(activeUser);
+  if (!runtime) {
+    runtime = createState();
+    runtime.generation = ++generationSequence;
+    runtimes.set(activeUser, runtime);
+  }
+  return runtime;
+}
+
+export async function withUser<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const runtime = runtimes.get(userId);
+  if (runtime) runtime.lastAccessAt = Date.now();
+  return userContext.run(userId, fn);
+}
+
+export async function withUserSerialized<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = operationTails.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.then(() => turn);
+  operationTails.set(userId, tail);
+  await previous;
+  try {
+    return await userContext.run(userId, fn);
+  } finally {
+    release();
+    if (operationTails.get(userId) === tail) operationTails.delete(userId);
+  }
+}
+
+export function setUserPat(userId: string, pat: string) {
+  const current = runtimes.get(userId);
+  if (current && current.pat === pat && !current.shuttingDown) {
+    current.lastAccessAt = Date.now();
+    return;
+  }
+  if (current) disposeUser(userId);
+  const runtime = createState();
+  runtime.pat = pat;
+  runtime.shuttingDown = false;
+  runtime.lastAccessAt = Date.now();
+  runtime.generation = ++generationSequence;
+  runtimes.set(userId, runtime);
+}
+
+export function disposeUser(userId: string) {
+  const runtime = runtimes.get(userId);
+  if (!runtime) return;
+  runtime.shuttingDown = true;
+  for (const waiter of runtime.proposalWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error("Deriv runtime disposed"));
+  }
+  runtime.proposalWaiters.clear();
+  if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
+  runtime.socket?.close();
+  runtimes.delete(userId);
+}
+
+function rejectProposalWaiters(message: string) {
+  for (const waiter of getState().proposalWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error(message));
+  }
+  getState().proposalWaiters.clear();
+}
 
 function assertConfigured() {
-  if (!appId || !token) {
+  if (!appId || !getState().pat) {
     throw new Error("Deriv credentials are not configured");
   }
 }
@@ -180,46 +275,46 @@ function extractAccounts(body: DerivResponse): DerivAccount[] {
 }
 
 function upsertHistory(item: DerivHistoryItem) {
-  if (state.hiddenHistoryIds.has(item.contract_id)) return;
-  const existing = state.history.findIndex((entry) => entry.contract_id === item.contract_id);
+  if (getState().hiddenHistoryIds.has(item.contract_id)) return;
+  const existing = getState().history.findIndex((entry: DerivHistoryItem) => entry.contract_id === item.contract_id);
   if (existing >= 0) {
-    state.history[existing] = { ...state.history[existing], ...item };
+    getState().history[existing] = { ...getState().history[existing], ...item };
   } else {
-    state.history.push(item);
+    getState().history.push(item);
   }
-  state.history.sort((left, right) => (right.buy_time ?? 0) - (left.buy_time ?? 0));
-  state.history = state.history.slice(0, 100);
+  getState().history.sort((left: DerivHistoryItem, right: DerivHistoryItem) => (right.buy_time ?? 0) - (left.buy_time ?? 0));
+  getState().history = getState().history.slice(0, 100);
 }
 
 function recordLastDigit(quote: unknown) {
   const digits = String(quote ?? "").replace(/\D/g, "");
   const lastDigit = digits.at(-1);
   if (!lastDigit) return;
-  if (Number(lastDigit) % 2 === 0) state.digitEvenCount += 1;
-  else state.digitOddCount += 1;
+  if (Number(lastDigit) % 2 === 0) getState().digitEvenCount += 1;
+  else getState().digitOddCount += 1;
 }
 
 function getDigitPercentages() {
-  const total = state.digitEvenCount + state.digitOddCount;
+  const total = getState().digitEvenCount + getState().digitOddCount;
   if (!total) return { even: 50, odd: 50 };
   return {
-    even: Number(((state.digitEvenCount / total) * 100).toFixed(1)),
-    odd: Number(((state.digitOddCount / total) * 100).toFixed(1)),
+    even: Number(((getState().digitEvenCount / total) * 100).toFixed(1)),
+    odd: Number(((getState().digitOddCount / total) * 100).toFixed(1)),
   };
 }
 
 function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistoryItem | null {
-  if (!raw || typeof raw !== "object" || !state.account) return null;
+  if (!raw || typeof raw !== "object" || !getState().account) return null;
   const record = raw as Record<string, unknown>;
   const contractId = record.contract_id ?? record.id;
   if (typeof contractId !== "string" || !contractId) return null;
 
   return {
     contract_id: contractId,
-    account_id: state.account.id,
-    account_type: state.account.type,
-    contract_type: String((record.contract_type ?? state.lastProposalContractType) || "unknown"),
-    symbol: String(record.underlying_symbol ?? record.symbol ?? state.lastProposalSymbol),
+    account_id: getState().account.id,
+    account_type: getState().account.type,
+    contract_type: String((record.contract_type ?? getState().lastProposalContractType) || "unknown"),
+    symbol: String(record.underlying_symbol ?? record.symbol ?? getState().lastProposalSymbol),
     buy_price: Number(record.buy_price ?? record.purchase_price ?? 0),
     payout: Number(record.payout ?? 0),
     profit: Number(record.profit ?? 0),
@@ -237,7 +332,7 @@ async function derivRequest(pathname: string, init: RequestInit = {}) {
     ...init,
     headers: {
       "Deriv-App-ID": appId!,
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${getState().pat}`,
       "Content-Type": "application/json",
       ...(init.headers ?? {}),
     },
@@ -253,35 +348,35 @@ async function loadAccountsFromDeriv() {
   const response = await derivRequest("/trading/v1/options/accounts");
   const accounts = extractAccounts(response);
   if (!accounts.length) throw new Error("Deriv returned no Options accounts");
-  state.accounts = accounts;
-  const selected = state.account && accounts.find((account) => account.id === state.account?.id);
-  if (selected && state.account) {
-    state.account = {
-      ...state.account,
+  getState().accounts = accounts;
+  const selected = getState().account && accounts.find((account) => account.id === getState().account?.id);
+  if (selected && getState().account) {
+    getState().account = {
+      ...getState().account,
       balance: selected.balance,
       currency: selected.currency,
       status: selected.status,
     };
   }
-  return state.accounts;
+  return getState().accounts;
 }
 
 async function refreshSelectedBalance() {
-  if (!state.account) return;
+  if (!getState().account) return;
   const now = Date.now();
-  if (now - state.balanceRefreshAt < 2000) return;
-  if (state.balanceRefreshPromise) return state.balanceRefreshPromise;
+  if (now - getState().balanceRefreshAt < 2000) return;
+  if (getState().balanceRefreshPromise) return getState().balanceRefreshPromise;
 
-  state.balanceRefreshAt = now;
-  state.balanceRefreshPromise = loadAccountsFromDeriv()
+  getState().balanceRefreshAt = now;
+  getState().balanceRefreshPromise = loadAccountsFromDeriv()
     .then(() => undefined)
     .catch((error) => {
       logger.warn({ err: error }, "Deriv REST balance refresh failed");
     })
     .finally(() => {
-      state.balanceRefreshPromise = null;
+      getState().balanceRefreshPromise = null;
     });
-  return state.balanceRefreshPromise;
+  return getState().balanceRefreshPromise;
 }
 
 async function getOtpUrl(accountId: string) {
@@ -297,8 +392,8 @@ async function getOtpUrl(accountId: string) {
 }
 
 function preferredAccount(accounts: DerivAccount[]) {
-  if (state.selectedAccountId) {
-    const selected = accounts.find((account) => account.id === state.selectedAccountId);
+  if (getState().selectedAccountId) {
+    const selected = accounts.find((account) => account.id === getState().selectedAccountId);
     if (!selected) throw new Error("Selected account was not found in the account list");
     return selected;
   }
@@ -311,13 +406,13 @@ function preferredAccount(accounts: DerivAccount[]) {
 }
 
 function send(message: Record<string, unknown>) {
-  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false;
-  state.socket.send(JSON.stringify(message));
+  if (!getState().socket || getState().socket.readyState !== WebSocket.OPEN) return false;
+  getState().socket.send(JSON.stringify(message));
   return true;
 }
 
 function sendProposalRequest(input: ProposalInput) {
-  const reqId = ++state.proposalSequence;
+  const reqId = ++getState().proposalSequence;
   const sent = send({
     proposal: 1,
     amount: input.amount,
@@ -333,33 +428,62 @@ function sendProposalRequest(input: ProposalInput) {
 }
 
 function scheduleReconnect() {
-  if (state.shuttingDown || state.reconnectTimer) return;
-  state.reconnectTimer = setTimeout(() => {
-    state.reconnectTimer = null;
-    void connect();
+  const ownerId = userContext.getStore();
+  const runtime = getState();
+  if (!ownerId || runtime.shuttingDown || runtime.reconnectTimer) return;
+  runtime.reconnectTimer = setTimeout(() => {
+    if (runtimes.get(ownerId) !== runtime || runtime.shuttingDown) return;
+    runtime.reconnectTimer = null;
+    void withUserSerialized(ownerId, async () => {
+      if (runtimes.get(ownerId) !== runtime || runtime.shuttingDown) return;
+      await connect();
+    });
   }, 5000);
 }
 
 async function connectInternal() {
+  const ownerId = userContext.getStore();
+  const ownerRuntime = getState();
+  const isRuntimeCurrent = () => Boolean(ownerId && runtimes.get(ownerId) === ownerRuntime && !ownerRuntime.shuttingDown);
   const accounts = await loadAccountsFromDeriv();
+  if (!isRuntimeCurrent()) return false;
   const account = preferredAccount(accounts);
   const url = await getOtpUrl(account.id);
+  if (!isRuntimeCurrent()) return false;
 
   return await new Promise<boolean>((resolve, reject) => {
     const socket = new WebSocket(url);
-    state.socket = socket;
-    state.account = account;
+    ownerRuntime.socket = socket;
+    ownerRuntime.account = account;
+    const isCurrentSocket = () => isRuntimeCurrent() && ownerRuntime.socket === socket;
+    let settled = false;
+    const resolveOnce = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
 
     socket.once("open", () => {
+      if (!isCurrentSocket()) {
+        resolveOnce(false);
+        socket.close();
+        return;
+      }
       logger.info({ accountId: account.id }, "Deriv WebSocket connected");
       send({ balance: 1, subscribe: 1 });
       send({ ticks: defaultSymbol, subscribe: 1 });
       send({ portfolio: 1 });
       send({ profit_table: 1, limit: 50, description: 1, sort: "DESC" });
-      resolve(true);
+      resolveOnce(true);
     });
 
     socket.on("message", (raw) => {
+      if (!isCurrentSocket()) return;
       const message = JSON.parse(raw.toString()) as Record<string, any>;
       if (message.error) {
         logger.warn({ code: message.error.code }, "Deriv WebSocket returned an error");
@@ -367,75 +491,75 @@ async function connectInternal() {
       }
 
       if (message.msg_type === "balance") {
-        state.account = {
-          ...(state.account ?? account),
+        getState().account = {
+          ...(getState().account ?? account),
           balance: Number(message.balance?.balance ?? 0),
           currency: message.balance?.currency ?? account.currency,
         };
       } else if (message.msg_type === "tick") {
-        state.lastTick = {
+        getState().lastTick = {
           symbol: String(message.tick?.symbol ?? defaultSymbol),
           quote: Number(message.tick?.quote ?? 0),
           epoch: Number(message.tick?.epoch ?? 0),
         };
         recordLastDigit(message.tick?.quote);
-        if (state.lastProposalInput && Date.now() - state.lastProposalRefreshAt >= 1000) {
-          state.lastProposalRefreshAt = Date.now();
-          sendProposalRequest(state.lastProposalInput);
+        if (getState().lastProposalInput && Date.now() - getState().lastProposalRefreshAt >= 1000) {
+          getState().lastProposalRefreshAt = Date.now();
+          sendProposalRequest(getState().lastProposalInput);
         }
       } else if (message.msg_type === "proposal") {
-        state.lastProposal = {
+        getState().lastProposal = {
           id: String(message.proposal?.id ?? ""),
           ask_price: Number(message.proposal?.ask_price ?? 0),
           payout: Number(message.proposal?.payout ?? 0),
           spot: Number(message.proposal?.spot ?? 0),
           longcode: message.proposal?.longcode ?? null,
         };
-        if (state.lastProposal.id) {
-          state.proposalIds.add(state.lastProposal.id);
+        if (getState().lastProposal.id) {
+          getState().proposalIds.add(getState().lastProposal.id);
           const reqId = Number(message.req_id ?? message.echo_req?.req_id);
-          const waiter = state.proposalWaiters.get(reqId);
+          const waiter = getState().proposalWaiters.get(reqId);
           if (waiter) {
             clearTimeout(waiter.timer);
-            state.proposalWaiters.delete(reqId);
-            waiter.resolve(state.lastProposal);
+            getState().proposalWaiters.delete(reqId);
+            waiter.resolve(getState().lastProposal);
           }
         }
       } else if (message.msg_type === "buy") {
-        state.lastBuy = {
+        getState().lastBuy = {
           contract_id: String(message.buy?.contract_id ?? ""),
           buy_price: Number(message.buy?.buy_price ?? 0),
           payout: Number(message.buy?.payout ?? 0),
           start_time: message.buy?.start_time == null ? null : Number(message.buy.start_time),
         };
         const historyItem = normalizeHistory({
-          contract_id: state.lastBuy.contract_id,
-          buy_price: state.lastBuy.buy_price,
-          payout: state.lastBuy.payout,
-          purchase_time: state.lastBuy.start_time,
-          contract_type: state.lastProposalContractType,
-          underlying_symbol: state.lastProposalSymbol,
+          contract_id: getState().lastBuy.contract_id,
+          buy_price: getState().lastBuy.buy_price,
+          payout: getState().lastBuy.payout,
+          purchase_time: getState().lastBuy.start_time,
+          contract_type: getState().lastProposalContractType,
+          underlying_symbol: getState().lastProposalSymbol,
           status: "open",
         }, "open");
         if (historyItem) upsertHistory(historyItem);
-        if (state.lastBuy.contract_id) {
+        if (getState().lastBuy.contract_id) {
           send({ balance: 1 });
           send({
             proposal_open_contract: 1,
-            contract_id: state.lastBuy.contract_id,
+            contract_id: getState().lastBuy.contract_id,
             subscribe: 1,
           });
         }
       } else if (message.msg_type === "proposal_open_contract") {
         const contract = message.proposal_open_contract;
         if (contract) {
-          state.lastContract = {
+          getState().lastContract = {
             contract_id: String(contract.contract_id ?? ""),
             status: String(contract.status ?? "open"),
             is_sold: Boolean(contract.is_sold),
             profit: Number(contract.profit ?? 0),
-            buy_price: Number(contract.buy_price ?? state.lastBuy?.buy_price ?? 0),
-            payout: Number(contract.payout ?? state.lastBuy?.payout ?? 0),
+            buy_price: Number(contract.buy_price ?? getState().lastBuy?.buy_price ?? 0),
+            payout: Number(contract.payout ?? getState().lastBuy?.payout ?? 0),
             sell_price: Number(contract.sell_price ?? 0),
             entry_spot: Number(contract.entry_spot ?? 0),
             current_spot: Number(contract.current_spot ?? 0),
@@ -443,14 +567,14 @@ async function connectInternal() {
           };
           const historyItem = normalizeHistory({
             ...contract,
-            buy_price: state.lastContract.buy_price,
-            payout: state.lastContract.payout,
-            contract_id: state.lastContract.contract_id,
-            status: state.lastContract.status,
+            buy_price: getState().lastContract.buy_price,
+            payout: getState().lastContract.payout,
+            contract_id: getState().lastContract.contract_id,
+            status: getState().lastContract.status,
             sell_time: contract.sell_time,
-            contract_type: state.lastProposalContractType,
-            underlying_symbol: state.lastProposalSymbol,
-          }, state.lastContract.is_sold ? "closed" : "open");
+            contract_type: getState().lastProposalContractType,
+            underlying_symbol: getState().lastProposalSymbol,
+          }, getState().lastContract.is_sold ? "closed" : "open");
           if (historyItem) upsertHistory(historyItem);
         }
       } else if (message.msg_type === "profit_table") {
@@ -473,56 +597,68 @@ async function connectInternal() {
     });
 
     socket.on("close", () => {
-      if (state.socket !== socket) return;
-      state.socket = null;
-      state.account = null;
+      if (!isCurrentSocket()) {
+        resolveOnce(false);
+        return;
+      }
+      getState().socket = null;
+      getState().account = null;
       logger.warn("Deriv WebSocket closed");
-      scheduleReconnect();
+      resolveOnce(false);
+      if (isRuntimeCurrent()) scheduleReconnect();
     });
 
     socket.once("error", (error) => {
+      if (!isCurrentSocket()) {
+        resolveOnce(false);
+        return;
+      }
       logger.error({ err: error }, "Deriv WebSocket connection failed");
-      reject(error);
+      rejectOnce(error);
     });
   });
 }
 
 async function connect() {
-  if (state.shuttingDown) return false;
-  if (state.socket?.readyState === WebSocket.OPEN) return true;
-  if (state.connecting) return state.connecting;
+  const ownerId = userContext.getStore();
+  const runtime = getState();
+  if (!ownerId || runtime.shuttingDown) return false;
+  if (runtime.socket?.readyState === WebSocket.OPEN) return true;
+  if (runtime.connecting) return runtime.connecting;
 
-  state.connecting = connectInternal()
+  runtime.connecting = connectInternal()
     .catch((error) => {
       logger.error({ err: error }, "Deriv connection attempt failed");
-      scheduleReconnect();
+      if (runtimes.get(ownerId) === runtime && !runtime.shuttingDown) {
+        scheduleReconnect();
+      }
       return false;
     })
     .finally(() => {
-      state.connecting = null;
+      runtime.connecting = null;
     });
 
-  return state.connecting;
+  return runtime.connecting;
 }
 
 export function getStatus(): DerivStatus {
   const digitPercentages = getDigitPercentages();
   return {
-    connected: state.socket?.readyState === WebSocket.OPEN,
-    authorized: state.socket?.readyState === WebSocket.OPEN,
-    account: state.account,
-    last_tick: state.lastTick,
-    last_proposal: state.lastProposal,
-    last_buy: state.lastBuy,
-    last_contract: state.lastContract,
-    bot_running: state.botRunning,
+    connected: getState().socket?.readyState === WebSocket.OPEN,
+    authorized: getState().socket?.readyState === WebSocket.OPEN,
+    account: getState().account,
+    last_tick: getState().lastTick,
+    last_proposal: getState().lastProposal,
+    last_buy: getState().lastBuy,
+    last_contract: getState().lastContract,
+    bot_running: getState().botRunning,
     symbol: defaultSymbol,
     currency: defaultCurrency,
     max_trade_amount: maxTradeAmount,
     live_trading_enabled: liveTradingEnabled,
     digit_even_percentage: digitPercentages.even,
     digit_odd_percentage: digitPercentages.odd,
-    digit_sample_count: state.digitEvenCount + state.digitOddCount,
+    digit_sample_count: getState().digitEvenCount + getState().digitOddCount,
   };
 }
 
@@ -549,9 +685,9 @@ export async function testConnection() {
 }
 
 export async function requestProposal(input: ProposalInput) {
-  state.lastProposalContractType = input.contract_type;
-  state.lastProposalSymbol = input.symbol ?? defaultSymbol;
-  state.lastProposalInput = input;
+  getState().lastProposalContractType = input.contract_type;
+  getState().lastProposalSymbol = input.symbol ?? defaultSymbol;
+  getState().lastProposalInput = input;
   const connected = await connect();
   if (!connected || !sendProposalRequest(input)) {
     throw new Error("Deriv WebSocket is not ready");
@@ -563,9 +699,9 @@ export async function requestProposal(input: ProposalInput) {
 }
 
 async function requestFreshProposal(input: ProposalInput) {
-  state.lastProposalContractType = input.contract_type;
-  state.lastProposalSymbol = input.symbol ?? defaultSymbol;
-  state.lastProposalInput = input;
+  getState().lastProposalContractType = input.contract_type;
+  getState().lastProposalSymbol = input.symbol ?? defaultSymbol;
+  getState().lastProposalInput = input;
   const connected = await connect();
   if (!connected) throw new Error("Deriv WebSocket is not ready");
 
@@ -576,51 +712,52 @@ async function requestFreshProposal(input: ProposalInput) {
       return;
     }
     const timer = setTimeout(() => {
-      state.proposalWaiters.delete(reqId);
+      getState().proposalWaiters.delete(reqId);
       reject(new Error("Deriv did not return a proposal in time"));
     }, 5000);
-    state.proposalWaiters.set(reqId, { resolve, reject, timer });
+    getState().proposalWaiters.set(reqId, { resolve, reject, timer });
   });
 }
 
 export async function selectAccount(accountId: string) {
-  const accounts = state.accounts.length ? state.accounts : await loadAccountsFromDeriv();
-  const account = accounts.find((item) => item.id === accountId);
+  const accounts = getState().accounts.length ? getState().accounts : await loadAccountsFromDeriv();
+  const account = accounts.find((item: DerivAccount) => item.id === accountId);
   if (!account) throw new Error("That account is not available");
   if (account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
   }
 
-  state.selectedAccountId = account.id;
-  state.socket?.close();
-  state.socket = null;
-  state.account = null;
-  state.lastProposal = null;
-  state.lastBuy = null;
-  state.lastContract = null;
-  state.lastProposalContractType = "";
-  state.lastProposalSymbol = defaultSymbol;
-  state.lastProposalInput = null;
-  state.lastProposalRefreshAt = 0;
-  state.digitEvenCount = 0;
-  state.digitOddCount = 0;
+  getState().selectedAccountId = account.id;
+  rejectProposalWaiters("Deriv account changed before proposal completed");
+  getState().socket?.close();
+  getState().socket = null;
+  getState().account = null;
+  getState().lastProposal = null;
+  getState().lastBuy = null;
+  getState().lastContract = null;
+  getState().lastProposalContractType = "";
+  getState().lastProposalSymbol = defaultSymbol;
+  getState().lastProposalInput = null;
+  getState().lastProposalRefreshAt = 0;
+  getState().digitEvenCount = 0;
+  getState().digitOddCount = 0;
   await connect();
   return getStatus();
 }
 
 export async function buyContract(input: BuyInput) {
-  if (!state.account) throw new Error("Select an account before buying a contract");
-  if (state.account.type === "real" && !liveTradingEnabled) {
+  if (!getState().account) throw new Error("Select an account before buying a contract");
+  if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
   }
-  if (state.account.type === "real" && !input.confirm_live_trade) {
+  if (getState().account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
-  const remainingCooldown = 1000 - (Date.now() - state.lastBuyAt);
+  const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
     throw new Error(`Buy cooldown active. Wait ${Math.ceil(remainingCooldown / 1000)} second.`);
   }
-  state.lastBuyAt = Date.now();
+  getState().lastBuyAt = Date.now();
   const proposal = await requestFreshProposal({
     amount: input.amount,
     duration: input.duration,
@@ -637,30 +774,28 @@ export async function buyContract(input: BuyInput) {
   }
   return {
     ok: true,
-    message: state.account.type === "real"
+    message: getState().account.type === "real"
       ? "Live buy request sent. Contract and balance updates will appear here."
       : "Demo buy request sent to Deriv. Contract and balance updates will appear here.",
     proposal,
-    buy: state.lastBuy,
+    buy: getState().lastBuy,
   };
 }
 
 export function getHistory() {
-  return state.history;
+  return getState().history;
 }
 
 export function clearHistory() {
-  for (const item of state.history) state.hiddenHistoryIds.add(item.contract_id);
-  state.history = [];
+  for (const item of getState().history) getState().hiddenHistoryIds.add(item.contract_id);
+  getState().history = [];
   return { ok: true, message: "Recent dashboard trade rows cleared. Deriv records were not deleted." };
 }
 
 export function startDeriv() {
-  void connect();
 }
 
 export function stopDeriv() {
-  state.shuttingDown = true;
-  if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
-  state.socket?.close();
+  clearInterval(runtimeReaper);
+  for (const userId of runtimes.keys()) disposeUser(userId);
 }
