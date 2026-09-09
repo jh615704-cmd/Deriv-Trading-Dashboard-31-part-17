@@ -9,6 +9,7 @@ export default function SignInPage() {
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [, setLocation] = useLocation();
 
@@ -17,6 +18,7 @@ export default function SignInPage() {
     if (!isLoaded) return;
     setIsLoading(true);
     setError('');
+    setSuccess('');
 
     try {
       const result = await signIn.password({
@@ -33,7 +35,8 @@ export default function SignInPage() {
       if (signIn.status === 'complete' && signIn.createdSessionId) {
         await signIn.finalize();
         setPassword('');
-        setLocation('/app');
+        setSuccess('Login successful. Opening JDY AI...');
+        window.setTimeout(() => setLocation('/app'), 350);
       } else {
         setError('Sign in requires further verification.');
       }
@@ -64,6 +67,11 @@ export default function SignInPage() {
         {error && (
           <div className="mb-6 p-3 bg-[#fff4f2] dark:bg-[#3c2426] border border-[#e5aaa5] dark:border-[#8c4d4a] rounded-lg text-[var(--coral)] dark:text-[#e6b6b2] text-sm text-center">
             {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-6 p-3 bg-[#e8fbf5] dark:bg-[#123d35] border border-[#7dd8c2] dark:border-[#2b846f] rounded-lg text-[#126a59] dark:text-[#9aead8] text-sm text-center" role="status">
+            {success}
           </div>
         )}
 
@@ -110,11 +118,11 @@ export default function SignInPage() {
           
           <button
             type="submit"
-            disabled={isLoading || !emailAddress || !password}
+            disabled={isLoading || Boolean(success) || !emailAddress || !password}
             className="w-full flex items-center justify-center gap-2 bg-[var(--teal)] text-[#f7fffd] py-2.5 rounded-lg font-bold text-sm shadow-[0_4px_14px_rgba(24,168,148,0.25)] hover:bg-[var(--teal-deep)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           >
             {isLoading ? <RefreshCw className="spin" size={16} /> : <LockKeyhole size={16} />}
-            {isLoading ? 'Authenticating...' : 'Login'}
+            {success ? 'Success' : isLoading ? 'Authenticating...' : 'Login'}
           </button>
         </form>
       </div>

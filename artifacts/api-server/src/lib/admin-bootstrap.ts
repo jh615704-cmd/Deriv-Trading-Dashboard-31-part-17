@@ -1,7 +1,8 @@
 import { createClerkClient } from "@clerk/backend";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db, approvedUsersTable } from "@workspace/db";
 import { logger } from "./logger";
+import { disposeUser } from "./deriv";
 
 function normalizedEmail(value: string): string {
   return value.trim().toLowerCase();
@@ -27,10 +28,9 @@ export async function bootstrapAdmin(): Promise<void> {
       const stillMatches = existingClerkUser?.emailAddresses.some(
         (address) => normalizedEmail(address.emailAddress) === email,
       );
-      if (existingApproved[0].active && existingApproved[0].role === "admin" && stillMatches) {
-        return;
+      if (!(existingApproved[0].active && existingApproved[0].role === "admin" && stillMatches)) {
+        await db.delete(approvedUsersTable).where(eq(approvedUsersTable.email, email));
       }
-      await db.delete(approvedUsersTable).where(eq(approvedUsersTable.email, email));
     }
 
     const found = await clerk.users.getUserList({ emailAddress: [email], limit: 1 });
@@ -49,6 +49,10 @@ export async function bootstrapAdmin(): Promise<void> {
         password: initialPassword,
         signOutOfOtherSessions: true,
       });
+      if (user.totpEnabled) await clerk.users.deleteUserTOTP(user.id);
+      if (user.backupCodeEnabled) await clerk.users.deleteUserBackupCodes(user.id);
+      if (user.banned) user = await clerk.users.unbanUser(user.id);
+      if (user.locked) user = await clerk.users.unlockUser(user.id);
     }
     await clerk.users.updateUserMetadata(user.id, { publicMetadata: { role: "admin" } });
     await db.insert(approvedUsersTable).values({
@@ -57,6 +61,14 @@ export async function bootstrapAdmin(): Promise<void> {
       target: approvedUsersTable.userId,
       set: { email, role: "admin", active: true },
     });
+    const previousAdmins = await db.select({ userId: approvedUsersTable.userId })
+      .from(approvedUsersTable)
+      .where(and(eq(approvedUsersTable.role, "admin"), ne(approvedUsersTable.email, email)));
+    if (previousAdmins.length) {
+      await db.delete(approvedUsersTable)
+        .where(and(eq(approvedUsersTable.role, "admin"), ne(approvedUsersTable.email, email)));
+      for (const previousAdmin of previousAdmins) disposeUser(previousAdmin.userId);
+    }
     logger.info({ provisioned: true }, "Administrator access provisioned");
   } catch (error) {
     const clerkError = error as {
