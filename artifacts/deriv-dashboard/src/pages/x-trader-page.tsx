@@ -8,6 +8,7 @@ import {
   useGetDerivHistory,
   useGetDerivStatus,
   useGetDerivTokenStatus,
+  getDerivHistory,
   useSelectDerivAccount,
   useSelectDerivSymbol,
   useTestDerivConnection,
@@ -141,7 +142,11 @@ export default function XTraderPage() {
   const executeBatch = async () => {
     const config = configRef.current;
     let amount = config.stake;
-    const lastSettled = rows.find((trade) => trade.status !== "open");
+    // Fetch fresh history here instead of using the render snapshot. The
+    // previous contract may have settled while the run loop was awaiting it.
+    const latestRows = await getDerivHistory();
+    queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+    const lastSettled = latestRows.find((trade) => trade.status !== "open");
     if (config.strategy === "martingale" && lastSettled && lastSettled.profit < 0) {
       amount = Number((config.stake * config.martingale).toFixed(2));
     }
@@ -168,7 +173,9 @@ export default function XTraderPage() {
       try {
         if (autoSwitch) chooseBestDigit();
         await executeBatch();
-        if (runningRef.current) await sleep(Math.max(1_100, configRef.current.duration * 650));
+        // Give the contract time to settle before the next loop reads the
+        // result. A single loss then affects exactly the following trade.
+        if (runningRef.current) await sleep(Math.max(1_300, configRef.current.duration * 1_100));
       } catch (error) {
         runningRef.current = false;
         setRunning(false);
@@ -282,7 +289,7 @@ export default function XTraderPage() {
         </div>
 
         <div className="xt-digits">
-          {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={barrier === item.digit ? "active" : ""} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
+          {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={`${barrier === item.digit ? "active " : ""}${lastDigit === item.digit ? "market-digit" : ""}`} aria-label={lastDigit === item.digit ? `Current market last digit ${item.digit}` : `Digit ${item.digit}`} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
         </div>
         <p className="xt-streak-note">Current consecutive streak at digit {barrier}: <b>Over {selectedStreak?.over ?? 0}</b> · <b>Under {selectedStreak?.under ?? 0}</b>. Based on the most recent {status.data?.digit_sample_count ?? 0} observed ticks.</p>
 
