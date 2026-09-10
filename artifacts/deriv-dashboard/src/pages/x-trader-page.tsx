@@ -142,9 +142,16 @@ export default function XTraderPage() {
   const executeBatch = async () => {
     const config = configRef.current;
     let amount = config.stake;
-    // Fetch fresh history here instead of using the render snapshot. The
-    // previous contract may have settled while the run loop was awaiting it.
-    const latestRows = await getDerivHistory();
+    // Do not decide the next stake from an older settled result while the
+    // immediately preceding contract is still open.
+    let latestRows = await getDerivHistory();
+    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
+      await sleep(500);
+      latestRows = await getDerivHistory();
+    }
+    if (latestRows.some((trade) => trade.status === "open")) {
+      throw new Error("The previous contract is still settling. X Trader stopped without sending another trade.");
+    }
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     const lastSettled = latestRows.find((trade) => trade.status !== "open");
     if (config.strategy === "martingale" && lastSettled && lastSettled.profit < 0) {
