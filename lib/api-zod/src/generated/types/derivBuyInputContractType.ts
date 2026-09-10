@@ -12,4 +12,6 @@ export type DerivBuyInputContractType = typeof DerivBuyInputContractType[keyof t
 export const DerivBuyInputContractType = {
   DIGITEVEN: 'DIGITEVEN',
   DIGITODD: 'DIGITODD',
+  DIGITOVER: 'DIGITOVER',
+  DIGITUNDER: 'DIGITUNDER',
 } as const;

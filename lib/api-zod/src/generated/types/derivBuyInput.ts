@@ -18,6 +18,11 @@ export interface DerivBuyInput {
   duration: number;
   duration_unit: DerivBuyInputDurationUnit;
   contract_type: DerivBuyInputContractType;
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  barrier?: number;
   symbol?: string;
   confirm_live_trade: true;
 }

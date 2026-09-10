@@ -1,10 +1,10 @@
 ---
 name: JDY AI access control
-description: Durable authorization and account-provisioning rules for the admin-controlled login model.
+description: Durable boundary between public trading sessions and Clerk-protected administrator APIs.
 ---
 
-Clerk remains the identity and session provider, but a valid Clerk session alone never grants JDY AI access. Every protected API must also require an active local approved-user record keyed to the Clerk user ID. Only an approved administrator may provision users and choose their initial Clerk password; there is no public signup flow.
+The trading cockpit has no login gate. Trading and PAT APIs use a signed, HTTP-only per-browser guest session so encrypted credentials and Deriv runtime state remain isolated. Clerk and local approved-user records remain the authorization model for administrator APIs only.
 
-**Why:** Hiding signup controls is not authorization. Social or directly created Clerk identities could otherwise reach trading APIs unless the server independently enforces administrator approval.
+**Why:** The product requires direct access to the cockpit without email/password login while still preventing one browser from reading another browser's PAT or trading state. Administrator provisioning remains privileged.
 
-**How to apply:** New protected routes must use the approved-user middleware, and admin capabilities must also enforce the local admin role server-side. Passwords go directly to Clerk and must never be logged, returned, or stored locally.
+**How to apply:** New trading routes must use the signed guest identity and preserve per-user serialization. New administrator routes must use Clerk plus the active local approved-user/admin role checks. Never expose PATs or Clerk passwords.

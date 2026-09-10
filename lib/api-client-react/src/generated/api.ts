@@ -33,6 +33,7 @@ import type {
   DerivProposalInput,
   DerivProposalRequest,
   DerivStatus,
+  DerivSymbolSelection,
   DerivTokenInput,
   DerivTokenStatus,
   DerivTokenTestResponse,
@@ -956,6 +957,77 @@ export const useSelectDerivAccount = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getSelectDerivAccountMutationOptions(options));
+    }
+
+export const getSelectDerivSymbolUrl = () => {
+
+
+
+
+  return `/api/deriv/select-symbol`
+}
+
+/**
+ * @summary Select the market used for live digit telemetry
+ */
+export const selectDerivSymbol = async (derivSymbolSelection: DerivSymbolSelection, options?: Parameters<typeof customFetch>[1]): Promise<DerivStatus> => {
+
+  return customFetch<DerivStatus>(getSelectDerivSymbolUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivSymbolSelection)
+  }
+);}
+
+
+
+
+
+export const getSelectDerivSymbolMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectDerivSymbol>>, TError,{data: BodyType<DerivSymbolSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof selectDerivSymbol>>, TError,{data: BodyType<DerivSymbolSelection>}, TContext> => {
+
+const mutationKey = ['selectDerivSymbol'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof selectDerivSymbol>>, {data: BodyType<DerivSymbolSelection>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  selectDerivSymbol(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SelectDerivSymbolMutationResult = NonNullable<Awaited<ReturnType<typeof selectDerivSymbol>>>
+    export type SelectDerivSymbolMutationBody = BodyType<DerivSymbolSelection>
+    export type SelectDerivSymbolMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Select the market used for live digit telemetry
+ */
+export const useSelectDerivSymbol = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof selectDerivSymbol>>, TError,{data: BodyType<DerivSymbolSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof selectDerivSymbol>>,
+        TError,
+        {data: BodyType<DerivSymbolSelection>},
+        TContext
+      > => {
+      return useMutation(getSelectDerivSymbolMutationOptions(options));
     }
 
 export const getBuyDerivContractUrl = () => {

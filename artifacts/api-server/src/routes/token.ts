@@ -4,12 +4,9 @@ import { db, derivCredentialsTable } from "@workspace/db";
 import { TestDerivTokenBody, TestDerivTokenResponse, GetDerivTokenStatusResponse, DeleteDerivTokenResponse } from "@workspace/api-zod";
 import { encryptPat } from "../lib/pat-crypto";
 import { disposeUser, setUserPat, withUserSerialized } from "../lib/deriv";
-import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 const appId = process.env.DERIV_APP_ID;
-
-router.use(requireAuth);
 
 router.post("/token/test", async (req, res): Promise<void> => {
   const parsed = TestDerivTokenBody.safeParse(req.body);

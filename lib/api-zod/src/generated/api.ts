@@ -121,6 +121,17 @@ export const GetDerivAccountsResponse = zod.array(GetDerivAccountsResponseItem)
 /**
  * @summary Get Deriv connection status
  */
+export const getDerivStatusResponseLastDigitMin = 0;
+export const getDerivStatusResponseLastDigitMax = 9;
+
+export const getDerivStatusResponseDigitStreaksItemDigitMax = 9;
+
+export const getDerivStatusResponseDigitStreaksItemOverMin = 0;
+
+export const getDerivStatusResponseDigitStreaksItemUnderMin = 0;
+
+
+
 export const GetDerivStatusResponse = zod.object({
   "connected": zod.boolean(),
   "authorized": zod.boolean(),
@@ -168,13 +179,30 @@ export const GetDerivStatusResponse = zod.object({
   "live_trading_enabled": zod.boolean().optional(),
   "digit_even_percentage": zod.number().optional(),
   "digit_odd_percentage": zod.number().optional(),
-  "digit_sample_count": zod.number().int().optional()
+  "digit_sample_count": zod.number().int().optional(),
+  "last_digit": zod.number().int().min(getDerivStatusResponseLastDigitMin).max(getDerivStatusResponseLastDigitMax).nullish(),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(getDerivStatusResponseDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(getDerivStatusResponseDigitStreaksItemOverMin),
+  "under": zod.number().int().min(getDerivStatusResponseDigitStreaksItemUnderMin)
+})).optional()
 })
 
 
 /**
  * @summary Test the Deriv REST and WebSocket connection
  */
+export const testDerivConnectionResponseStatusLastDigitMin = 0;
+export const testDerivConnectionResponseStatusLastDigitMax = 9;
+
+export const testDerivConnectionResponseStatusDigitStreaksItemDigitMax = 9;
+
+export const testDerivConnectionResponseStatusDigitStreaksItemOverMin = 0;
+
+export const testDerivConnectionResponseStatusDigitStreaksItemUnderMin = 0;
+
+
+
 export const TestDerivConnectionResponse = zod.object({
   "ok": zod.boolean(),
   "message": zod.string(),
@@ -232,7 +260,13 @@ export const TestDerivConnectionResponse = zod.object({
   "live_trading_enabled": zod.boolean().optional(),
   "digit_even_percentage": zod.number().optional(),
   "digit_odd_percentage": zod.number().optional(),
-  "digit_sample_count": zod.number().int().optional()
+  "digit_sample_count": zod.number().int().optional(),
+  "last_digit": zod.number().int().min(testDerivConnectionResponseStatusLastDigitMin).max(testDerivConnectionResponseStatusLastDigitMax).nullish(),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(testDerivConnectionResponseStatusDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(testDerivConnectionResponseStatusDigitStreaksItemOverMin),
+  "under": zod.number().int().min(testDerivConnectionResponseStatusDigitStreaksItemUnderMin)
+})).optional()
 })
 })
 
@@ -244,13 +278,17 @@ export const requestDerivProposalBodyAmountExclusiveMin = 0;
 
 export const requestDerivProposalBodyDurationMax = 1000;
 
+export const requestDerivProposalBodyBarrierMin = 0;
+export const requestDerivProposalBodyBarrierMax = 9;
+
 
 
 export const RequestDerivProposalBody = zod.object({
   "amount": zod.number().gt(requestDerivProposalBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(requestDerivProposalBodyDurationMax),
   "duration_unit": zod.enum(['t', 's', 'm']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER']),
+  "barrier": zod.number().int().min(requestDerivProposalBodyBarrierMin).max(requestDerivProposalBodyBarrierMax).optional(),
   "symbol": zod.string().optional()
 })
 
@@ -269,6 +307,17 @@ export const RequestDerivProposalResponse = zod.object({
 export const SelectDerivAccountBody = zod.object({
   "account_id": zod.string().min(1)
 })
+
+export const selectDerivAccountResponseLastDigitMin = 0;
+export const selectDerivAccountResponseLastDigitMax = 9;
+
+export const selectDerivAccountResponseDigitStreaksItemDigitMax = 9;
+
+export const selectDerivAccountResponseDigitStreaksItemOverMin = 0;
+
+export const selectDerivAccountResponseDigitStreaksItemUnderMin = 0;
+
+
 
 export const SelectDerivAccountResponse = zod.object({
   "connected": zod.boolean(),
@@ -317,7 +366,91 @@ export const SelectDerivAccountResponse = zod.object({
   "live_trading_enabled": zod.boolean().optional(),
   "digit_even_percentage": zod.number().optional(),
   "digit_odd_percentage": zod.number().optional(),
-  "digit_sample_count": zod.number().int().optional()
+  "digit_sample_count": zod.number().int().optional(),
+  "last_digit": zod.number().int().min(selectDerivAccountResponseLastDigitMin).max(selectDerivAccountResponseLastDigitMax).nullish(),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(selectDerivAccountResponseDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(selectDerivAccountResponseDigitStreaksItemOverMin),
+  "under": zod.number().int().min(selectDerivAccountResponseDigitStreaksItemUnderMin)
+})).optional()
+})
+
+
+/**
+ * @summary Select the market used for live digit telemetry
+ */
+
+
+
+export const SelectDerivSymbolBody = zod.object({
+  "symbol": zod.string().min(1)
+})
+
+export const selectDerivSymbolResponseLastDigitMin = 0;
+export const selectDerivSymbolResponseLastDigitMax = 9;
+
+export const selectDerivSymbolResponseDigitStreaksItemDigitMax = 9;
+
+export const selectDerivSymbolResponseDigitStreaksItemOverMin = 0;
+
+export const selectDerivSymbolResponseDigitStreaksItemUnderMin = 0;
+
+
+
+export const SelectDerivSymbolResponse = zod.object({
+  "connected": zod.boolean(),
+  "authorized": zod.boolean(),
+  "account": zod.union([zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['demo', 'real']),
+  "currency": zod.string(),
+  "balance": zod.number(),
+  "status": zod.string()
+}),zod.null()]).optional(),
+  "last_tick": zod.union([zod.object({
+  "symbol": zod.string(),
+  "quote": zod.number(),
+  "epoch": zod.number().int()
+}),zod.null()]).optional(),
+  "last_proposal": zod.union([zod.object({
+  "id": zod.string(),
+  "ask_price": zod.number(),
+  "payout": zod.number(),
+  "spot": zod.number(),
+  "longcode": zod.string().nullish()
+}),zod.null()]).optional(),
+  "last_buy": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
+  "last_contract": zod.union([zod.object({
+  "contract_id": zod.string(),
+  "status": zod.string(),
+  "is_sold": zod.boolean(),
+  "profit": zod.number(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "sell_price": zod.number().optional(),
+  "entry_spot": zod.number().optional(),
+  "current_spot": zod.number().optional(),
+  "expiry_time": zod.number().int().nullish()
+}),zod.null()]).optional(),
+  "bot_running": zod.boolean(),
+  "symbol": zod.string(),
+  "currency": zod.string(),
+  "max_trade_amount": zod.number(),
+  "live_trading_enabled": zod.boolean().optional(),
+  "digit_even_percentage": zod.number().optional(),
+  "digit_odd_percentage": zod.number().optional(),
+  "digit_sample_count": zod.number().int().optional(),
+  "last_digit": zod.number().int().min(selectDerivSymbolResponseLastDigitMin).max(selectDerivSymbolResponseLastDigitMax).nullish(),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(selectDerivSymbolResponseDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(selectDerivSymbolResponseDigitStreaksItemOverMin),
+  "under": zod.number().int().min(selectDerivSymbolResponseDigitStreaksItemUnderMin)
+})).optional()
 })
 
 
@@ -329,13 +462,17 @@ export const buyDerivContractBodyAmountExclusiveMin = 0;
 
 export const buyDerivContractBodyDurationMax = 5;
 
+export const buyDerivContractBodyBarrierMin = 0;
+export const buyDerivContractBodyBarrierMax = 9;
+
 
 
 export const BuyDerivContractBody = zod.object({
   "amount": zod.number().gt(buyDerivContractBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(buyDerivContractBodyDurationMax),
   "duration_unit": zod.enum(['t']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER']),
+  "barrier": zod.number().int().min(buyDerivContractBodyBarrierMin).max(buyDerivContractBodyBarrierMax).optional(),
   "symbol": zod.string().optional(),
   "confirm_live_trade": zod.literal(true)
 })

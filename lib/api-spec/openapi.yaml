@@ -8,7 +8,7 @@ servers:
   - url: /api
     description: Base API path
 security:
-  - clerkSession: []
+  - guestSession: []
 tags:
   - name: health
     description: Health operations
@@ -37,6 +37,8 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
   /auth/access:
     get:
+      security:
+        - clerkSession: []
       operationId: getAuthAccess
       tags: [auth]
       summary: Get approved access for the current user
@@ -61,6 +63,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /admin/users:
     get:
+      security:
+        - clerkSession: []
       operationId: listAdminUsers
       tags: [admin]
       summary: List approved users
@@ -74,6 +78,8 @@ paths:
                 items:
                   $ref: "#/components/schemas/ApprovedUser"
     post:
+      security:
+        - clerkSession: []
       operationId: createAdminUser
       tags: [admin]
       summary: Create an approved Clerk user
@@ -255,6 +261,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /deriv/select-symbol:
+    post:
+      operationId: selectDerivSymbol
+      tags: [deriv]
+      summary: Select the market used for live digit telemetry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivSymbolSelection"
+      responses:
+        "200":
+          description: Selected market status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivStatus"
+        "400":
+          description: Unsupported market
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: Unable to connect to the selected account
           content:
@@ -330,6 +360,10 @@ paths:
                 $ref: "#/components/schemas/DerivHistoryClearResponse"
 components:
   securitySchemes:
+    guestSession:
+      type: apiKey
+      in: cookie
+      name: jdy_guest
     clerkSession:
       type: apiKey
       in: cookie
@@ -479,6 +513,28 @@ components:
           type: number
         digit_sample_count:
           type: integer
+        last_digit:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 9
+        digit_streaks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DigitStreak"
+    DigitStreak:
+      type: object
+      required: [digit, over, under]
+      properties:
+        digit:
+          type: integer
+          minimum: 1
+          maximum: 9
+        over:
+          type: integer
+          minimum: 0
+        under:
+          type: integer
+          minimum: 0
     DerivConnectionTest:
       type: object
       required: [ok, message, accounts, status]
@@ -509,7 +565,11 @@ components:
           enum: [t, s, m]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER]
+        barrier:
+          type: integer
+          minimum: 0
+          maximum: 9
         symbol:
           type: string
     DerivProposalRequest:
@@ -525,6 +585,13 @@ components:
       required: [account_id]
       properties:
         account_id:
+          type: string
+          minLength: 1
+    DerivSymbolSelection:
+      type: object
+      required: [symbol]
+      properties:
+        symbol:
           type: string
           minLength: 1
     DerivBuyInput:
@@ -543,7 +610,11 @@ components:
           enum: [t]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER]
+        barrier:
+          type: integer
+          minimum: 0
+          maximum: 9
         symbol:
           type: string
         confirm_live_trade:

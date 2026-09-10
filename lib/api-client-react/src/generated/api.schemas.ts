@@ -126,6 +126,18 @@ export interface DerivContract {
   expiry_time?: number | null;
 }
 
+export interface DigitStreak {
+  /**
+     * @minimum 1
+     * @maximum 9
+     */
+  digit: number;
+  /** @minimum 0 */
+  over: number;
+  /** @minimum 0 */
+  under: number;
+}
+
 export interface DerivStatus {
   connected: boolean;
   authorized: boolean;
@@ -142,6 +154,13 @@ export interface DerivStatus {
   digit_even_percentage?: number;
   digit_odd_percentage?: number;
   digit_sample_count?: number;
+  /**
+     * @minimum 0
+     * @maximum 9
+     * @nullable
+     */
+  last_digit?: number | null;
+  digit_streaks?: DigitStreak[];
 }
 
 export interface DerivConnectionTest {
@@ -166,6 +185,8 @@ export type DerivProposalInputContractType = typeof DerivProposalInputContractTy
 export const DerivProposalInputContractType = {
   DIGITEVEN: 'DIGITEVEN',
   DIGITODD: 'DIGITODD',
+  DIGITOVER: 'DIGITOVER',
+  DIGITUNDER: 'DIGITUNDER',
 } as const;
 
 export interface DerivProposalInput {
@@ -178,6 +199,11 @@ export interface DerivProposalInput {
   duration: number;
   duration_unit: DerivProposalInputDurationUnit;
   contract_type: DerivProposalInputContractType;
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  barrier?: number;
   symbol?: string;
 }
 
@@ -189,6 +215,11 @@ export interface DerivProposalRequest {
 export interface DerivAccountSelection {
   /** @minLength 1 */
   account_id: string;
+}
+
+export interface DerivSymbolSelection {
+  /** @minLength 1 */
+  symbol: string;
 }
 
 export type DerivBuyInputDurationUnit = typeof DerivBuyInputDurationUnit[keyof typeof DerivBuyInputDurationUnit];
@@ -204,6 +235,8 @@ export type DerivBuyInputContractType = typeof DerivBuyInputContractType[keyof t
 export const DerivBuyInputContractType = {
   DIGITEVEN: 'DIGITEVEN',
   DIGITODD: 'DIGITODD',
+  DIGITOVER: 'DIGITOVER',
+  DIGITUNDER: 'DIGITUNDER',
 } as const;
 
 export interface DerivBuyInput {
@@ -216,6 +249,11 @@ export interface DerivBuyInput {
   duration: number;
   duration_unit: DerivBuyInputDurationUnit;
   contract_type: DerivBuyInputContractType;
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  barrier?: number;
   symbol?: string;
   confirm_live_trade: true;
 }

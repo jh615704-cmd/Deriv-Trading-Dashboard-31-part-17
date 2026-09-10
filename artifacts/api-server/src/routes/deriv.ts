@@ -8,6 +8,8 @@ import {
   BuyDerivContractResponse,
   SelectDerivAccountBody,
   SelectDerivAccountResponse,
+  SelectDerivSymbolBody,
+  SelectDerivSymbolResponse,
   TestDerivConnectionResponse,
 } from "@workspace/api-zod";
 import {
@@ -19,18 +21,16 @@ import {
   requestProposal,
   buyContract,
   selectAccount,
+  selectSymbol,
   testConnection,
   withUserSerialized,
   setUserPat,
 } from "../lib/deriv";
-import { requireAuth } from "../middlewares/requireAuth";
 import { db, derivCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { decryptPat } from "../lib/pat-crypto";
 
 const router: IRouter = Router();
-router.use(requireAuth);
-
 class MissingDerivCredentialError extends Error {}
 
 async function withCredential<T>(userId: string, operation: () => Promise<T>): Promise<T> {
@@ -133,6 +133,20 @@ router.post("/deriv/select-account", async (req, res) => {
   } catch (error) {
     req.log.error({ err: error }, "Deriv account selection failed");
     return res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({ error: error instanceof Error ? error.message : "Unable to select account" });
+  }
+});
+
+router.post("/deriv/select-symbol", async (req, res) => {
+  const parsed = SelectDerivSymbolBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid market selection" });
+  try {
+    const result = SelectDerivSymbolResponse.parse(
+      await withCredential(res.locals.userId, () => selectSymbol(parsed.data.symbol)),
+    );
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to select market";
+    return res.status(error instanceof MissingDerivCredentialError ? 401 : 400).json({ error: message });
   }
 });
 

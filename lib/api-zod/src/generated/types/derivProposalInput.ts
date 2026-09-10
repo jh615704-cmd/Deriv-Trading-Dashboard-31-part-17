@@ -18,5 +18,10 @@ export interface DerivProposalInput {
   duration: number;
   duration_unit: DerivProposalInputDurationUnit;
   contract_type: DerivProposalInputContractType;
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  barrier?: number;
   symbol?: string;
 }

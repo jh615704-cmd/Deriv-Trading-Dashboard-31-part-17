@@ -10,6 +10,12 @@ const defaultCurrency = process.env.DERIV_CURRENCY ?? "USD";
 const maxTradeAmount = Number(process.env.MAX_TRADE_AMOUNT ?? "100");
 const configuredAccountId = process.env.DERIV_ACCOUNT_ID;
 const liveTradingEnabled = process.env.DERIV_ALLOW_LIVE_TRADING === "true";
+const supportedSymbols = new Set([
+  "R_10", "R_25", "R_50", "R_75", "R_100",
+  "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
+  "JD10", "JD25", "JD50", "JD75", "JD100",
+]);
+type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER";
 
 export type DerivAccount = {
   id: string;
@@ -83,13 +89,16 @@ export type DerivStatus = {
   digit_even_percentage: number;
   digit_odd_percentage: number;
   digit_sample_count: number;
+  last_digit: number | null;
+  digit_streaks: Array<{ digit: number; over: number; under: number }>;
 };
 
 type ProposalInput = {
   amount: number;
   duration: number;
   duration_unit: "t" | "s" | "m";
-  contract_type: "DIGITEVEN" | "DIGITODD";
+  contract_type: DigitContractType;
+  barrier?: number;
   symbol?: string;
 };
 
@@ -97,7 +106,8 @@ type BuyInput = {
   amount: number;
   duration: number;
   duration_unit: "t";
-  contract_type: "DIGITEVEN" | "DIGITODD";
+  contract_type: DigitContractType;
+  barrier?: number;
   symbol?: string;
   confirm_live_trade: true;
 };
@@ -132,6 +142,8 @@ return {
   lastBuyAt: 0,
   digitEvenCount: 0,
   digitOddCount: 0,
+  digitHistory: [] as number[],
+  selectedSymbol: defaultSymbol,
   hiddenHistoryIds: new Set<string>(),
   selectedAccountId: configuredAccountId ?? null as string | null,
   botRunning: false,
@@ -290,8 +302,23 @@ function recordLastDigit(quote: unknown) {
   const digits = String(quote ?? "").replace(/\D/g, "");
   const lastDigit = digits.at(-1);
   if (!lastDigit) return;
-  if (Number(lastDigit) % 2 === 0) getState().digitEvenCount += 1;
+  const digit = Number(lastDigit);
+  getState().digitHistory.push(digit);
+  getState().digitHistory = getState().digitHistory.slice(-100);
+  if (digit % 2 === 0) getState().digitEvenCount += 1;
   else getState().digitOddCount += 1;
+}
+
+function getDigitStreaks() {
+  const history = getState().digitHistory as number[];
+  return Array.from({ length: 9 }, (_, index) => {
+    const digit = index + 1;
+    let over = 0;
+    let under = 0;
+    for (let cursor = history.length - 1; cursor >= 0 && history[cursor] > digit; cursor -= 1) over += 1;
+    for (let cursor = history.length - 1; cursor >= 0 && history[cursor] < digit; cursor -= 1) under += 1;
+    return { digit, over, under };
+  });
 }
 
 function getDigitPercentages() {
@@ -422,6 +449,7 @@ function sendProposalRequest(input: ProposalInput) {
     duration: input.duration,
     duration_unit: input.duration_unit,
     underlying_symbol: input.symbol ?? defaultSymbol,
+    ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
     req_id: reqId,
   });
   return sent ? reqId : null;
@@ -476,7 +504,7 @@ async function connectInternal() {
       }
       logger.info({ accountId: account.id }, "Deriv WebSocket connected");
       send({ balance: 1, subscribe: 1 });
-      send({ ticks: defaultSymbol, subscribe: 1 });
+      send({ ticks: ownerRuntime.selectedSymbol, subscribe: 1 });
       send({ portfolio: 1 });
       send({ profit_table: 1, limit: 50, description: 1, sort: "DESC" });
       resolveOnce(true);
@@ -498,7 +526,7 @@ async function connectInternal() {
         };
       } else if (message.msg_type === "tick") {
         getState().lastTick = {
-          symbol: String(message.tick?.symbol ?? defaultSymbol),
+          symbol: String(message.tick?.symbol ?? getState().selectedSymbol),
           quote: Number(message.tick?.quote ?? 0),
           epoch: Number(message.tick?.epoch ?? 0),
         };
@@ -652,13 +680,15 @@ export function getStatus(): DerivStatus {
     last_buy: getState().lastBuy,
     last_contract: getState().lastContract,
     bot_running: getState().botRunning,
-    symbol: defaultSymbol,
+    symbol: getState().selectedSymbol,
     currency: defaultCurrency,
     max_trade_amount: maxTradeAmount,
     live_trading_enabled: liveTradingEnabled,
     digit_even_percentage: digitPercentages.even,
     digit_odd_percentage: digitPercentages.odd,
     digit_sample_count: getState().digitEvenCount + getState().digitOddCount,
+    last_digit: getState().digitHistory.at(-1) ?? null,
+    digit_streaks: getDigitStreaks(),
   };
 }
 
@@ -741,7 +771,23 @@ export async function selectAccount(accountId: string) {
   getState().lastProposalRefreshAt = 0;
   getState().digitEvenCount = 0;
   getState().digitOddCount = 0;
+  getState().digitHistory = [];
   await connect();
+  return getStatus();
+}
+
+export async function selectSymbol(symbol: string) {
+  if (!supportedSymbols.has(symbol)) throw new Error("That market is not supported");
+  if (getState().selectedSymbol === symbol) return getStatus();
+  getState().selectedSymbol = symbol;
+  getState().lastTick = null;
+  getState().digitEvenCount = 0;
+  getState().digitOddCount = 0;
+  getState().digitHistory = [];
+  getState().lastProposal = null;
+  getState().lastProposalInput = null;
+  send({ forget_all: "ticks" });
+  send({ ticks: symbol, subscribe: 1 });
   return getStatus();
 }
 
@@ -763,6 +809,7 @@ export async function buyContract(input: BuyInput) {
     duration: input.duration,
     duration_unit: input.duration_unit,
     contract_type: input.contract_type,
+    barrier: input.barrier,
     symbol: input.symbol,
   });
   if (proposal.ask_price > maxTradeAmount) {

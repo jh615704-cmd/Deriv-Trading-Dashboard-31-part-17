@@ -10,6 +10,7 @@ import type { DerivBuy } from './derivBuy';
 import type { DerivContract } from './derivContract';
 import type { DerivProposal } from './derivProposal';
 import type { DerivTick } from './derivTick';
+import type { DigitStreak } from './digitStreak';
 
 export interface DerivStatus {
   connected: boolean;
@@ -27,4 +28,11 @@ export interface DerivStatus {
   digit_even_percentage?: number;
   digit_odd_percentage?: number;
   digit_sample_count?: number;
+  /**
+     * @minimum 0
+     * @maximum 9
+     * @nullable
+     */
+  last_digit?: number | null;
+  digit_streaks?: DigitStreak[];
 }

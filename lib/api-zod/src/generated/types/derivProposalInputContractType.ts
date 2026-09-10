@@ -12,4 +12,6 @@ export type DerivProposalInputContractType = typeof DerivProposalInputContractTy
 export const DerivProposalInputContractType = {
   DIGITEVEN: 'DIGITEVEN',
   DIGITODD: 'DIGITODD',
+  DIGITOVER: 'DIGITOVER',
+  DIGITUNDER: 'DIGITUNDER',
 } as const;
