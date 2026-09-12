@@ -1,7 +1,6 @@
 import type { RequestHandler } from "express";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
-import { requireAdmin, requireAuth } from "./requireAuth";
 import {
   findSessionByToken,
   featureList,
@@ -70,19 +69,4 @@ export const requireAccessAdmin: RequestHandler = (req, res, next) => {
     return;
   }
   next();
-};
-
-export const requireAccessOrClerkAdmin: RequestHandler = (req, res, next) => {
-  const rawToken = parseAccessCookie(req.headers.cookie);
-  if (rawToken) {
-    requireAccess(req, res, next);
-    return;
-  }
-  requireAuth(req, res, (error) => {
-    if (error) {
-      next(error);
-      return;
-    }
-    requireAdmin(req, res, next);
-  });
 };

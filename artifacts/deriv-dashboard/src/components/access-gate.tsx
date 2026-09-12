@@ -3,12 +3,10 @@ import { Link, useLocation } from "wouter";
 import {
   getGetAccessSessionQueryKey,
   useGetAccessSession,
-  useGetAuthAccess,
   useHeartbeatAccessSession,
   useLoginAccessKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useUser } from "@clerk/react";
 import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 
 const DEVICE_STORAGE_KEY = "jdy-edge-device-id";
@@ -29,10 +27,6 @@ function getErrorMessage(error: unknown) {
 export function AccessGate({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const { user } = useUser();
-  const authAccess = useGetAuthAccess({
-    query: { enabled: Boolean(user), retry: false, queryKey: ["/api/auth/access"] },
-  });
   const accessSession = useGetAccessSession({
     query: {
       retry: false,
@@ -45,7 +39,6 @@ export function AccessGate({ children }: { children: ReactNode }) {
   const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState("");
   const deviceId = useMemo(() => getDeviceId(), []);
-  const isClerkAdmin = authAccess.data?.role === "admin";
 
   useEffect(() => {
     if (!accessSession.data) return;
@@ -56,8 +49,6 @@ export function AccessGate({ children }: { children: ReactNode }) {
   }, [accessSession.data, heartbeat]);
 
   if (location === "/sign-in") return <>{children}</>;
-  if (location.startsWith("/admin") && isClerkAdmin && !accessSession.data) return <>{children}</>;
-
   if (accessSession.isLoading) {
     return (
       <div className="access-gate">
@@ -117,7 +108,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
         </form>
         <div className="access-gate-footer">
           <span>One device per key by default</span>
-          <Link href="/sign-in">Administrator sign-in</Link>
+          <span>Administrator keys unlock the control panel</span>
         </div>
       </div>
     </div>

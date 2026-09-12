@@ -26,7 +26,7 @@ import {
   onlineDeviceCount,
   parseAccessCookie,
 } from "../lib/access-keys";
-import { requireAccess, requireAccessAdmin, requireAccessOrClerkAdmin } from "../middlewares/requireAccess";
+import { requireAccess, requireAccessAdmin } from "../middlewares/requireAccess";
 
 const router: IRouter = Router();
 
@@ -153,7 +153,7 @@ router.post("/access/logout", requireAccess, async (req, res): Promise<void> => 
   res.json({ success: true });
 });
 
-router.use("/access/keys", requireAccessOrClerkAdmin, requireAccessAdmin);
+router.use("/access/keys", requireAccess, requireAccessAdmin);
 
 router.get("/access/keys", async (_req, res): Promise<void> => {
   const keys = await db.select().from(accessKeysTable).orderBy(asc(accessKeysTable.createdAt));

@@ -2,7 +2,6 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 import { getGetAccessSessionQueryKey, useGetAccessSession, useLogoutAccessSession } from '@workspace/api-client-react';
-import { useGetAuthAccess, getGetAuthAccessQueryKey } from '@workspace/api-client-react';
 import {
   Gauge,
   LockKeyhole,
@@ -31,8 +30,7 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const { user } = useUser();
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const logoutAccess = useLogoutAccessSession();
-  const authAccess = useGetAuthAccess({ query: { enabled: !!user, retry: false, queryKey: getGetAuthAccessQueryKey() } });
-  const isAdmin = accessSession.data?.kind === 'admin' || authAccess.data?.role === 'admin';
+  const isAdmin = accessSession.data?.kind === 'admin';
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
