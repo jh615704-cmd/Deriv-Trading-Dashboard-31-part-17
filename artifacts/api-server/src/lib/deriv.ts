@@ -4,7 +4,6 @@ import { logger } from "./logger";
 
 const API_BASE = "https://api.derivws.com";
 const appId = process.env.DERIV_APP_ID;
-const token = null;
 const defaultSymbol = process.env.DERIV_SYMBOL ?? "R_75";
 const defaultCurrency = process.env.DERIV_CURRENCY ?? "USD";
 const configuredAccountId = process.env.DERIV_ACCOUNT_ID;

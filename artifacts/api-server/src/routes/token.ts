@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, derivCredentialsTable } from "@workspace/db";
 import { TestDerivTokenBody, TestDerivTokenResponse, GetDerivTokenStatusResponse, DeleteDerivTokenResponse } from "@workspace/api-zod";
-import { encryptPat } from "../lib/pat-crypto";
+import { decryptPat, encryptPat } from "../lib/pat-crypto";
 import { disposeUser, setUserPat, withUserSerialized } from "../lib/deriv";
 
 const router: IRouter = Router();
@@ -60,7 +60,17 @@ router.post("/token/test", async (req, res): Promise<void> => {
 
 router.get("/token/status", async (_req, res): Promise<void> => {
   const [row] = await db.select().from(derivCredentialsTable).where(eq(derivCredentialsTable.clerkUserId, res.locals.userId as string)).limit(1);
-  res.json(GetDerivTokenStatusResponse.parse({ has_token: Boolean(row), expires_at: row?.expiresAt ?? null, last_verified_at: row?.lastVerifiedAt ?? null }));
+  let hasToken = Boolean(row);
+  if (row) {
+    try {
+      decryptPat(row.encryptedPat);
+    } catch {
+      hasToken = false;
+      await db.delete(derivCredentialsTable).where(eq(derivCredentialsTable.clerkUserId, row.clerkUserId));
+      disposeUser(res.locals.userId as string);
+    }
+  }
+  res.json(GetDerivTokenStatusResponse.parse({ has_token: hasToken, expires_at: hasToken ? row?.expiresAt ?? null : null, last_verified_at: hasToken ? row?.lastVerifiedAt ?? null : null }));
 });
 
 router.delete("/token", async (_req, res): Promise<void> => {

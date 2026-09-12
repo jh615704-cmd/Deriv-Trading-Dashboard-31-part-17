@@ -35,6 +35,7 @@ import { decryptPat } from "../lib/pat-crypto";
 
 const router: IRouter = Router();
 class MissingDerivCredentialError extends Error {}
+class InvalidStoredCredentialError extends Error {}
 
 async function withCredential<T>(userId: string, operation: () => Promise<T>): Promise<T> {
   return withUserSerialized(userId, async () => {
@@ -44,7 +45,14 @@ async function withCredential<T>(userId: string, operation: () => Promise<T>): P
       .where(eq(derivCredentialsTable.clerkUserId, userId))
       .limit(1);
     if (!credential) throw new MissingDerivCredentialError("Connect a Deriv token first");
-    setUserPat(userId, decryptPat(credential.encryptedPat));
+    let pat: string;
+    try {
+      pat = decryptPat(credential.encryptedPat);
+    } catch {
+      await db.delete(derivCredentialsTable).where(eq(derivCredentialsTable.clerkUserId, userId));
+      throw new InvalidStoredCredentialError("The saved Deriv token is no longer readable. Enter it again to reconnect.");
+    }
+    setUserPat(userId, pat);
     return operation();
   });
 }
@@ -55,7 +63,7 @@ router.get("/deriv/accounts", async (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json(accounts);
   } catch (error) {
-    if (error instanceof MissingDerivCredentialError) {
+    if (error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError) {
       res.status(401).json({ error: error.message });
       return;
     }
@@ -71,8 +79,9 @@ router.get("/deriv/status", (_req, res) => {
       res.json(GetDerivStatusResponse.parse(status));
     })
     .catch((error) => {
-      res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({
-        error: error instanceof MissingDerivCredentialError ? error.message : "Unable to refresh Deriv balance",
+       const missingCredential = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError;
+       res.status(missingCredential ? 401 : 502).json({
+        error: missingCredential ? error.message : "Unable to refresh Deriv balance",
       });
     });
 });
@@ -81,18 +90,24 @@ router.get("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
   withCredential(res.locals.userId, async () => getHistory())
     .then((history) => res.json(history))
-    .catch((error) => res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({
-      error: error instanceof Error ? error.message : "Unable to load Deriv history",
-    }));
+     .catch((error) => {
+       const missingCredential = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError;
+       return res.status(missingCredential ? 401 : 502).json({
+       error: missingCredential ? error.message : "Unable to load Deriv history",
+       });
+     });
 });
 
 router.delete("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
   withCredential(res.locals.userId, async () => clearHistory())
     .then((result) => res.json(result))
-    .catch((error) => res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({
-      error: error instanceof Error ? error.message : "Unable to clear Deriv history",
-    }));
+     .catch((error) => {
+       const missingCredential = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError;
+       return res.status(missingCredential ? 401 : 502).json({
+       error: missingCredential ? error.message : "Unable to clear Deriv history",
+       });
+     });
 });
 
 router.post("/deriv/test-connection", async (req, res) => {
@@ -100,7 +115,7 @@ router.post("/deriv/test-connection", async (req, res) => {
     const result = TestDerivConnectionResponse.parse(await withCredential(res.locals.userId, testConnection));
     res.json(result);
   } catch (error) {
-    if (error instanceof MissingDerivCredentialError) {
+    if (error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError) {
       res.status(401).json({ error: error.message });
       return;
     }
@@ -120,8 +135,9 @@ router.post("/deriv/proposals", async (req, res) => {
     return res.status(202).json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv proposal request failed");
-    return res.status(error instanceof MissingDerivCredentialError ? 401 : 503).json({
-      error: error instanceof MissingDerivCredentialError ? error.message : "Deriv WebSocket is not ready",
+     const missingCredential = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError;
+     return res.status(missingCredential ? 401 : 503).json({
+       error: missingCredential ? error.message : "Deriv WebSocket is not ready",
     });
   }
 });
@@ -135,7 +151,8 @@ router.post("/deriv/select-account", async (req, res) => {
     return res.json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv account selection failed");
-    return res.status(error instanceof MissingDerivCredentialError ? 401 : 502).json({ error: error instanceof Error ? error.message : "Unable to select account" });
+     const missingCredential = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError;
+     return res.status(missingCredential ? 401 : 502).json({ error: missingCredential ? error.message : "Unable to select account" });
   }
 });
 
@@ -149,7 +166,8 @@ router.post("/deriv/select-symbol", async (req, res) => {
     return res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to select market";
-    return res.status(error instanceof MissingDerivCredentialError ? 401 : 400).json({ error: message });
+     const missingCredential = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError;
+     return res.status(missingCredential ? 401 : 400).json({ error: missingCredential ? error.message : message });
   }
 });
 
@@ -163,7 +181,7 @@ router.post("/deriv/buy", async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Buy request failed";
     req.log.error({ err: error }, "Deriv live buy request failed");
-    const status = error instanceof MissingDerivCredentialError
+     const status = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403

@@ -18,12 +18,15 @@ import {
   Copy,
   KeyRound,
   LockKeyhole,
+  Pencil,
   Plus,
   RefreshCw,
+  Save,
   ShieldCheck,
   UserRound,
   Unlock,
   Users,
+  X,
 } from "lucide-react";
 
 const featureOptions: Array<{ value: AccessFeature; label: string; description: string }> = [
@@ -51,8 +54,32 @@ function StatusBadge({ item }: { item: AccessKeySummary }) {
   return <span className={`key-status key-status-${item.status} ${item.online ? "key-status-online" : ""}`}><i />{label}</span>;
 }
 
-function KeyRow({ item, onStatus }: { item: AccessKeySummary; onStatus: (item: AccessKeySummary, status: "active" | "paused" | "blocked" | "banned") => void }) {
+function KeyRow({
+  item,
+  onStatus,
+  onUpdate,
+}: {
+  item: AccessKeySummary;
+  onStatus: (item: AccessKeySummary, status: "active" | "paused" | "blocked" | "banned") => void;
+  onUpdate: (item: AccessKeySummary, data: { max_devices?: number; features?: AccessFeature[] }) => void;
+}) {
   const isBanned = item.status === "banned";
+  const [editing, setEditing] = useState(false);
+  const [draftDevices, setDraftDevices] = useState(item.max_devices);
+  const [draftFeatures, setDraftFeatures] = useState<AccessFeature[]>(item.features);
+
+  const startEditing = () => {
+    setDraftDevices(item.max_devices);
+    setDraftFeatures(item.features);
+    setEditing(true);
+  };
+
+  const toggleDraftFeature = (feature: AccessFeature) => {
+    setDraftFeatures((current) => current.includes(feature)
+      ? current.filter((value) => value !== feature)
+      : [...current, feature]);
+  };
+
   return (
     <div className="key-row">
       <div className="key-row-main">
@@ -64,8 +91,39 @@ function KeyRow({ item, onStatus }: { item: AccessKeySummary; onStatus: (item: A
       </div>
       <div className="key-row-data"><span>{item.kind === "admin" ? "Administrator" : "User"}</span><strong>{item.device_count} / {item.max_devices}</strong><small>devices</small></div>
       <div className="key-row-data"><StatusBadge item={item} /><small>{formatOffline(item.offline_seconds, item.online)}</small></div>
-      <div className="key-feature-list">{item.features.map((feature) => <span key={feature}>{feature}</span>)}</div>
+      {editing ? (
+        <div className="key-edit-panel">
+          <label className="key-edit-limit">
+            <span>DEVICES</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={draftDevices}
+              onChange={(event) => setDraftDevices(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
+            />
+          </label>
+          <div className="key-edit-features">
+            {featureOptions.filter((feature) => feature.value !== "admin" || item.kind === "admin").map((feature) => (
+              <label className={draftFeatures.includes(feature.value) || item.kind === "admin" ? "key-edit-feature selected" : "key-edit-feature"} key={feature.value}>
+                <input
+                  type="checkbox"
+                  checked={item.kind === "admin" || draftFeatures.includes(feature.value)}
+                  disabled={item.kind === "admin"}
+                  onChange={() => toggleDraftFeature(feature.value)}
+                />
+                <span>{feature.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="key-edit-actions">
+            <button type="button" className="key-action key-action-green" disabled={!draftFeatures.length} onClick={() => { onUpdate(item, { max_devices: draftDevices, features: draftFeatures }); setEditing(false); }}><Save size={13} /> Save</button>
+            <button type="button" className="key-action" onClick={() => setEditing(false)}><X size={13} /> Cancel</button>
+          </div>
+        </div>
+      ) : <div className="key-feature-list">{item.features.map((feature) => <span key={feature}>{feature}</span>)}</div>}
       <div className="key-row-actions">
+        {!isBanned && !editing && <button type="button" className="key-action" onClick={startEditing} title="Edit device limit and features"><Pencil size={14} /> Edit access</button>}
         {item.status !== "active" && !isBanned && <button type="button" className="key-action key-action-green" onClick={() => onStatus(item, "active")} title="Resume or unblock"><Unlock size={14} /> Resume</button>}
         {item.status === "active" && <button type="button" className="key-action" onClick={() => onStatus(item, "paused")} title="Pause this key"><CirclePause size={14} /> Pause</button>}
         {item.status !== "blocked" && !isBanned && <button type="button" className="key-action" onClick={() => onStatus(item, "blocked")} title="Block this key"><LockKeyhole size={14} /> Block</button>}
@@ -85,7 +143,7 @@ export default function AdminUsersPage() {
   const [kind, setKind] = useState<"user" | "admin">("user");
   const [maxDevices, setMaxDevices] = useState(1);
   const [features, setFeatures] = useState<AccessFeature[]>(["edge"]);
-  const [newKey, setNewKey] = useState<string | null>(null);
+  const [newKey, setNewKey] = useState<{ value: string; kind: "user" | "admin" } | null>(null);
   const [formError, setFormError] = useState("");
   const keys = keysQuery.data ?? [];
   const onlineCount = keys.filter((key) => key.online).length;
@@ -104,7 +162,7 @@ export default function AdminUsersPage() {
       { data: { label: label.trim(), kind, max_devices: maxDevices, features: kind === "admin" ? ["edge", "settings", "history", "admin"] : features } },
       {
         onSuccess: (created) => {
-          setNewKey(created.access_key);
+          setNewKey({ value: created.access_key, kind: created.kind });
           setLabel("");
           setKind("user");
           setMaxDevices(1);
@@ -131,9 +189,22 @@ export default function AdminUsersPage() {
     );
   };
 
+  const handleUpdate = (item: AccessKeySummary, data: { max_devices?: number; features?: AccessFeature[] }) => {
+    updateKey.mutate(
+      { id: item.key_id, data },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListAccessKeysQueryKey() });
+          toast({ title: "Access updated", description: `${item.label} now has the selected device limit and features.` });
+        },
+        onError: (error) => toast({ variant: "destructive", title: "Update failed", description: errorMessage(error) }),
+      },
+    );
+  };
+
   const copyKey = async () => {
     if (!newKey) return;
-    await navigator.clipboard?.writeText(newKey);
+    await navigator.clipboard?.writeText(newKey.value);
     toast({ title: "Copied", description: "The access key is on your clipboard." });
   };
 
@@ -162,7 +233,7 @@ export default function AdminUsersPage() {
         {newKey && (
           <section className="new-key-callout">
             <div className="new-key-icon"><Check size={20} /></div>
-            <div><span className="panel-overline">ONE-TIME KEY — COPY BEFORE CLOSING</span><h3>New {kind === "admin" ? "administrator" : "user"} key is ready</h3><code>{newKey}</code></div>
+             <div><span className="panel-overline">ONE-TIME KEY — COPY BEFORE CLOSING</span><h3>New {newKey.kind === "admin" ? "administrator" : "user"} key is ready</h3><code>{newKey.value}</code></div>
             <button type="button" className="copy-key-button" onClick={copyKey}><Copy size={15} /> Copy key</button>
             <button type="button" className="dismiss-key" onClick={() => setNewKey(null)} aria-label="Hide new key">×</button>
           </section>
@@ -187,7 +258,7 @@ export default function AdminUsersPage() {
 
         <section className="panel admin-directory">
           <div className="panel-header"><div><span className="panel-overline">LIVE DIRECTORY</span><h3>Access keys and presence</h3></div><span className="directory-note">{keys.length} records · {onlineCount} online</span></div>
-          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} onStatus={handleStatus} />)}</div>}
+          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} onStatus={handleStatus} onUpdate={handleUpdate} />)}</div>}
         </section>
       </div>
     </AppShell>

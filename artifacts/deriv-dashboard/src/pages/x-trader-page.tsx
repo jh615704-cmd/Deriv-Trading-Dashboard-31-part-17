@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getGetAccessSessionQueryKey,
+  useGetAccessSession,
   useClearDerivHistory,
   useDeleteDerivToken,
   useGetDerivAccounts,
@@ -18,9 +20,10 @@ import {
   getGetDerivStatusQueryKey,
   getGetDerivHistoryQueryKey,
 } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import {
   Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Link2, Loader2,
-  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, Trash2, X,
+  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Trash2, X,
 } from "lucide-react";
 import {
   chooseBestDigitSignal,
@@ -64,15 +67,21 @@ const guidePages = [
 ] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Request failed";
+const errorMessage = (error: unknown) => {
+  const candidate = error as { data?: { error?: string }; message?: string };
+  return candidate.data?.error ?? candidate.message ?? "Request failed";
+};
 
 export default function XTraderPage() {
+  const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const queryClient = useQueryClient();
+  const canViewHistory = accessSession.data?.is_admin === true || accessSession.data?.features.includes("history") === true;
   const tokenStatus = useGetDerivTokenStatus({ query: { retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
   const accounts = useGetDerivAccounts({ query: { enabled: connectedToken, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
+  const storedPatInvalid = errorMessage(accounts.error).includes("saved Deriv token is no longer readable");
   const status = useGetDerivStatus({ query: { enabled: connectedToken, retry: false, refetchInterval: 250, queryKey: getGetDerivStatusQueryKey() } });
-  const history = useGetDerivHistory({ query: { enabled: connectedToken, retry: false, refetchInterval: 500, queryKey: getGetDerivHistoryQueryKey() } });
+  const history = useGetDerivHistory({ query: { enabled: connectedToken && canViewHistory, retry: false, refetchInterval: 500, queryKey: getGetDerivHistoryQueryKey() } });
   const tokenMutation = useTestDerivToken();
   const connectionMutation = useTestDerivConnection();
   const deleteTokenMutation = useDeleteDerivToken();
@@ -131,6 +140,10 @@ export default function XTraderPage() {
   useEffect(() => {
     configRef.current = { direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed };
   }, [direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed]);
+
+  useEffect(() => {
+    if (storedPatInvalid) void tokenStatus.refetch();
+  }, [storedPatInvalid, tokenStatus]);
 
   useEffect(() => {
     autoSwitchRef.current = autoSwitch;
@@ -401,7 +414,7 @@ export default function XTraderPage() {
   return (
     <main className="xt-app">
       <header className="xt-header">
-        <div className="xt-brand"><span>J</span><div><strong>JDY AI</strong><small>DERIV DIGIT TRADER</small></div></div>
+        <div className="xt-brand"><span>J</span><div><strong>JDY AI</strong><small>DERIV DIGIT TRADER</small></div>{accessSession.data?.is_admin === true && <Link href="/admin/users" className="xt-admin-link"><ShieldCheck size={14} /> ADMIN PANEL</Link>}</div>
         <div className={`xt-connection ${isConnected ? "online" : ""}`}><i />{statusText}</div>
       </header>
 
@@ -545,10 +558,10 @@ export default function XTraderPage() {
             {strategy === "martingale" && <p className="xt-streak-note">Next stake after settlement: <b>{nextStake.toFixed(2)} {currentAccount?.currency ?? "USD"}</b>. A loss multiplies the next trade; a win resets it.</p>}
           </section>
 
-          <section className="xt-history" title="Recent dashboard trade history">
+          {canViewHistory && <section className="xt-history" title="Recent dashboard trade history">
             <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Dashboard rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending || historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
             {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : rows.slice(0, 12).map((trade) => <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
-          </section>
+           </section>}
         </>
       )}
 

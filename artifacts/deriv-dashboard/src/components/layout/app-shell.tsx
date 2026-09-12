@@ -31,6 +31,9 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const logoutAccess = useLogoutAccessSession();
   const isAdmin = accessSession.data?.is_admin === true;
+  const features = accessSession.data?.features ?? [];
+  const canUseEdge = isAdmin || features.includes("edge");
+  const canUseSettings = isAdmin || features.includes("settings");
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
@@ -43,14 +46,14 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
           </div>
           <p className="sidebar-kicker">Connection center</p>
           <nav className="sidebar-nav" aria-label="Primary navigation">
-            <Link 
+            {canUseEdge && <Link 
               href="/app" 
               className={`nav-item ${location === '/app' ? 'nav-item-active' : ''}`} 
               data-testid="link-nav-dashboard"
             >
               <Gauge size={17} />Dashboard
               {location === '/app' && <span className="nav-live" />}
-            </Link>
+            </Link>}
             {isAdmin && (
               <Link 
                 href="/admin/users" 
@@ -61,14 +64,14 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
                 {location === '/admin/users' && <span className="nav-live" />}
               </Link>
             )}
-            <Link 
+            {canUseSettings && <Link 
               href="/settings" 
               className={`nav-item ${location === '/settings' ? 'nav-item-active' : ''}`} 
               data-testid="link-nav-settings"
             >
               <Settings size={17} />Settings
               {location === '/settings' && <span className="nav-live" />}
-            </Link>
+            </Link>}
           </nav>
         </div>
       </aside>

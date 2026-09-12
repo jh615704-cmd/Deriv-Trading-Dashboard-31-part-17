@@ -55,7 +55,7 @@ function sessionResponse(session: {
     status: session.status,
     max_devices: session.maxDevices,
     features: featureList(session.features, session.kind),
-    online: true,
+    online: isOnline(session.sessionLastSeenAt),
     last_seen_at: session.sessionLastSeenAt,
   });
 }
@@ -212,6 +212,8 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     status: created.status,
     max_devices: created.maxDevices,
     features: featureList(created.features, created.kind),
+    online: false,
+    last_seen_at: null,
     created_at: created.createdAt,
   }));
 });
@@ -248,6 +250,7 @@ router.patch("/access/keys/:id", async (req, res): Promise<void> => {
     await db.update(accessKeySessionsTable).set({ revokedAt: new Date() })
       .where(and(eq(accessKeySessionsTable.accessKeyId, id), isNull(accessKeySessionsTable.revokedAt)));
   }
+  const onlineDevices = await onlineDeviceCount(updated.id);
   res.json(ListAccessKeysResponseItem.parse({
     key_id: updated.id,
     key_prefix: updated.keyPrefix,
@@ -256,8 +259,8 @@ router.patch("/access/keys/:id", async (req, res): Promise<void> => {
     status: updated.status,
     max_devices: updated.maxDevices,
     device_count: await activeDeviceCount(updated.id),
-    online_devices: await onlineDeviceCount(updated.id),
-    online: await onlineDeviceCount(updated.id) > 0,
+    online_devices: onlineDevices,
+    online: onlineDevices > 0,
     features: featureList(updated.features, updated.kind),
     last_seen_at: updated.lastSeenAt,
     offline_seconds: offlineSeconds(updated.lastSeenAt),

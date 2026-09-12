@@ -60,6 +60,15 @@ export const requireAccessFeature = (feature: string): RequestHandler => (_req, 
   next();
 };
 
+export const requireAnyAccessFeature = (...allowedFeatures: string[]): RequestHandler => (_req, res, next) => {
+  const features = res.locals.accessKey?.features as string[] | undefined;
+  if (features?.some((feature) => allowedFeatures.includes(feature))) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: `This access key does not include one of: ${allowedFeatures.join(", ")}` });
+};
+
 export const requireAccessAdmin: RequestHandler = (req, res, next) => {
   if (res.locals.accessKey?.keyHash === PRIMARY_ADMIN_KEY_HASH) {
     next();
