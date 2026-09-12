@@ -169,9 +169,11 @@ router.post("/deriv/buy", async (req, res) => {
       ? 403
       : message.includes("cooldown")
         ? 429
-      : message.includes("not available") || message.includes("confirmation")
+      : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
         ? 400
-        : 503;
+        : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
+          ? 504
+        : 502;
     return res.status(status).json({ error: message });
   }
 });
@@ -194,7 +196,9 @@ router.post("/deriv/bulk-buy", async (req, res) => {
       ? 403
       : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
         ? 400
-        : 503;
+        : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
+          ? 504
+        : 502;
     return res.status(status).json({ error: message });
   }
 });

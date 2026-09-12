@@ -6,6 +6,9 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import XTraderPage from '@/pages/x-trader-page';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import { ThemeProvider } from '@/components/theme-provider';
+import { ClerkProvider } from '@clerk/react';
+import AdminUsersPage from '@/pages/admin-users';
+import AppPage from '@/pages/app-page';
 
 const queryClient = new QueryClient();
 
@@ -17,6 +20,9 @@ function Router() {
       <Switch>
         <Route path="/" component={XTraderPage} />
         <Route path="/app" component={XTraderPage} />
+        <Route path="/dashboard" component={AppPage} />
+        <Route path="/admin" component={AdminUsersPage} />
+        <Route path="/admin/users" component={AdminUsersPage} />
         <Route component={XTraderPage} />
       </Switch>
     </RoutedErrorBoundary>
@@ -29,15 +35,32 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
+  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+  if (!publishableKey) {
+    return (
+      <ThemeProvider>
+        <TooltipProvider>
+          <WouterRouter base={basePath}>
+            <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
-    <ThemeProvider>
-      <TooltipProvider>
-        <WouterRouter base={basePath}>
-          <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </ThemeProvider>
+    <ClerkProvider publishableKey={publishableKey}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <WouterRouter base={basePath}>
+            <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </ThemeProvider>
+    </ClerkProvider>
   );
 }
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useListAdminUsers, useCreateAdminUser, getListAdminUsersQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '@/components/layout/app-shell';
-import { RefreshCw, UserPlus, Mail, KeyRound, CheckCircle2, XCircle } from 'lucide-react';
+import { RefreshCw, UserPlus, Mail, KeyRound, CheckCircle2, XCircle, ShieldCheck, Activity, Gauge, LockKeyhole } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function AdminUsersPage() {
@@ -16,6 +16,9 @@ export default function AdminUsersPage() {
   const [password, setPassword] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const users = usersQuery.data ?? [];
+  const activeUsers = users.filter((user) => user.active).length;
+  const adminUsers = users.filter((user) => user.role === 'admin').length;
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +48,22 @@ export default function AdminUsersPage() {
     <AppShell title="ADMIN / USERS">
       <div className="max-w-5xl space-y-8">
         <section>
-          <div className="eyebrow mb-4"><span className="eyebrow-rule" />WORKSPACE / ACCESS</div>
+          <div className="eyebrow mb-4"><span className="eyebrow-rule" />WORKSPACE / ADMIN CENTER</div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-7">
+            <div>
+              <h1 className="text-3xl font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]">Operations <em>control.</em></h1>
+              <p className="mt-2 max-w-xl text-sm text-[#709092] dark:text-[#9ab9b6]">Manage approved access and keep the trading workspace operating with explicit safety gates.</p>
+            </div>
+            <button type="button" onClick={() => void usersQuery.refetch()} disabled={usersQuery.isFetching} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-xs font-semibold text-[var(--teal-deep)] transition hover:border-[var(--teal)] disabled:opacity-60">
+              <RefreshCw size={14} className={usersQuery.isFetching ? 'spin' : ''} /> Refresh
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-8">
+            <div className="panel p-5"><div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#709092]"><ShieldCheck size={15} className="text-[var(--teal)]" /> APPROVED USERS</div><strong className="mt-3 block text-3xl text-[var(--ink-deep)] dark:text-[#d8ece9]">{users.length}</strong><span className="text-xs text-[#82999b]">Access records in scope</span></div>
+            <div className="panel p-5"><div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#709092]"><Activity size={15} className="text-[var(--teal)]" /> ACTIVE ACCESS</div><strong className="mt-3 block text-3xl text-[var(--ink-deep)] dark:text-[#d8ece9]">{activeUsers}</strong><span className="text-xs text-[#82999b]">Users allowed through the API</span></div>
+            <div className="panel p-5"><div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#709092]"><Gauge size={15} className="text-[var(--teal)]" /> ADMIN ROLES</div><strong className="mt-3 block text-3xl text-[var(--ink-deep)] dark:text-[#d8ece9]">{adminUsers}</strong><span className="text-xs text-[#82999b]">Administrator accounts</span></div>
+          </div>
           
           <div className="panel overflow-hidden mb-8">
              <div className="p-6 sm:p-8 border-b border-[var(--line)] dark:border-[#31545a] flex items-center gap-3">
@@ -153,6 +171,25 @@ export default function AdminUsersPage() {
                 </table>
               </div>
             )}
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-[#cde3df] bg-[#f3fbf8] p-5 dark:border-[#31545a] dark:bg-[#102f38]">
+              <div className="flex items-center gap-2 text-sm font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]"><LockKeyhole size={16} className="text-[var(--teal)]" /> Safety controls</div>
+              <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[#668285] dark:text-[#9ab9b6]">
+                <li>• Each user supplies and owns their own encrypted Deriv PAT.</li>
+                <li>• Real-money trading requires the server live flag and an explicit browser confirmation.</li>
+                <li>• Stake has no application ceiling; Deriv and the selected account balance remain authoritative.</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-[#cde3df] bg-[#f3fbf8] p-5 dark:border-[#31545a] dark:bg-[#102f38]">
+              <div className="flex items-center gap-2 text-sm font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]"><Activity size={16} className="text-[var(--teal)]" /> Reliability monitor</div>
+              <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[#668285] dark:text-[#9ab9b6]">
+                <li>• Proposal requests use correlated request IDs and retry after stale socket responses.</li>
+                <li>• PAT validation has an upstream timeout so a stalled Deriv response cannot hang the workspace.</li>
+                <li>• Notifications close automatically after three seconds.</li>
+              </ul>
+            </div>
           </div>
         </section>
       </div>

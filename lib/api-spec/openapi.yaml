@@ -231,8 +231,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Deriv WebSocket is not ready
+        "504":
+          description: Deriv did not return a proposal after connection recovery attempts
           content:
             application/json:
               schema:
@@ -328,8 +328,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Deriv WebSocket is not ready
+        "504":
+          description: Deriv did not return a proposal after connection recovery attempts
           content:
             application/json:
               schema:
@@ -365,8 +365,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Deriv WebSocket is not ready
+        "504":
+          description: Deriv did not return a proposal after connection recovery attempts
           content:
             application/json:
               schema:

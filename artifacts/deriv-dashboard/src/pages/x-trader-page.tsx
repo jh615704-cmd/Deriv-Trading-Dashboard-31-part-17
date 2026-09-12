@@ -51,9 +51,9 @@ const guidePages = [
   { title: "Stake and balance", body: "Stake is the amount risked on each contract. The selected stake is used for the next Over or Under trade unless Martingale after loss is enabled.", points: ["Keep a reserve instead of risking the full balance.", "Martingale increases the next stake after a loss and resets after a win.", "A valid balance check cannot prevent market losses."] },
   { title: "Flat stake strategy", body: "Flat staking uses the same stake on every trade. It is the simplest baseline and makes session results easier to compare.", points: ["Use it to measure a signal without changing risk size.", "Set Take Profit and Stop Loss before starting.", "A losing trade does not automatically justify a larger next stake."] },
   { title: "Martingale after loss", body: "Martingale increases the next stake after a loss by the configured multiplier. It can grow exposure quickly and may exhaust a balance after a short losing run.", points: ["Set a low multiplier and a hard stop if you test it.", "The strategy is not a recovery guarantee.", "Demo testing is strongly recommended before any live use."] },
-  { title: "Auto Best Digit", body: "Auto Best Digit ranks the live signals from all supported markets using available tick history, current sample size, and the strongest recent Over or Under streak. It selects a market, direction, and barrier for the next batch.", points: ["The score favors fresh markets with enough observations.", "It is a signal-selection aid, not a prediction engine.", "No market logic can guarantee a win rate or remove risk."] },
+  { title: "Auto Best Digit", body: "Auto Best Digit ranks the live signals from all supported markets using available tick history, current sample size, and the strongest recent Over or Under streak. It selects a market, direction, and barrier for the next batch.", points: ["The score favors fresh markets with enough observations.", "It selects both Over or Under and the profitable-looking barrier.", "It is a signal-selection aid, not a prediction engine. No strategy guarantees a win rate."] },
   { title: "How the signal score works", body: "The built-in score compares recent consecutive digits above and below each candidate barrier across every subscribed market. Stronger, better-sampled signals rank higher.", points: ["Signals with no recent ticks are ignored.", "The selected market can change when a stronger signal appears.", "Recent streak length is descriptive, not proof of future probability."] },
-  { title: "Immediate Over and Under", body: "Use the Over or Under button below Run X Trader to send one contract immediately using the selected barrier, duration, stake, and strategy.", points: ["The button sends one trade at a time.", "Martingale uses the multiplied stake after a loss.", "The next win resets the amount to the normal stake."] },
+  { title: "Immediate Over and Under", body: "Use the Over or Under button below Run X Trader to send one contract immediately using the selected barrier, duration, stake, and strategy.", points: ["The button sends one trade at a time.", "Martingale can multiply the next stake after a loss, but it cannot guarantee recovery.", "The next win resets the amount to the normal stake."] },
   { title: "Run X Trader", body: "Run X Trader starts the repeating loop using the current direction, barrier, duration, stake, strategy, and batch size. Stop ends the loop after the active request completes.", points: ["Use the immediate Over and Under buttons for a single batch.", "Use Run X Trader only after reviewing the full configuration.", "Turning off X Trader stops the loop and hides its controls."] },
   { title: "Take Profit", body: "Take Profit stops the repeating loop after the session reaches the configured positive P/L. It applies to the local session total, not to your entire Deriv account history.", points: ["Choose an amount you can accept as a session target.", "The target is checked as results settle.", "Take Profit does not close a contract early."] },
   { title: "Stop Loss", body: "Stop Loss stops the repeating loop after the session reaches the configured negative P/L. It is a guardrail, not a guarantee that losses cannot exceed the target.", points: ["Use a smaller loss limit while testing.", "Bulk trades can settle after the loop is stopped.", "Review the trade history before starting another session."] },
@@ -480,11 +480,39 @@ export default function XTraderPage() {
               />
               {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={barrier === item.digit ? "active" : ""} aria-label={lastDigit === item.digit ? `Current market last digit ${item.digit}` : `Digit ${item.digit}`} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
             </div>
-            <p className="xt-streak-note">Current consecutive streak at digit {barrier}: <b>Over {selectedStreak?.over ?? 0}</b> · <b>Under {selectedStreak?.under ?? 0}</b>. Based on the most recent {status.data?.digit_sample_count ?? 0} observed ticks.</p>
+             <div className="xt-streak-panel" aria-live="polite">
+               <div className="xt-streak-heading">
+                 <span>CURRENT CONSECUTIVE STREAK</span>
+                 <small>DIGIT {barrier} · {status.data?.digit_sample_count ?? 0} OBSERVED TICKS</small>
+               </div>
+               <div className="xt-streak-options">
+                 <button
+                   type="button"
+                   className={`xt-streak-option over ${direction === "DIGITOVER" ? "selected" : ""}`}
+                   onClick={() => setDirection("DIGITOVER")}
+                   disabled={running}
+                 >
+                   <small>OVER {barrier}</small>
+                   <strong>{selectedStreak?.over ?? 0}</strong>
+                   <span>above digit {barrier}</span>
+                 </button>
+                 <button
+                   type="button"
+                   className={`xt-streak-option under ${direction === "DIGITUNDER" ? "selected" : ""}`}
+                   onClick={() => setDirection("DIGITUNDER")}
+                   disabled={running}
+                 >
+                   <small>UNDER {barrier}</small>
+                   <strong>{selectedStreak?.under ?? 0}</strong>
+                   <span>below digit {barrier}</span>
+                 </button>
+               </div>
+               <p className="xt-streak-note">Select either signal to set the contract direction. A streak describes recent ticks; it is not a guaranteed prediction.</p>
+             </div>
 
             <div className="xt-form-grid">
               <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => setDuration(tick)} disabled={running}>{tick}</button>)}</div></label>
-              <label><small>STAKE</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Number(event.target.value))} disabled={running} /></div></label>
+               <label><small>STAKE · NO APP CAP</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Number(event.target.value))} disabled={running} /></div><b className="xt-field-help">Up to the available account balance</b></label>
               <label><small>STRATEGY</small><select value={strategy} onChange={(event) => setStrategy(event.target.value as "flat" | "martingale")} disabled={running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
               <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
               <label><small>TAKE PROFIT</small><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} disabled={running} /></label>

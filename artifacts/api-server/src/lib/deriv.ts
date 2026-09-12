@@ -7,9 +7,10 @@ const appId = process.env.DERIV_APP_ID;
 const token = null;
 const defaultSymbol = process.env.DERIV_SYMBOL ?? "R_75";
 const defaultCurrency = process.env.DERIV_CURRENCY ?? "USD";
-const maxTradeAmount = Number(process.env.MAX_TRADE_AMOUNT ?? "100");
 const configuredAccountId = process.env.DERIV_ACCOUNT_ID;
 const liveTradingEnabled = process.env.DERIV_ALLOW_LIVE_TRADING === "true";
+const proposalTimeoutMs = 8_000;
+const proposalAttempts = 3;
 const supportedSymbols = new Set([
   "R_10", "R_25", "R_50", "R_75", "R_100",
   "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
@@ -721,7 +722,9 @@ export function getStatus(): DerivStatus {
     bot_running: getState().botRunning,
     symbol: getState().selectedSymbol,
     currency: defaultCurrency,
-    max_trade_amount: maxTradeAmount,
+    // There is intentionally no application-level stake ceiling. Deriv and
+    // the selected account balance are the source of truth for affordability.
+    max_trade_amount: 0,
     live_trading_enabled: liveTradingEnabled,
     digit_even_percentage: digitPercentages.even,
     digit_odd_percentage: digitPercentages.odd,
@@ -772,34 +775,59 @@ async function requestFreshProposal(input: ProposalInput) {
   getState().lastProposalContractType = input.contract_type;
   getState().lastProposalSymbol = input.symbol ?? defaultSymbol;
   getState().lastProposalInput = input;
-  const connected = await connect();
-  if (!connected) throw new Error("Deriv WebSocket is not ready");
+  let lastError = "Deriv WebSocket is not ready";
 
-  return await new Promise<DerivProposal>((resolve, reject) => {
-    const reqId = ++getState().proposalSequence;
-    const timer = setTimeout(() => {
-      getState().proposalWaiters.delete(reqId);
-      reject(new Error("Deriv did not return a proposal in time"));
-    }, 5000);
-    getState().proposalWaiters.set(reqId, { resolve, reject, timer });
-    const sent = send({
-      proposal: 1,
-      amount: input.amount,
-      basis: "stake",
-      contract_type: input.contract_type,
-      currency: defaultCurrency,
-      duration: input.duration,
-      duration_unit: input.duration_unit,
-      underlying_symbol: input.symbol ?? defaultSymbol,
-      ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
-      req_id: reqId,
-    });
-    if (!sent) {
-      clearTimeout(timer);
-      getState().proposalWaiters.delete(reqId);
-      reject(new Error("Deriv WebSocket is not ready"));
+  for (let attempt = 1; attempt <= proposalAttempts; attempt += 1) {
+    const connected = await connect();
+    if (!connected) {
+      lastError = "Deriv WebSocket is not ready";
+    } else {
+      try {
+        return await new Promise<DerivProposal>((resolve, reject) => {
+          const reqId = ++getState().proposalSequence;
+          const timer = setTimeout(() => {
+            getState().proposalWaiters.delete(reqId);
+            reject(new Error("Deriv did not return a proposal in time"));
+          }, proposalTimeoutMs);
+          getState().proposalWaiters.set(reqId, { resolve, reject, timer });
+          const sent = send({
+            proposal: 1,
+            amount: input.amount,
+            basis: "stake",
+            contract_type: input.contract_type,
+            currency: defaultCurrency,
+            duration: input.duration,
+            duration_unit: input.duration_unit,
+            underlying_symbol: input.symbol ?? defaultSymbol,
+            ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
+            req_id: reqId,
+          });
+          if (!sent) {
+            clearTimeout(timer);
+            getState().proposalWaiters.delete(reqId);
+            reject(new Error("Deriv WebSocket is not ready"));
+          }
+        });
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Deriv proposal request failed";
+        logger.warn({ attempt, err: error }, "Deriv proposal attempt failed");
+      }
     }
-  });
+
+    if (attempt < proposalAttempts) {
+      // A stale authenticated socket can stay open while no longer delivering
+      // replies. Force a clean reconnect before the next correlated request.
+      getState().socket?.close();
+      getState().socket = null;
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+    }
+  }
+
+  throw new Error(
+    lastError === "Deriv did not return a proposal in time"
+      ? "Deriv did not return a proposal after 3 attempts. The connection was refreshed; please try again."
+      : lastError,
+  );
 }
 
 export async function selectAccount(accountId: string) {
@@ -855,6 +883,9 @@ export async function buyContract(input: BuyInput) {
   if (getState().account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
+  if (input.amount > getState().account.balance) {
+    throw new Error("The selected stake exceeds the current account balance");
+  }
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
     throw new Error(`Buy cooldown active. Wait ${Math.ceil(remainingCooldown / 1000)} second.`);
@@ -868,9 +899,6 @@ export async function buyContract(input: BuyInput) {
     barrier: input.barrier,
     symbol: input.symbol,
   });
-  if (proposal.ask_price > maxTradeAmount) {
-    throw new Error(`Price exceeds the configured maximum of ${maxTradeAmount}`);
-  }
   const connected = await connect();
   if (!connected || !send({ buy: proposal.id, price: proposal.ask_price })) {
     throw new Error("Deriv WebSocket is not ready");
@@ -916,9 +944,6 @@ export async function bulkBuyContracts(input: {
       symbol: input.symbol,
     })),
   );
-  if (proposals.some((proposal) => proposal.ask_price > maxTradeAmount)) {
-    throw new Error(`Price exceeds the configured maximum of ${maxTradeAmount}`);
-  }
   const connected = await connect();
   if (!connected || proposals.some((proposal) => !send({ buy: proposal.id, price: proposal.ask_price }))) {
     throw new Error("Deriv WebSocket is not ready");

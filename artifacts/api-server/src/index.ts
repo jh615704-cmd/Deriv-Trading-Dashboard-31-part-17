@@ -17,7 +17,13 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 void bootstrapAdmin()
-  .then(() => {
+  .catch((err: unknown) => {
+    // A missing bootstrap configuration must not take the trading API offline.
+    // Clerk-protected admin routes remain unavailable until the configuration
+    // is restored, while PAT-backed guest trading can continue to operate.
+    logger.error({ err }, "Administrator bootstrap unavailable; starting API without bootstrap");
+  })
+  .finally(() => {
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
@@ -25,8 +31,4 @@ void bootstrapAdmin()
       }
       logger.info({ port }, "Server listening");
     });
-  })
-  .catch((err: unknown) => {
-    logger.error({ err }, "Startup aborted");
-    process.exit(1);
   });

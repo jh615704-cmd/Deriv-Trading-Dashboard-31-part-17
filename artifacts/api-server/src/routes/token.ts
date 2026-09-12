@@ -15,9 +15,13 @@ router.post("/token/test", async (req, res): Promise<void> => {
   try {
     const userId = res.locals.userId as string;
     const accounts = await withUserSerialized(userId, async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12_000);
       const response = await fetch("https://api.derivws.com/trading/v1/options/accounts", {
         headers: { "Deriv-App-ID": appId, Authorization: `Bearer ${parsed.data.token}`, "Content-Type": "application/json" },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const body = await response.json() as { data?: unknown; accounts?: unknown; errors?: Array<{ message?: string }> };
       if (!response.ok) {
         throw new Error(body.errors?.[0]?.message ?? "Token invalid or missing required scopes");
@@ -46,7 +50,9 @@ router.post("/token/test", async (req, res): Promise<void> => {
     });
     res.json(TestDerivTokenResponse.parse({ success: true, message: "Deriv token validated and saved", accounts }));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to validate Deriv token";
+    const message = error instanceof DOMException && error.name === "AbortError"
+      ? "Deriv token validation timed out. Check the PAT scopes and try again."
+      : error instanceof Error ? error.message : "Unable to validate Deriv token";
     req.log.warn({ err: error }, "Deriv token validation failed");
     res.status(message === "Unable to validate Deriv token" ? 502 : 400).json({ error: message });
   }
