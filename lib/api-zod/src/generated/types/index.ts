@@ -36,6 +36,8 @@ export * from './derivBuyInputDurationUnit';
 export * from './derivBuyResponse';
 export * from './derivConnectionTest';
 export * from './derivContract';
+export * from './derivDualBuyInput';
+export * from './derivDualBuyInputDurationUnit';
 export * from './derivHistoryClearResponse';
 export * from './derivHistoryItem';
 export * from './derivHistoryItemAccountType';

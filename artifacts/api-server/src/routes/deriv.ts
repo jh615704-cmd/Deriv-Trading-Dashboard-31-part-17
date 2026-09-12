@@ -8,6 +8,7 @@ import {
   BuyDerivContractResponse,
   BulkBuyDerivContractsBody,
   BulkBuyDerivContractsResponse,
+  DualBuyDerivContractsBody,
   SelectDerivAccountBody,
   SelectDerivAccountResponse,
   SelectDerivSymbolBody,
@@ -23,6 +24,7 @@ import {
   requestProposal,
   buyContract,
   bulkBuyContracts,
+  dualBuyContracts,
   selectAccount,
   selectSymbol,
   testConnection,
@@ -209,6 +211,31 @@ router.post("/deriv/bulk-buy", async (req, res) => {
     const message = error instanceof Error ? error.message : "Bulk buy request failed";
     req.log.error({ err: error }, "Deriv bulk buy request failed");
     const status = error instanceof MissingDerivCredentialError
+      ? 401
+      : message.includes("disabled") || message.includes("real account")
+      ? 403
+      : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
+        ? 400
+        : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
+          ? 504
+        : 502;
+    return res.status(status).json({ error: message });
+  }
+});
+
+router.post("/deriv/dual-buy", async (req, res) => {
+  const parsed = DualBuyDerivContractsBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid dual buy request" });
+
+  try {
+    const result = BulkBuyDerivContractsResponse.parse(
+      await withCredential(res.locals.userId, () => dualBuyContracts(parsed.data)),
+    );
+    return res.status(202).json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Dual buy request failed";
+    req.log.error({ err: error }, "Deriv dual buy request failed");
+    const status = error instanceof MissingDerivCredentialError || error instanceof InvalidStoredCredentialError
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403

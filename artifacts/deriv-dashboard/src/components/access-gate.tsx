@@ -71,7 +71,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
       <div className="access-gate">
         <div className="access-gate-card access-gate-loading">
           <Loader2 className="spin" size={26} />
-          <span>Checking EDGE access…</span>
+          <span>Checking access…</span>
         </div>
       </div>
     );
@@ -100,9 +100,9 @@ export function AccessGate({ children }: { children: ReactNode }) {
           <span className="brand-mark">J</span>
           <span>JDY <b>AI</b></span>
         </div>
-        <div className="access-gate-eyebrow"><ShieldCheck size={14} /> PRIVATE EDGE ACCESS</div>
+        <div className="access-gate-eyebrow"><ShieldCheck size={14} /> PRIVATE ACCESS</div>
         <h1>Enter your access key.</h1>
-        <p>Use the key provided by your administrator to open the EDGE trading workspace on this device.</p>
+        <p>Use the key provided by your administrator to open the trading workspace on this device.</p>
         {error && <div className="access-gate-error" role="alert">{error}</div>}
         <form onSubmit={handleSubmit} className="access-gate-form">
           <label htmlFor="edge-access-key">ACCESS KEY</label>
@@ -113,14 +113,14 @@ export function AccessGate({ children }: { children: ReactNode }) {
               type="password"
               value={accessKey}
               onChange={(event) => setAccessKey(event.target.value)}
-              placeholder="EDGE-USER-…"
+              placeholder="USER-…"
               autoComplete="off"
               autoFocus
               disabled={login.isPending}
             />
           </div>
           <button type="submit" disabled={login.isPending || !accessKey.trim()}>
-            {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Unlock EDGE"}
+            {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Unlock"}
           </button>
         </form>
         <div className="access-gate-footer">

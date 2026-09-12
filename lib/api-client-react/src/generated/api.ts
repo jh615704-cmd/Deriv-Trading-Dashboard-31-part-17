@@ -36,6 +36,7 @@ import type {
   DerivBuyInput,
   DerivBuyResponse,
   DerivConnectionTest,
+  DerivDualBuyInput,
   DerivHistoryClearResponse,
   DerivHistoryResponse,
   DerivProposalInput,
@@ -1691,6 +1692,78 @@ export const useBulkBuyDerivContracts = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getBulkBuyDerivContractsMutationOptions(options));
+    }
+
+export const getDualBuyDerivContractsUrl = () => {
+
+
+
+
+  return `/api/deriv/dual-buy`
+}
+
+/**
+ * Requests and sends one Over and one Under digit contract without the single-trade cooldown. The pair uses the selected barrier and stake.
+ * @summary Buy one Over and one Under contract as a single action
+ */
+export const dualBuyDerivContracts = async (derivDualBuyInput: DerivDualBuyInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivBulkBuyResponse> => {
+
+  return customFetch<DerivBulkBuyResponse>(getDualBuyDerivContractsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivDualBuyInput)
+  }
+);}
+
+
+
+
+
+export const getDualBuyDerivContractsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dualBuyDerivContracts>>, TError,{data: BodyType<DerivDualBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dualBuyDerivContracts>>, TError,{data: BodyType<DerivDualBuyInput>}, TContext> => {
+
+const mutationKey = ['dualBuyDerivContracts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dualBuyDerivContracts>>, {data: BodyType<DerivDualBuyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  dualBuyDerivContracts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DualBuyDerivContractsMutationResult = NonNullable<Awaited<ReturnType<typeof dualBuyDerivContracts>>>
+    export type DualBuyDerivContractsMutationBody = BodyType<DerivDualBuyInput>
+    export type DualBuyDerivContractsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Buy one Over and one Under contract as a single action
+ */
+export const useDualBuyDerivContracts = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dualBuyDerivContracts>>, TError,{data: BodyType<DerivDualBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dualBuyDerivContracts>>,
+        TError,
+        {data: BodyType<DerivDualBuyInput>},
+        TContext
+      > => {
+      return useMutation(getDualBuyDerivContractsMutationOptions(options));
     }
 
 export const getGetDerivHistoryUrl = () => {

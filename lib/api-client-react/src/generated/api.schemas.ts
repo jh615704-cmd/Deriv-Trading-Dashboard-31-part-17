@@ -427,6 +427,31 @@ export interface DerivBulkBuyInput {
   confirm_live_trade: true;
 }
 
+export type DerivDualBuyInputDurationUnit = typeof DerivDualBuyInputDurationUnit[keyof typeof DerivDualBuyInputDurationUnit];
+
+
+export const DerivDualBuyInputDurationUnit = {
+  t: 't',
+} as const;
+
+export interface DerivDualBuyInput {
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  duration: number;
+  duration_unit: DerivDualBuyInputDurationUnit;
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  barrier: number;
+  symbol?: string;
+  confirm_live_trade: true;
+}
+
 export interface DerivBuyResponse {
   ok: boolean;
   message: string;

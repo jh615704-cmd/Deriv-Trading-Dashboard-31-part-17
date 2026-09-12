@@ -133,6 +133,7 @@ export const ListAccessKeysResponseItem = zod.object({
   "key_prefix": zod.string(),
   "label": zod.string(),
   "kind": zod.enum(['admin', 'user']),
+  "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
   "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
@@ -169,6 +170,7 @@ export const CreateAccessKeyResponse = zod.object({
   "key_prefix": zod.string(),
   "label": zod.string(),
   "kind": zod.enum(['admin', 'user']),
+  "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
   "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
@@ -202,6 +204,7 @@ export const UpdateAccessKeyResponse = zod.object({
   "key_prefix": zod.string(),
   "label": zod.string(),
   "kind": zod.enum(['admin', 'user']),
+  "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
   "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
@@ -764,6 +767,42 @@ export const BulkBuyDerivContractsBody = zod.object({
 })
 
 export const BulkBuyDerivContractsResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string(),
+  "count": zod.number().int(),
+  "proposals": zod.array(zod.object({
+  "id": zod.string(),
+  "ask_price": zod.number(),
+  "payout": zod.number(),
+  "spot": zod.number(),
+  "longcode": zod.string().nullish()
+}))
+})
+
+
+/**
+ * Requests and sends one Over and one Under digit contract without the single-trade cooldown. The pair uses the selected barrier and stake.
+ * @summary Buy one Over and one Under contract as a single action
+ */
+export const dualBuyDerivContractsBodyAmountExclusiveMin = 0;
+
+export const dualBuyDerivContractsBodyDurationMax = 5;
+
+export const dualBuyDerivContractsBodyBarrierMin = 0;
+export const dualBuyDerivContractsBodyBarrierMax = 9;
+
+
+
+export const DualBuyDerivContractsBody = zod.object({
+  "amount": zod.number().gt(dualBuyDerivContractsBodyAmountExclusiveMin),
+  "duration": zod.number().int().min(1).max(dualBuyDerivContractsBodyDurationMax),
+  "duration_unit": zod.enum(['t']),
+  "barrier": zod.number().int().min(dualBuyDerivContractsBodyBarrierMin).max(dualBuyDerivContractsBodyBarrierMax),
+  "symbol": zod.string().optional(),
+  "confirm_live_trade": zod.literal(true)
+})
+
+export const DualBuyDerivContractsResponse = zod.object({
   "ok": zod.boolean(),
   "message": zod.string(),
   "count": zod.number().int(),

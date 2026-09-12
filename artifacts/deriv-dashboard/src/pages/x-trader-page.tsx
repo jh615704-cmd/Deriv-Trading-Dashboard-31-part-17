@@ -10,6 +10,7 @@ import {
   useGetDerivStatus,
   useGetDerivTokenStatus,
   useBulkBuyDerivContracts,
+  useDualBuyDerivContracts,
   getDerivHistory,
   useSelectDerivAccount,
   useSelectDerivSymbol,
@@ -23,11 +24,10 @@ import {
 import { Link } from "wouter";
 import {
   Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Link2, Loader2,
-  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Trash2, X,
+  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Trash2, X, Zap,
 } from "lucide-react";
 import {
   chooseBestDigitSignal,
-  findNewlySettledTrade,
   nextStakeAfterSettlement,
   sessionStopReason,
   type MarketSignal,
@@ -73,6 +73,13 @@ const errorMessage = (error: unknown) => {
   return candidate.data?.error ?? candidate.message ?? "Request failed";
 };
 
+type MartingaleSettlementWatch = {
+  knownIds: Set<string>;
+  processedIds: Set<string>;
+  amount: number;
+  expectedSettlements: number;
+};
+
 export default function XTraderPage() {
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const queryClient = useQueryClient();
@@ -89,6 +96,7 @@ export default function XTraderPage() {
   const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
+  const dualBuyMutation = useDualBuyDerivContracts();
   const clearMutation = useClearDerivHistory();
 
   const [pat, setPat] = useState("");
@@ -118,7 +126,7 @@ export default function XTraderPage() {
   const runningRef = useRef(false);
   const autoSwitchRef = useRef(autoSwitch);
   const nextStakeRef = useRef(stake);
-  const martingaleWatchRef = useRef<{ knownIds: Set<string>; amount: number } | null>(null);
+  const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const configRef = useRef({ direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed });
 
   const currentAccount = status.data?.account;
@@ -158,12 +166,22 @@ export default function XTraderPage() {
   useEffect(() => {
     const watch = martingaleWatchRef.current;
     if (!watch || strategy !== "martingale") return;
-    const settledTrade = findNewlySettledTrade(rows, watch.knownIds);
-    if (!settledTrade) return;
-    const next = nextStakeAfterSettlement(settledTrade.profit, watch.amount, stake, martingale);
+    const newlySettled = rows
+      .filter((trade) => !watch.knownIds.has(trade.contract_id) && !watch.processedIds.has(trade.contract_id) && trade.status !== "open")
+      .sort((left, right) => (left.buy_time ?? 0) - (right.buy_time ?? 0));
+    if (!newlySettled.length) return;
+
+    let next = watch.amount;
+    for (const settledTrade of newlySettled) {
+      next = nextStakeAfterSettlement(settledTrade.profit, next, stake, martingale);
+      watch.knownIds.add(settledTrade.contract_id);
+      watch.processedIds.add(settledTrade.contract_id);
+    }
     nextStakeRef.current = next;
     setNextStake(next);
-    martingaleWatchRef.current = null;
+    if (watch.processedIds.size >= watch.expectedSettlements) {
+      martingaleWatchRef.current = null;
+    }
   }, [rows, strategy, martingale, stake]);
 
   useEffect(() => {
@@ -229,6 +247,19 @@ export default function XTraderPage() {
     configRef.current = { ...configRef.current, direction: best.direction, barrier: best.digit, symbol: best.symbol };
   };
 
+  const armMartingaleWatch = (latestRows: typeof rows, amount: number, expectedSettlements: number) => {
+    if (configRef.current.strategy !== "martingale") {
+      martingaleWatchRef.current = null;
+      return;
+    }
+    martingaleWatchRef.current = {
+      knownIds: new Set(latestRows.map((trade) => trade.contract_id)),
+      processedIds: new Set(),
+      amount,
+      expectedSettlements,
+    };
+  };
+
   const executeBatch = async () => {
     const config = configRef.current;
     let amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
@@ -244,12 +275,7 @@ export default function XTraderPage() {
     }
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
-    if (config.strategy === "martingale") {
-      martingaleWatchRef.current = {
-        knownIds: new Set(latestRows.map((trade) => trade.contract_id)),
-        amount,
-      };
-    }
+    armMartingaleWatch(latestRows, amount, 1);
     await bulkBuyMutation.mutateAsync({
       data: {
         amount,
@@ -363,9 +389,7 @@ export default function XTraderPage() {
         return;
       }
       queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-      martingaleWatchRef.current = strategy === "martingale"
-        ? { knownIds: new Set(latestRows.map((trade) => trade.contract_id)), amount }
-        : null;
+      armMartingaleWatch(latestRows, amount, 1);
       await bulkBuyMutation.mutateAsync({
         data: {
           amount,
@@ -380,6 +404,44 @@ export default function XTraderPage() {
       });
       setDirection(contractType);
       setSessionTrades((value) => value + 1);
+      await queryClient.invalidateQueries();
+    } catch (error) {
+      martingaleWatchRef.current = null;
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    }
+  };
+
+  const dualMode = async () => {
+    if (!isConnected) return;
+    if (isReal && !liveConfirmed) {
+      setConnectionMessage({ kind: "error", text: "Confirm live funds before sending Dual Mode." });
+      return;
+    }
+    const amount = strategy === "martingale" ? nextStakeRef.current : stake;
+    if (currentAccount && amount * 2 > currentAccount.balance) {
+      setConnectionMessage({ kind: "error", text: "Dual Mode needs two stakes within the available balance." });
+      return;
+    }
+    try {
+      const latestRows = await getDerivHistory();
+      if (latestRows.some((trade) => trade.status === "open")) {
+        setConnectionMessage({ kind: "info", text: "Wait for the previous contract to settle before using Dual Mode." });
+        return;
+      }
+      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+      armMartingaleWatch(latestRows, amount, 2);
+      await dualBuyMutation.mutateAsync({
+        data: {
+          amount,
+          duration,
+          duration_unit: "t",
+          barrier,
+          symbol,
+          confirm_live_trade: true,
+        },
+      });
+      setSessionTrades((value) => value + 2);
+      setConnectionMessage({ kind: "info", text: `Dual Mode sent Over ${barrier} and Under ${barrier} without the single-trade cooldown.` });
       await queryClient.invalidateQueries();
     } catch (error) {
       martingaleWatchRef.current = null;
@@ -409,7 +471,7 @@ export default function XTraderPage() {
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
-  const canTrade = isConnected && !running && !bulkBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
+  const canTrade = isConnected && !running && !bulkBuyMutation.isPending && !dualBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
     && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
   return (
@@ -555,8 +617,12 @@ export default function XTraderPage() {
                 <span><Play size={14} fill="currentColor" />UNDER {barrier}</span>
                 <small>Send one trade</small>
               </button>
+              <button className="xt-bulk-dual" onClick={() => void dualMode()} disabled={!canTrade}>
+                <span><Zap size={14} fill="currentColor" />DUAL MODE</span>
+                <small>Over + Under · one press</small>
+              </button>
             </div>
-            {strategy === "martingale" && <p className="xt-streak-note">Next stake after settlement: <b>{nextStake.toFixed(2)} {currentAccount?.currency ?? "USD"}</b>. A loss multiplies the next trade; a win resets it.</p>}
+            {strategy === "martingale" && <p className="xt-streak-note">Next stake after settlement: <b>{nextStake.toFixed(2)} {currentAccount?.currency ?? "USD"}</b>. Every loss multiplies the next stake; any profit resets it to normal.</p>}
           </section>
 
           {canViewHistory && <section className="xt-history" title="Recent dashboard trade history">
