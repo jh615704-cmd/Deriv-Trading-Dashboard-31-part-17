@@ -20,6 +20,8 @@ tags:
     description: Current approved access
   - name: admin
     description: Administrator user management
+  - name: access
+    description: Access-key sessions and administrator access controls
 paths:
   /healthz:
     get:
@@ -104,6 +106,189 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Administrator access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /access/login:
+    post:
+      security: []
+      operationId: loginAccessKey
+      tags: [access]
+      summary: Open an access-key session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessKeyLoginInput"
+      responses:
+        "200":
+          description: Access session opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessSession"
+        "400":
+          description: Invalid access-key input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Access key not recognized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Access key paused, blocked, banned, or at its device limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /access/session:
+    get:
+      security:
+        - accessSession: []
+      operationId: getAccessSession
+      tags: [access]
+      summary: Get the current access-key session
+      responses:
+        "200":
+          description: Current access session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessSession"
+        "401":
+          description: Access key session required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /access/heartbeat:
+    post:
+      security:
+        - accessSession: []
+      operationId: heartbeatAccessSession
+      tags: [access]
+      summary: Update access-key presence
+      responses:
+        "200":
+          description: Presence updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+  /access/logout:
+    post:
+      security:
+        - accessSession: []
+      operationId: logoutAccessSession
+      tags: [access]
+      summary: Close the current access-key session
+      responses:
+        "200":
+          description: Session closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+  /access/keys:
+    get:
+      security:
+        - accessSession: []
+      operationId: listAccessKeys
+      tags: [access]
+      summary: List access keys for administrators
+      responses:
+        "200":
+          description: Access keys and presence
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccessKeySummary"
+        "403":
+          description: Administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      security:
+        - accessSession: []
+      operationId: createAccessKey
+      tags: [access]
+      summary: Create a user or administrator access key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessKeyCreateInput"
+      responses:
+        "201":
+          description: Access key created; the raw key is returned only once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessKeyCreated"
+        "400":
+          description: Invalid access-key settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /access/keys/{id}:
+    patch:
+      security:
+        - accessSession: []
+      operationId: updateAccessKey
+      tags: [access]
+      summary: Pause, block, ban, or update an access key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessKeyUpdateInput"
+      responses:
+        "200":
+          description: Access key updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessKeySummary"
+        "400":
+          description: Invalid or irreversible access-key update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Access key not found
           content:
             application/json:
               schema:
@@ -406,6 +591,11 @@ components:
       in: cookie
       name: __session
       description: Clerk browser session cookie
+    accessSession:
+      type: apiKey
+      in: cookie
+      name: jdy_access
+      description: HttpOnly access-key session cookie
   schemas:
     AuthAccess:
       type: object
@@ -429,6 +619,75 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8, maxLength: 72 }
+    AccessKeyLoginInput:
+      type: object
+      required: [access_key, device_id]
+      properties:
+        access_key: { type: string, minLength: 12, maxLength: 200 }
+        device_id: { type: string, minLength: 8, maxLength: 200 }
+    AccessKeyCreateInput:
+      type: object
+      required: [label, kind, max_devices, features]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        kind: { type: string, enum: [admin, user] }
+        max_devices: { type: integer, minimum: 1, maximum: 50 }
+        features:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AccessFeature"
+    AccessKeyUpdateInput:
+      type: object
+      properties:
+        status: { type: string, enum: [active, paused, blocked, banned] }
+        max_devices: { type: integer, minimum: 1, maximum: 50 }
+        features:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AccessFeature"
+    AccessFeature:
+      type: string
+      enum: [edge, settings, history, admin]
+    AccessSession:
+      type: object
+      required: [key_id, key_prefix, label, kind, status, max_devices, features, online, last_seen_at]
+      properties:
+        key_id: { type: string, format: uuid }
+        key_prefix: { type: string }
+        label: { type: string }
+        kind: { type: string, enum: [admin, user] }
+        status: { type: string, enum: [active, paused, blocked, banned] }
+        max_devices: { type: integer }
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccessFeature"
+        online: { type: boolean }
+        last_seen_at: { type: ["string", "null"], format: date-time }
+    AccessKeySummary:
+      allOf:
+        - $ref: "#/components/schemas/AccessSession"
+        - type: object
+          required: [device_count, online_devices, offline_seconds, created_at]
+          properties:
+            device_count: { type: integer }
+            online_devices: { type: integer }
+            offline_seconds: { type: integer }
+            created_at: { type: string, format: date-time }
+    AccessKeyCreated:
+      allOf:
+        - $ref: "#/components/schemas/AccessSession"
+        - type: object
+          required: [access_key]
+          properties:
+            access_key: { type: string }
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
     DerivTokenInput:
       type: object
       required: [token]

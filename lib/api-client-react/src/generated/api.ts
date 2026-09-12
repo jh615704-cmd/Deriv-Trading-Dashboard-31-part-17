@@ -20,6 +20,12 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccessKeyCreateInput,
+  AccessKeyCreated,
+  AccessKeyLoginInput,
+  AccessKeySummary,
+  AccessKeyUpdateInput,
+  AccessSession,
   AdminUserInput,
   ApprovedUser,
   AuthAccess,
@@ -41,6 +47,7 @@ import type {
   DerivTokenTestResponse,
   ErrorResponse,
   HealthStatus,
+  SuccessResponse,
   TokenDeleteResponse
 } from './api.schemas';
 
@@ -372,6 +379,516 @@ export const useCreateAdminUser = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateAdminUserMutationOptions(options));
+    }
+
+export const getLoginAccessKeyUrl = () => {
+
+
+
+
+  return `/api/access/login`
+}
+
+/**
+ * @summary Open an access-key session
+ */
+export const loginAccessKey = async (accessKeyLoginInput: AccessKeyLoginInput, options?: Parameters<typeof customFetch>[1]): Promise<AccessSession> => {
+
+  return customFetch<AccessSession>(getLoginAccessKeyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(accessKeyLoginInput)
+  }
+);}
+
+
+
+
+
+export const getLoginAccessKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginAccessKey>>, TError,{data: BodyType<AccessKeyLoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginAccessKey>>, TError,{data: BodyType<AccessKeyLoginInput>}, TContext> => {
+
+const mutationKey = ['loginAccessKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginAccessKey>>, {data: BodyType<AccessKeyLoginInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginAccessKey(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginAccessKeyMutationResult = NonNullable<Awaited<ReturnType<typeof loginAccessKey>>>
+    export type LoginAccessKeyMutationBody = BodyType<AccessKeyLoginInput>
+    export type LoginAccessKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Open an access-key session
+ */
+export const useLoginAccessKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginAccessKey>>, TError,{data: BodyType<AccessKeyLoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginAccessKey>>,
+        TError,
+        {data: BodyType<AccessKeyLoginInput>},
+        TContext
+      > => {
+      return useMutation(getLoginAccessKeyMutationOptions(options));
+    }
+
+export const getGetAccessSessionUrl = () => {
+
+
+
+
+  return `/api/access/session`
+}
+
+/**
+ * @summary Get the current access-key session
+ */
+export const getAccessSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccessSession> => {
+
+  return customFetch<AccessSession>(getGetAccessSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccessSessionQueryKey = () => {
+    return [
+    `/api/access/session`
+    ] as const;
+    }
+
+
+export const getGetAccessSessionQueryOptions = <TData = Awaited<ReturnType<typeof getAccessSession>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccessSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccessSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccessSession>>> = ({ signal }) => getAccessSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccessSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccessSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getAccessSession>>>
+export type GetAccessSessionQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the current access-key session
+ */
+
+export function useGetAccessSession<TData = Awaited<ReturnType<typeof getAccessSession>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccessSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccessSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getHeartbeatAccessSessionUrl = () => {
+
+
+
+
+  return `/api/access/heartbeat`
+}
+
+/**
+ * @summary Update access-key presence
+ */
+export const heartbeatAccessSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getHeartbeatAccessSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getHeartbeatAccessSessionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof heartbeatAccessSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof heartbeatAccessSession>>, TError,void, TContext> => {
+
+const mutationKey = ['heartbeatAccessSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof heartbeatAccessSession>>, void> = () => {
+
+
+          return  heartbeatAccessSession(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HeartbeatAccessSessionMutationResult = NonNullable<Awaited<ReturnType<typeof heartbeatAccessSession>>>
+
+    export type HeartbeatAccessSessionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update access-key presence
+ */
+export const useHeartbeatAccessSession = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof heartbeatAccessSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof heartbeatAccessSession>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getHeartbeatAccessSessionMutationOptions(options));
+    }
+
+export const getLogoutAccessSessionUrl = () => {
+
+
+
+
+  return `/api/access/logout`
+}
+
+/**
+ * @summary Close the current access-key session
+ */
+export const logoutAccessSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getLogoutAccessSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutAccessSessionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAccessSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutAccessSession>>, TError,void, TContext> => {
+
+const mutationKey = ['logoutAccessSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutAccessSession>>, void> = () => {
+
+
+          return  logoutAccessSession(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutAccessSessionMutationResult = NonNullable<Awaited<ReturnType<typeof logoutAccessSession>>>
+
+    export type LogoutAccessSessionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Close the current access-key session
+ */
+export const useLogoutAccessSession = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAccessSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logoutAccessSession>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutAccessSessionMutationOptions(options));
+    }
+
+export const getListAccessKeysUrl = () => {
+
+
+
+
+  return `/api/access/keys`
+}
+
+/**
+ * @summary List access keys for administrators
+ */
+export const listAccessKeys = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccessKeySummary[]> => {
+
+  return customFetch<AccessKeySummary[]>(getListAccessKeysUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAccessKeysQueryKey = () => {
+    return [
+    `/api/access/keys`
+    ] as const;
+    }
+
+
+export const getListAccessKeysQueryOptions = <TData = Awaited<ReturnType<typeof listAccessKeys>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAccessKeys>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAccessKeysQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAccessKeys>>> = ({ signal }) => listAccessKeys({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccessKeys>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAccessKeysQueryResult = NonNullable<Awaited<ReturnType<typeof listAccessKeys>>>
+export type ListAccessKeysQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List access keys for administrators
+ */
+
+export function useListAccessKeys<TData = Awaited<ReturnType<typeof listAccessKeys>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAccessKeys>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAccessKeysQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateAccessKeyUrl = () => {
+
+
+
+
+  return `/api/access/keys`
+}
+
+/**
+ * @summary Create a user or administrator access key
+ */
+export const createAccessKey = async (accessKeyCreateInput: AccessKeyCreateInput, options?: Parameters<typeof customFetch>[1]): Promise<AccessKeyCreated> => {
+
+  return customFetch<AccessKeyCreated>(getCreateAccessKeyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(accessKeyCreateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAccessKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAccessKey>>, TError,{data: BodyType<AccessKeyCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAccessKey>>, TError,{data: BodyType<AccessKeyCreateInput>}, TContext> => {
+
+const mutationKey = ['createAccessKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAccessKey>>, {data: BodyType<AccessKeyCreateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAccessKey(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAccessKeyMutationResult = NonNullable<Awaited<ReturnType<typeof createAccessKey>>>
+    export type CreateAccessKeyMutationBody = BodyType<AccessKeyCreateInput>
+    export type CreateAccessKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a user or administrator access key
+ */
+export const useCreateAccessKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAccessKey>>, TError,{data: BodyType<AccessKeyCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAccessKey>>,
+        TError,
+        {data: BodyType<AccessKeyCreateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAccessKeyMutationOptions(options));
+    }
+
+export const getUpdateAccessKeyUrl = (id: string,) => {
+
+
+
+
+  return `/api/access/keys/${id}`
+}
+
+/**
+ * @summary Pause, block, ban, or update an access key
+ */
+export const updateAccessKey = async (id: string,
+    accessKeyUpdateInput: AccessKeyUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<AccessKeySummary> => {
+
+  return customFetch<AccessKeySummary>(getUpdateAccessKeyUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(accessKeyUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAccessKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccessKey>>, TError,{id: string;data: BodyType<AccessKeyUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAccessKey>>, TError,{id: string;data: BodyType<AccessKeyUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateAccessKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAccessKey>>, {id: string;data: BodyType<AccessKeyUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAccessKey(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAccessKeyMutationResult = NonNullable<Awaited<ReturnType<typeof updateAccessKey>>>
+    export type UpdateAccessKeyMutationBody = BodyType<AccessKeyUpdateInput>
+    export type UpdateAccessKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Pause, block, ban, or update an access key
+ */
+export const useUpdateAccessKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAccessKey>>, TError,{id: string;data: BodyType<AccessKeyUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAccessKey>>,
+        TError,
+        {id: string;data: BodyType<AccessKeyUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAccessKeyMutationOptions(options));
     }
 
 export const getTestDerivTokenUrl = () => {

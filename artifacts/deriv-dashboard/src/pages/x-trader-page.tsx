@@ -41,7 +41,7 @@ const markets = [
 ] as const;
 
 const guidePages = [
-  { title: "Welcome to X Trader", body: "X Trader is a digit-contract workspace for testing Over and Under ideas with a controlled stake, a selected market, and visible session results.", points: ["Use demo accounts while learning.", "Every trade uses the selected duration, stake, market, and barrier.", "The guide explains the controls before you start."] },
+  { title: "Welcome to EDGE 🏔️", body: "EDGE is a digit-contract workspace for testing Over and Under ideas with a controlled stake, a selected market, and visible session results.", points: ["Use demo accounts while learning.", "Every trade uses the selected duration, stake, market, and barrier.", "The guide explains the controls before you start."] },
   { title: "Connect and choose an account", body: "Connect a Deriv PAT with read and trade permissions, then select the account you want to use. The active balance is refreshed from Deriv.", points: ["Demo accounts are the safest place to validate a strategy.", "Real accounts require live-trading confirmation.", "Account changes clear the active market session state."] },
   { title: "Markets and live ticks", body: "Each supported market streams live quotes. The final digit of each quote becomes the digit signal used by the streak display.", points: ["Switch markets from the Market selector.", "The last tick shows the current quote and final digit.", "Past ticks describe history; they do not control the next tick."] },
   { title: "What Over means", body: "An Over contract wins when the last digit at expiry is above the selected barrier. For example, Over 1 wins on digits 2 through 9.", points: ["Choose a barrier from the digit row.", "The button label always shows the current barrier.", "The result is decided by the contract expiry, not by the entry quote."] },
@@ -53,11 +53,11 @@ const guidePages = [
   { title: "Martingale after loss", body: "Martingale increases the next stake after a loss by the configured multiplier. It can grow exposure quickly and may exhaust a balance after a short losing run.", points: ["Set a low multiplier and a hard stop if you test it.", "The strategy is not a recovery guarantee.", "Demo testing is strongly recommended before any live use."] },
   { title: "Auto Best Digit", body: "Auto Best Digit ranks the live signals from all supported markets using available tick history, current sample size, and the strongest recent Over or Under streak. It selects a market, direction, and barrier for the next batch.", points: ["The score favors fresh markets with enough observations.", "It selects both Over or Under and the profitable-looking barrier.", "It is a signal-selection aid, not a prediction engine. No strategy guarantees a win rate."] },
   { title: "How the signal score works", body: "The built-in score compares recent consecutive digits above and below each candidate barrier across every subscribed market. Stronger, better-sampled signals rank higher.", points: ["Signals with no recent ticks are ignored.", "The selected market can change when a stronger signal appears.", "Recent streak length is descriptive, not proof of future probability."] },
-  { title: "Immediate Over and Under", body: "Use the Over or Under button below Run X Trader to send one contract immediately using the selected barrier, duration, stake, and strategy.", points: ["The button sends one trade at a time.", "Martingale can multiply the next stake after a loss, but it cannot guarantee recovery.", "The next win resets the amount to the normal stake."] },
-  { title: "Run X Trader", body: "Run X Trader starts the repeating loop using the current direction, barrier, duration, stake, strategy, and batch size. Stop ends the loop after the active request completes.", points: ["Use the immediate Over and Under buttons for a single batch.", "Use Run X Trader only after reviewing the full configuration.", "Turning off X Trader stops the loop and hides its controls."] },
+  { title: "Immediate Over and Under", body: "Use the Over or Under button below Run EDGE to send one contract immediately using the selected barrier, duration, stake, and strategy.", points: ["The button sends one trade at a time.", "Martingale can multiply the next stake after a loss, but it cannot guarantee recovery.", "The next win resets the amount to the normal stake."] },
+  { title: "Run EDGE", body: "Run EDGE starts the repeating loop using the current direction, barrier, duration, stake, strategy, and batch size. Stop ends the loop after the active request completes.", points: ["Use the immediate Over and Under buttons for a single batch.", "Use Run EDGE only after reviewing the full configuration.", "Turning off EDGE stops the loop and hides its controls."] },
   { title: "Take Profit", body: "Take Profit stops the repeating loop after the session reaches the configured positive P/L. It applies to the local session total, not to your entire Deriv account history.", points: ["Choose an amount you can accept as a session target.", "The target is checked as results settle.", "Take Profit does not close a contract early."] },
   { title: "Stop Loss", body: "Stop Loss stops the repeating loop after the session reaches the configured negative P/L. It is a guardrail, not a guarantee that losses cannot exceed the target.", points: ["Use a smaller loss limit while testing.", "Bulk trades can settle after the loop is stopped.", "Review the trade history before starting another session."] },
-  { title: "Live-money protection", body: "Real accounts require an explicit live-funds confirmation before Run X Trader, Auto Best Digit, or an immediate trade can send contracts.", points: ["Read the confirmation carefully.", "The server also enforces its live-trading configuration.", "If you are learning, switch back to a demo account."] },
+  { title: "Live-money protection", body: "Real accounts require an explicit live-funds confirmation before Run EDGE, Auto Best Digit, or an immediate trade can send contracts.", points: ["Read the confirmation carefully.", "The server also enforces its live-trading configuration.", "If you are learning, switch back to a demo account."] },
   { title: "Reading session results", body: "Session P/L and Trades Sent show only activity since the last Reset. Recent Trades contains the dashboard rows received from the Deriv stream.", points: ["Reset clears only Session P/L and Trades Sent.", "Reset does not change stake, duration, barrier, or strategy.", "Clear Recent Trades removes dashboard rows without deleting Deriv records."] },
   { title: "A safe pre-trade checklist", body: "Before sending anything, confirm the account, market, direction, barrier, duration, stake, strategy, and risk limits.", points: ["Start with a demo account.", "Martingale increases exposure after losses, so keep a reserve.", "Never rely on a claimed guaranteed win rate."] },
   { title: "Let's start trading", body: "You now know how the market selector, Over and Under contracts, Martingale, Auto Best Digit, and risk controls work.", points: ["Start with one small demo trade.", "Watch the settlement and confirm the history updates.", "Keep the guide available whenever you change strategy."] },
@@ -226,7 +226,7 @@ export default function XTraderPage() {
       latestRows = await getDerivHistory();
     }
     if (latestRows.some((trade) => trade.status === "open")) {
-      throw new Error("The previous contract is still settling. X Trader stopped without sending another trade.");
+      throw new Error("The previous contract is still settling. EDGE stopped without sending another trade.");
     }
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
@@ -393,7 +393,7 @@ export default function XTraderPage() {
   const accountOptions = accounts.data ?? [];
   const marketName = markets.find(([id]) => id === symbol)?.[1] ?? symbol;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
-  const activityText = running ? "X TRADER RUNNING" : "X TRADER STOPPED";
+  const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
   const canTrade = isConnected && !running && !bulkBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
     && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
@@ -434,7 +434,7 @@ export default function XTraderPage() {
       </section>
 
       <section className="xt-feature-card">
-        <div><Bot size={18} /><span><b>X Trader</b><small>Over / Under digit automation</small></span></div>
+        <div><Bot size={18} /><span><b>EDGE 🏔️</b><small>Over / Under digit automation</small></span></div>
         <div className="xt-feature-actions">
           <button className="xt-guide-button" type="button" onClick={() => { setGuidePage(0); setGuideOpen(true); }}>
             <BookOpen size={14} />Guide
@@ -444,7 +444,7 @@ export default function XTraderPage() {
               type="checkbox"
               checked={xTraderEnabled}
               onChange={(event) => toggleXTrader(event.target.checked)}
-              aria-label="Toggle X Trader"
+              aria-label="Toggle EDGE"
             />
             <span />
           </label>
@@ -455,7 +455,7 @@ export default function XTraderPage() {
         <>
           <section className="xt-cockpit">
             <div className="xt-cockpit-head">
-              <div><Activity size={18} /><span><b>X Trader Cockpit</b><small>Live tick analysis · historical streaks do not guarantee outcomes</small></span></div>
+              <div><Activity size={18} /><span><b>EDGE Cockpit</b><small>Live tick analysis · historical streaks do not guarantee outcomes</small></span></div>
               <em className={running ? "running" : ""}><i />{activityText}</em>
             </div>
 
@@ -520,7 +520,7 @@ export default function XTraderPage() {
               <label className="xt-auto-row"><span><small>AUTO BEST DIGIT</small><b>Scan markets and trade the strongest signal automatically</b></span><span className="xt-switch"><input type="checkbox" checked={autoSwitch} onChange={(event) => toggleAutoBestDigit(event.target.checked)} disabled={!isConnected} /><span /></span></label>
             </div>
 
-            {isReal && <label className="xt-live-warning"><ShieldAlert size={18} /><input type="checkbox" checked={liveConfirmed} onChange={(event) => setLiveConfirmed(event.target.checked)} /><span><b>Live funds confirmation</b>I understand X Trader will place real-money contracts.</span></label>}
+            {isReal && <label className="xt-live-warning"><ShieldAlert size={18} /><input type="checkbox" checked={liveConfirmed} onChange={(event) => setLiveConfirmed(event.target.checked)} /><span><b>Live funds confirmation</b>I understand EDGE will place real-money contracts.</span></label>}
 
             <div className="xt-session">
               <div><small>SESSION P/L</small><strong className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</strong></div>
@@ -529,7 +529,7 @@ export default function XTraderPage() {
             </div>
 
             <div className="xt-controls">
-              {!running ? <button className="run" onClick={start} disabled={!canRun}><Play size={18} fill="currentColor" />RUN X TRADER</button> : <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
+              {!running ? <button className="run" onClick={start} disabled={!canRun}><Play size={18} fill="currentColor" />RUN EDGE</button> : <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
               <button className="reset" onClick={reset}><RotateCcw size={18} />RESET</button>
             </div>
             <div className="xt-bulk-controls">
@@ -547,7 +547,7 @@ export default function XTraderPage() {
 
           <section className="xt-history" title="Recent dashboard trade history">
             <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Dashboard rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending || historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
-            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after X Trader starts.</div> : rows.slice(0, 12).map((trade) => <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : rows.slice(0, 12).map((trade) => <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
           </section>
         </>
       )}
@@ -556,12 +556,12 @@ export default function XTraderPage() {
         <div className="xt-guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideOpen(false); }}>
           <section className="xt-guide" role="dialog" aria-modal="true" aria-labelledby="xt-guide-title">
             <header className="xt-guide-header">
-              <div><BookOpen size={18} /><span><b> X Trader Guide</b><small>Page {guidePage + 1} of {guidePages.length}</small></span></div>
+              <div><BookOpen size={18} /><span><b> EDGE Guide</b><small>Page {guidePage + 1} of {guidePages.length}</small></span></div>
               <button type="button" aria-label="Close guide" onClick={() => setGuideOpen(false)}><X size={17} /></button>
             </header>
             <div className="xt-guide-progress"><span style={{ width: `${((guidePage + 1) / guidePages.length) * 100}%` }} /></div>
             <article className="xt-guide-page">
-              <small className="xt-guide-kicker">X TRADER FIELD GUIDE</small>
+              <small className="xt-guide-kicker">EDGE FIELD GUIDE</small>
               <h2 id="xt-guide-title">{guidePages[guidePage].title}</h2>
               <p>{guidePages[guidePage].body}</p>
               <ul>{guidePages[guidePage].points.map((point) => <li key={point}>{point}</li>)}</ul>

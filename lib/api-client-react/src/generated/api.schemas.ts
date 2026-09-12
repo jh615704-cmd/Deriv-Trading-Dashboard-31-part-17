@@ -44,6 +44,120 @@ export interface AdminUserInput {
   password: string;
 }
 
+export interface AccessKeyLoginInput {
+  /**
+     * @minLength 12
+     * @maxLength 200
+     */
+  access_key: string;
+  /**
+     * @minLength 8
+     * @maxLength 200
+     */
+  device_id: string;
+}
+
+export type AccessKeyCreateInputKind = typeof AccessKeyCreateInputKind[keyof typeof AccessKeyCreateInputKind];
+
+
+export const AccessKeyCreateInputKind = {
+  admin: 'admin',
+  user: 'user',
+} as const;
+
+export type AccessFeature = typeof AccessFeature[keyof typeof AccessFeature];
+
+
+export const AccessFeature = {
+  edge: 'edge',
+  settings: 'settings',
+  history: 'history',
+  admin: 'admin',
+} as const;
+
+export interface AccessKeyCreateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  label: string;
+  kind: AccessKeyCreateInputKind;
+  /**
+     * @minimum 1
+     * @maximum 50
+     */
+  max_devices: number;
+  /** @minItems 1 */
+  features: AccessFeature[];
+}
+
+export type AccessKeyUpdateInputStatus = typeof AccessKeyUpdateInputStatus[keyof typeof AccessKeyUpdateInputStatus];
+
+
+export const AccessKeyUpdateInputStatus = {
+  active: 'active',
+  paused: 'paused',
+  blocked: 'blocked',
+  banned: 'banned',
+} as const;
+
+export interface AccessKeyUpdateInput {
+  status?: AccessKeyUpdateInputStatus;
+  /**
+     * @minimum 1
+     * @maximum 50
+     */
+  max_devices?: number;
+  /** @minItems 1 */
+  features?: AccessFeature[];
+}
+
+export type AccessSessionKind = typeof AccessSessionKind[keyof typeof AccessSessionKind];
+
+
+export const AccessSessionKind = {
+  admin: 'admin',
+  user: 'user',
+} as const;
+
+export type AccessSessionStatus = typeof AccessSessionStatus[keyof typeof AccessSessionStatus];
+
+
+export const AccessSessionStatus = {
+  active: 'active',
+  paused: 'paused',
+  blocked: 'blocked',
+  banned: 'banned',
+} as const;
+
+export interface AccessSession {
+  key_id: string;
+  key_prefix: string;
+  label: string;
+  kind: AccessSessionKind;
+  status: AccessSessionStatus;
+  max_devices: number;
+  features: AccessFeature[];
+  online: boolean;
+  /** @nullable */
+  last_seen_at: string | null;
+}
+
+export type AccessKeySummary = AccessSession & {
+  device_count: number;
+  online_devices: number;
+  offline_seconds: number;
+  created_at: string;
+};
+
+export type AccessKeyCreated = AccessSession & {
+  access_key: string;
+};
+
+export interface SuccessResponse {
+  success: boolean;
+}
+
 export interface DerivTokenInput {
   /** @minLength 1 */
   token: string;

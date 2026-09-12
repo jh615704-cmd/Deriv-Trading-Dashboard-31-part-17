@@ -35,8 +35,8 @@ export default function SignInPage() {
       if (signIn.status === 'complete' && signIn.createdSessionId) {
         await signIn.finalize();
         setPassword('');
-        setSuccess('Login successful. Opening JDY AI...');
-        window.setTimeout(() => setLocation('/app'), 350);
+         setSuccess('Administrator session ready. Opening the control panel…');
+         window.setTimeout(() => setLocation('/admin/users'), 350);
       } else {
         setError('Sign in requires further verification.');
       }
@@ -62,7 +62,8 @@ export default function SignInPage() {
           </div>
         </div>
         
-        <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
+         <h1 className="text-2xl font-bold text-center mb-2">Administrator sign-in</h1>
+         <p className="mb-6 text-center text-sm text-[#709092] dark:text-[#9ab9b6]">Use the administrator account to provision EDGE access keys.</p>
         
         {error && (
           <div className="mb-6 p-3 bg-[#fff4f2] dark:bg-[#3c2426] border border-[#e5aaa5] dark:border-[#8c4d4a] rounded-lg text-[var(--coral)] dark:text-[#e6b6b2] text-sm text-center">

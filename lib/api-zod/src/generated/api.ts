@@ -63,6 +63,157 @@ export const CreateAdminUserResponse = zod.object({
 
 
 /**
+ * @summary Open an access-key session
+ */
+export const loginAccessKeyBodyAccessKeyMin = 12;
+export const loginAccessKeyBodyAccessKeyMax = 200;
+
+export const loginAccessKeyBodyDeviceIdMin = 8;
+export const loginAccessKeyBodyDeviceIdMax = 200;
+
+
+
+export const LoginAccessKeyBody = zod.object({
+  "access_key": zod.string().min(loginAccessKeyBodyAccessKeyMin).max(loginAccessKeyBodyAccessKeyMax),
+  "device_id": zod.string().min(loginAccessKeyBodyDeviceIdMin).max(loginAccessKeyBodyDeviceIdMax)
+})
+
+export const LoginAccessKeyResponse = zod.object({
+  "key_id": zod.string().uuid(),
+  "key_prefix": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['admin', 'user']),
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
+  "max_devices": zod.number().int(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
+  "online": zod.boolean(),
+  "last_seen_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Get the current access-key session
+ */
+export const GetAccessSessionResponse = zod.object({
+  "key_id": zod.string().uuid(),
+  "key_prefix": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['admin', 'user']),
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
+  "max_devices": zod.number().int(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
+  "online": zod.boolean(),
+  "last_seen_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Update access-key presence
+ */
+export const HeartbeatAccessSessionResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Close the current access-key session
+ */
+export const LogoutAccessSessionResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List access keys for administrators
+ */
+export const ListAccessKeysResponseItem = zod.object({
+  "key_id": zod.string().uuid(),
+  "key_prefix": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['admin', 'user']),
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
+  "max_devices": zod.number().int(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
+  "online": zod.boolean(),
+  "last_seen_at": zod.coerce.date().nullable()
+}).and(zod.object({
+  "device_count": zod.number().int(),
+  "online_devices": zod.number().int(),
+  "offline_seconds": zod.number().int(),
+  "created_at": zod.coerce.date()
+}))
+export const ListAccessKeysResponse = zod.array(ListAccessKeysResponseItem)
+
+
+/**
+ * @summary Create a user or administrator access key
+ */
+export const createAccessKeyBodyLabelMax = 120;
+
+export const createAccessKeyBodyMaxDevicesMax = 50;
+
+
+
+
+export const CreateAccessKeyBody = zod.object({
+  "label": zod.string().min(1).max(createAccessKeyBodyLabelMax),
+  "kind": zod.enum(['admin', 'user']),
+  "max_devices": zod.number().int().min(1).max(createAccessKeyBodyMaxDevicesMax),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])).min(1)
+})
+
+export const CreateAccessKeyResponse = zod.object({
+  "key_id": zod.string().uuid(),
+  "key_prefix": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['admin', 'user']),
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
+  "max_devices": zod.number().int(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
+  "online": zod.boolean(),
+  "last_seen_at": zod.coerce.date().nullable()
+}).and(zod.object({
+  "access_key": zod.string()
+}))
+
+
+/**
+ * @summary Pause, block, ban, or update an access key
+ */
+export const UpdateAccessKeyParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const updateAccessKeyBodyMaxDevicesMax = 50;
+
+
+
+
+export const UpdateAccessKeyBody = zod.object({
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']).optional(),
+  "max_devices": zod.number().int().min(1).max(updateAccessKeyBodyMaxDevicesMax).optional(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])).min(1).optional()
+})
+
+export const UpdateAccessKeyResponse = zod.object({
+  "key_id": zod.string().uuid(),
+  "key_prefix": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['admin', 'user']),
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
+  "max_devices": zod.number().int(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
+  "online": zod.boolean(),
+  "last_seen_at": zod.coerce.date().nullable()
+}).and(zod.object({
+  "device_count": zod.number().int(),
+  "online_devices": zod.number().int(),
+  "offline_seconds": zod.number().int(),
+  "created_at": zod.coerce.date()
+}))
+
+
+/**
  * @summary Validate and save a Deriv personal access token
  */
 

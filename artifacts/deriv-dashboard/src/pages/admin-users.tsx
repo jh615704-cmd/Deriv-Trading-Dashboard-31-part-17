@@ -1,196 +1,193 @@
-import { useState } from 'react';
-import { useListAdminUsers, useCreateAdminUser, getListAdminUsersQueryKey } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { AppShell } from '@/components/layout/app-shell';
-import { RefreshCw, UserPlus, Mail, KeyRound, CheckCircle2, XCircle, ShieldCheck, Activity, Gauge, LockKeyhole } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getListAccessKeysQueryKey,
+  useCreateAccessKey,
+  useListAccessKeys,
+  useUpdateAccessKey,
+  type AccessFeature,
+  type AccessKeySummary,
+} from "@workspace/api-client-react";
+import { AppShell } from "@/components/layout/app-shell";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Activity,
+  Ban,
+  Check,
+  CirclePause,
+  Copy,
+  KeyRound,
+  LockKeyhole,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  UserRound,
+  Unlock,
+  Users,
+} from "lucide-react";
+
+const featureOptions: Array<{ value: AccessFeature; label: string; description: string }> = [
+  { value: "edge", label: "EDGE trading", description: "PAT connection, live telemetry, and trades" },
+  { value: "settings", label: "Settings", description: "View and manage the Deriv connection" },
+  { value: "history", label: "History", description: "Read recent trading activity" },
+  { value: "admin", label: "Admin panel", description: "Create and manage access keys" },
+];
+
+function errorMessage(error: unknown) {
+  const candidate = error as { data?: { error?: string }; message?: string };
+  return candidate.data?.error ?? candidate.message ?? "The request could not be completed.";
+}
+
+function formatOffline(seconds: number, online: boolean) {
+  if (online) return "Online now";
+  if (!seconds) return "Never connected";
+  if (seconds < 60) return `Offline ${seconds}s`;
+  if (seconds < 3600) return `Offline ${Math.floor(seconds / 60)}m`;
+  return `Offline ${Math.floor(seconds / 3600)}h`;
+}
+
+function StatusBadge({ item }: { item: AccessKeySummary }) {
+  const label = item.status === "banned" ? "Banned" : item.status === "blocked" ? "Blocked" : item.status === "paused" ? "Paused" : item.online ? "Online" : "Offline";
+  return <span className={`key-status key-status-${item.status} ${item.online ? "key-status-online" : ""}`}><i />{label}</span>;
+}
+
+function KeyRow({ item, onStatus }: { item: AccessKeySummary; onStatus: (item: AccessKeySummary, status: "active" | "paused" | "blocked" | "banned") => void }) {
+  const isBanned = item.status === "banned";
+  return (
+    <div className="key-row">
+      <div className="key-row-main">
+        <div className="key-avatar">{item.kind === "admin" ? <ShieldCheck size={17} /> : <UserRound size={17} />}</div>
+        <div>
+          <div className="key-label">{item.label}</div>
+          <div className="key-prefix">{item.key_prefix}••••••••</div>
+        </div>
+      </div>
+      <div className="key-row-data"><span>{item.kind === "admin" ? "Administrator" : "User"}</span><strong>{item.device_count} / {item.max_devices}</strong><small>devices</small></div>
+      <div className="key-row-data"><StatusBadge item={item} /><small>{formatOffline(item.offline_seconds, item.online)}</small></div>
+      <div className="key-feature-list">{item.features.map((feature) => <span key={feature}>{feature}</span>)}</div>
+      <div className="key-row-actions">
+        {item.status !== "active" && !isBanned && <button type="button" className="key-action key-action-green" onClick={() => onStatus(item, "active")} title="Resume or unblock"><Unlock size={14} /> Resume</button>}
+        {item.status === "active" && <button type="button" className="key-action" onClick={() => onStatus(item, "paused")} title="Pause this key"><CirclePause size={14} /> Pause</button>}
+        {item.status !== "blocked" && !isBanned && <button type="button" className="key-action" onClick={() => onStatus(item, "blocked")} title="Block this key"><LockKeyhole size={14} /> Block</button>}
+        {!isBanned && <button type="button" className="key-action key-action-red" onClick={() => onStatus(item, "banned")} title="Permanently ban this key"><Ban size={14} /> Ban</button>}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
-  const usersQuery = useListAdminUsers();
-  const createUserMutation = useCreateAdminUser();
+  const keysQuery = useListAccessKeys({ query: { refetchInterval: 15_000, queryKey: getListAccessKeysQueryKey() } });
+  const createKey = useCreateAccessKey();
+  const updateKey = useUpdateAccessKey();
+  const [label, setLabel] = useState("");
+  const [kind, setKind] = useState<"user" | "admin">("user");
+  const [maxDevices, setMaxDevices] = useState(1);
+  const [features, setFeatures] = useState<AccessFeature[]>(["edge"]);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
+  const keys = keysQuery.data ?? [];
+  const onlineCount = keys.filter((key) => key.online).length;
+  const userCount = keys.filter((key) => key.kind === "user").length;
+  const activeCount = keys.filter((key) => key.status === "active").length;
+  const canCreate = Boolean(label.trim()) && features.length > 0 && !createKey.isPending;
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const users = usersQuery.data ?? [];
-  const activeUsers = users.filter((user) => user.active).length;
-  const adminUsers = users.filter((user) => user.role === 'admin').length;
+  const toggleFeature = (feature: AccessFeature) => {
+    setFeatures((current) => current.includes(feature) ? current.filter((item) => item !== feature) : [...current, feature]);
+  };
 
-  const handleCreateUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateError(null);
-    setIsCreating(true);
-
-    createUserMutation.mutate(
-      { data: { email, password } },
+  const handleCreate = (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError("");
+    createKey.mutate(
+      { data: { label: label.trim(), kind, max_devices: maxDevices, features: kind === "admin" ? ["edge", "settings", "history", "admin"] : features } },
       {
-        onSuccess: (newUser) => {
-          setEmail('');
-          setPassword('');
-          toast({ title: 'User created', description: `${newUser.email} has been approved and added.` });
-          queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
+        onSuccess: (created) => {
+          setNewKey(created.access_key);
+          setLabel("");
+          setKind("user");
+          setMaxDevices(1);
+          setFeatures(["edge"]);
+          queryClient.invalidateQueries({ queryKey: getListAccessKeysQueryKey() });
+          toast({ title: "Access key created", description: "Copy the key now. It is shown only once." });
         },
-        onError: (err: any) => {
-          setCreateError(err.error || err.message || 'Failed to create user');
-        },
-        onSettled: () => {
-          setIsCreating(false);
-        }
-      }
+        onError: (error) => setFormError(errorMessage(error)),
+      },
     );
   };
 
+  const handleStatus = (item: AccessKeySummary, status: "active" | "paused" | "blocked" | "banned") => {
+    if (status === "banned" && !window.confirm(`Permanently ban ${item.label}? This cannot be undone.`)) return;
+    updateKey.mutate(
+      { id: item.key_id, data: { status } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListAccessKeysQueryKey() });
+          toast({ title: status === "banned" ? "Key permanently banned" : `Key ${status === "active" ? "resumed" : status}` });
+        },
+        onError: (error) => toast({ variant: "destructive", title: "Update failed", description: errorMessage(error) }),
+      },
+    );
+  };
+
+  const copyKey = async () => {
+    if (!newKey) return;
+    await navigator.clipboard?.writeText(newKey);
+    toast({ title: "Copied", description: "The access key is on your clipboard." });
+  };
+
+  const stats = useMemo(() => [
+    { label: "TOTAL KEYS", value: keys.length, detail: `${userCount} user keys`, icon: KeyRound },
+    { label: "ONLINE NOW", value: onlineCount, detail: "Presence within 90 seconds", icon: Activity },
+    { label: "ACTIVE ACCESS", value: activeCount, detail: "Keys currently accepted", icon: Users },
+  ], [activeCount, keys.length, onlineCount, userCount]);
+
   return (
-    <AppShell title="ADMIN / USERS">
-      <div className="max-w-5xl space-y-8">
-        <section>
-          <div className="eyebrow mb-4"><span className="eyebrow-rule" />WORKSPACE / ADMIN CENTER</div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-7">
-            <div>
-              <h1 className="text-3xl font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]">Operations <em>control.</em></h1>
-              <p className="mt-2 max-w-xl text-sm text-[#709092] dark:text-[#9ab9b6]">Manage approved access and keep the trading workspace operating with explicit safety gates.</p>
-            </div>
-            <button type="button" onClick={() => void usersQuery.refetch()} disabled={usersQuery.isFetching} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-xs font-semibold text-[var(--teal-deep)] transition hover:border-[var(--teal)] disabled:opacity-60">
-              <RefreshCw size={14} className={usersQuery.isFetching ? 'spin' : ''} /> Refresh
-            </button>
+    <AppShell title="ADMIN / ACCESS CONTROL">
+      <div className="admin-console">
+        <section className="admin-console-heading">
+          <div>
+            <div className="eyebrow"><span className="eyebrow-rule" />WORKSPACE / EDGE ADMIN</div>
+            <h1>Access <em>control.</em></h1>
+            <p>Provision keys, set device limits, grant features, and control who can enter the trading workspace.</p>
           </div>
+          <button type="button" className="refresh-control" onClick={() => void keysQuery.refetch()} disabled={keysQuery.isFetching}><RefreshCw size={14} className={keysQuery.isFetching ? "spin" : ""} /> Refresh presence</button>
+        </section>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-8">
-            <div className="panel p-5"><div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#709092]"><ShieldCheck size={15} className="text-[var(--teal)]" /> APPROVED USERS</div><strong className="mt-3 block text-3xl text-[var(--ink-deep)] dark:text-[#d8ece9]">{users.length}</strong><span className="text-xs text-[#82999b]">Access records in scope</span></div>
-            <div className="panel p-5"><div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#709092]"><Activity size={15} className="text-[var(--teal)]" /> ACTIVE ACCESS</div><strong className="mt-3 block text-3xl text-[var(--ink-deep)] dark:text-[#d8ece9]">{activeUsers}</strong><span className="text-xs text-[#82999b]">Users allowed through the API</span></div>
-            <div className="panel p-5"><div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#709092]"><Gauge size={15} className="text-[var(--teal)]" /> ADMIN ROLES</div><strong className="mt-3 block text-3xl text-[var(--ink-deep)] dark:text-[#d8ece9]">{adminUsers}</strong><span className="text-xs text-[#82999b]">Administrator accounts</span></div>
-          </div>
-          
-          <div className="panel overflow-hidden mb-8">
-             <div className="p-6 sm:p-8 border-b border-[var(--line)] dark:border-[#31545a] flex items-center gap-3">
-               <UserPlus size={22} className="text-[var(--teal)]" />
-               <h3 className="text-xl font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]">Add Approved User</h3>
-             </div>
-             <div className="p-6 sm:p-8 bg-[#fdfefe] dark:bg-[#0c2026]">
-                {createError && (
-                  <div className="mb-6 p-3 bg-[#fff4f2] dark:bg-[#3c2426] border border-[#e5aaa5] dark:border-[#8c4d4a] rounded-lg text-[var(--coral)] dark:text-[#e6b6b2] text-sm flex items-center gap-2">
-                    <XCircle size={16} />
-                    {createError}
-                  </div>
-                )}
-                <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-                  <div className="md:col-span-5 space-y-1">
-                    <label htmlFor="new_email" className="block text-xs font-mono tracking-widest text-[#709092]">EMAIL</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Mail size={16} className="text-[#8ba1a2]" />
-                      </div>
-                      <input
-                        id="new_email"
-                        type="email"
-                        autoComplete="off"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-[#f8fcfb] dark:bg-[#0b252d] border border-[#cddfdf] dark:border-[#41666d] rounded-lg focus:outline-none focus:border-[var(--teal)] focus:ring-1 focus:ring-[var(--teal)] transition-colors text-sm dark:text-[#f4fffd]"
-                        placeholder="user@example.com"
-                        disabled={isCreating}
-                      />
-                    </div>
-                  </div>
-                  <div className="md:col-span-5 space-y-1">
-                    <label htmlFor="new_password" className="block text-xs font-mono tracking-widest text-[#709092]">INITIAL PASSWORD</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <KeyRound size={16} className="text-[#8ba1a2]" />
-                      </div>
-                      <input
-                        id="new_password"
-                        type="password"
-                        autoComplete="new-password"
-                        required
-                        minLength={8}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-[#f8fcfb] dark:bg-[#0b252d] border border-[#cddfdf] dark:border-[#41666d] rounded-lg focus:outline-none focus:border-[var(--teal)] focus:ring-1 focus:ring-[var(--teal)] transition-colors text-sm dark:text-[#f4fffd]"
-                        placeholder="••••••••"
-                        disabled={isCreating}
-                      />
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <button
-                      type="submit"
-                      disabled={isCreating || !email || !password}
-                      className="w-full flex items-center justify-center gap-2 bg-[var(--teal)] text-[#f7fffd] py-2.5 rounded-lg font-bold text-sm shadow-sm hover:bg-[var(--teal-deep)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                    >
-                      {isCreating ? <RefreshCw className="spin" size={16} /> : 'Create'}
-                    </button>
-                  </div>
-                </form>
-             </div>
-          </div>
+        <section className="admin-stat-grid">
+          {stats.map((stat) => <div className="admin-stat panel" key={stat.label}><div className="admin-stat-top"><span>{stat.label}</span><stat.icon size={16} /></div><strong>{stat.value}</strong><small>{stat.detail}</small></div>)}
+        </section>
 
-          <div className="panel overflow-hidden">
-            <div className="p-6 sm:p-8 border-b border-[var(--line)] dark:border-[#31545a]">
-              <h3 className="text-xl font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]">Approved Directory</h3>
-            </div>
-            
-            {usersQuery.isLoading ? (
-               <div className="p-8 flex justify-center"><RefreshCw className="spin text-[var(--teal)]" size={24} /></div>
-            ) : usersQuery.isError ? (
-               <div className="p-8 text-[var(--coral)]">Failed to load users</div>
-            ) : !usersQuery.data?.length ? (
-               <div className="p-8 text-center text-[#7f9d9d]">No users found.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-[var(--line)] dark:border-[#31545a] bg-[#f8fcfb] dark:bg-[#0b252d]">
-                      <th className="px-6 py-3 text-xs font-mono tracking-widest text-[#709092]">USER ID</th>
-                      <th className="px-6 py-3 text-xs font-mono tracking-widest text-[#709092]">EMAIL</th>
-                      <th className="px-6 py-3 text-xs font-mono tracking-widest text-[#709092]">ROLE</th>
-                      <th className="px-6 py-3 text-xs font-mono tracking-widest text-[#709092]">STATUS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {usersQuery.data.map(u => (
-                      <tr key={u.user_id} className="border-b border-[var(--line)] dark:border-[#31545a] hover:bg-[#f0faf8] dark:hover:bg-[#12343d] transition-colors">
-                        <td className="px-6 py-4 font-mono text-xs text-[#8ba1a2]">{u.user_id}</td>
-                        <td className="px-6 py-4 font-medium text-[var(--ink-deep)] dark:text-[#d8ece9]">{u.email}</td>
-                        <td className="px-6 py-4"><span className="inline-block px-2 py-1 rounded bg-[var(--teal-soft)] text-[var(--teal-deep)] dark:bg-[#123e3a] dark:text-[#35d6b6] font-mono text-[10px] tracking-wider uppercase">{u.role}</span></td>
-                        <td className="px-6 py-4">
-                          {u.active ? (
-                            <span className="flex items-center gap-1.5 text-[var(--teal)] dark:text-[#35d6b6] text-xs font-medium"><CheckCircle2 size={14} /> Active</span>
-                          ) : (
-                            <span className="flex items-center gap-1.5 text-[var(--coral)] text-xs font-medium"><XCircle size={14} /> Inactive</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        {newKey && (
+          <section className="new-key-callout">
+            <div className="new-key-icon"><Check size={20} /></div>
+            <div><span className="panel-overline">ONE-TIME KEY — COPY BEFORE CLOSING</span><h3>New {kind === "admin" ? "administrator" : "user"} key is ready</h3><code>{newKey}</code></div>
+            <button type="button" className="copy-key-button" onClick={copyKey}><Copy size={15} /> Copy key</button>
+            <button type="button" className="dismiss-key" onClick={() => setNewKey(null)} aria-label="Hide new key">×</button>
+          </section>
+        )}
+
+        <section className="admin-create-layout">
+          <div className="panel admin-create-card">
+            <div className="panel-header"><div><span className="panel-overline">PROVISION ACCESS</span><h3>Create a new key</h3></div><Plus size={19} className="panel-icon" /></div>
+            {formError && <div className="admin-form-error">{formError}</div>}
+            <form onSubmit={handleCreate} className="admin-key-form">
+              <label className="admin-field"><span>LABEL</span><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. Alex — desktop" maxLength={120} /></label>
+              <div className="admin-form-row">
+                <label className="admin-field"><span>KEY TYPE</span><select value={kind} onChange={(event) => setKind(event.target.value as "user" | "admin")}><option value="user">User key</option><option value="admin">Administrator key</option></select></label>
+                <label className="admin-field"><span>DEVICES ALLOWED</span><input type="number" min={1} max={50} value={maxDevices} onChange={(event) => setMaxDevices(Math.max(1, Math.min(50, Number(event.target.value) || 1)))} /></label>
               </div>
-            )}
+              <div className="admin-feature-picker"><span className="admin-field-label">FEATURE ACCESS</span>{featureOptions.map((feature) => <label className={`admin-feature-option ${kind === "admin" || features.includes(feature.value) ? "selected" : ""}`} key={feature.value}><input type="checkbox" checked={kind === "admin" || features.includes(feature.value)} disabled={kind === "admin"} onChange={() => toggleFeature(feature.value)} /><span><b>{feature.label}</b><small>{feature.description}</small></span></label>)}</div>
+              <button type="submit" className="primary-button admin-create-submit" disabled={!canCreate}><KeyRound size={16} />{createKey.isPending ? "Generating…" : `Generate ${kind === "admin" ? "admin" : "user"} key`}</button>
+            </form>
           </div>
+          <div className="admin-safety-note"><div className="admin-safety-icon"><ShieldCheck size={20} /></div><h3>Built-in safety rules</h3><ul><li>New keys are locked to one device unless you change the limit.</li><li>Pausing can be resumed. Blocking can be undone.</li><li>Banning revokes all sessions permanently and cannot be undone.</li><li>Presence is refreshed every 15 seconds in this panel.</li></ul></div>
+        </section>
 
-          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-[#cde3df] bg-[#f3fbf8] p-5 dark:border-[#31545a] dark:bg-[#102f38]">
-              <div className="flex items-center gap-2 text-sm font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]"><LockKeyhole size={16} className="text-[var(--teal)]" /> Safety controls</div>
-              <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[#668285] dark:text-[#9ab9b6]">
-                <li>• Each user supplies and owns their own encrypted Deriv PAT.</li>
-                <li>• Real-money trading requires the server live flag and an explicit browser confirmation.</li>
-                <li>• Stake has no application ceiling; Deriv and the selected account balance remain authoritative.</li>
-              </ul>
-            </div>
-            <div className="rounded-xl border border-[#cde3df] bg-[#f3fbf8] p-5 dark:border-[#31545a] dark:bg-[#102f38]">
-              <div className="flex items-center gap-2 text-sm font-bold text-[var(--ink-deep)] dark:text-[#d8ece9]"><Activity size={16} className="text-[var(--teal)]" /> Reliability monitor</div>
-              <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[#668285] dark:text-[#9ab9b6]">
-                <li>• Proposal requests use correlated request IDs and retry after stale socket responses.</li>
-                <li>• PAT validation has an upstream timeout so a stalled Deriv response cannot hang the workspace.</li>
-                <li>• Notifications close automatically after three seconds.</li>
-              </ul>
-            </div>
-          </div>
+        <section className="panel admin-directory">
+          <div className="panel-header"><div><span className="panel-overline">LIVE DIRECTORY</span><h3>Access keys and presence</h3></div><span className="directory-note">{keys.length} records · {onlineCount} online</span></div>
+          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} onStatus={handleStatus} />)}</div>}
         </section>
       </div>
     </AppShell>

@@ -9,6 +9,9 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { ClerkProvider } from '@clerk/react';
 import AdminUsersPage from '@/pages/admin-users';
 import AppPage from '@/pages/app-page';
+import SettingsPage from '@/pages/settings';
+import { AccessGate } from '@/components/access-gate';
+import SignInPage from '@/pages/sign-in';
 
 const queryClient = new QueryClient();
 
@@ -21,6 +24,8 @@ function Router() {
         <Route path="/" component={XTraderPage} />
         <Route path="/app" component={XTraderPage} />
         <Route path="/dashboard" component={AppPage} />
+        <Route path="/settings" component={SettingsPage} />
+        <Route path="/sign-in" component={SignInPage} />
         <Route path="/admin" component={AdminUsersPage} />
         <Route path="/admin/users" component={AdminUsersPage} />
         <Route component={XTraderPage} />
@@ -42,7 +47,7 @@ function App() {
       <ThemeProvider>
         <TooltipProvider>
           <WouterRouter base={basePath}>
-            <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>
+             <QueryClientProvider client={queryClient}><AccessGate><Router /></AccessGate></QueryClientProvider>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
@@ -55,7 +60,7 @@ function App() {
       <ThemeProvider>
         <TooltipProvider>
           <WouterRouter base={basePath}>
-            <QueryClientProvider client={queryClient}><Router /></QueryClientProvider>
+             <QueryClientProvider client={queryClient}><AccessGate><Router /></AccessGate></QueryClientProvider>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>

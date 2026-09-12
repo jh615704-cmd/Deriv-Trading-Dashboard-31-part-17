@@ -19,3 +19,4 @@
 
 export * from "./deriv-credentials";
 export * from "./approved-users";
+export * from "./access-keys";

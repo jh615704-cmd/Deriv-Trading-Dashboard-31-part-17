@@ -1,10 +1,12 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
+import { getGetAccessSessionQueryKey, useGetAccessSession, useLogoutAccessSession } from '@workspace/api-client-react';
 import { useGetAuthAccess, getGetAuthAccessQueryKey } from '@workspace/api-client-react';
 import {
   Gauge,
   LockKeyhole,
+  ShieldCheck,
   Moon,
   Sun,
   LogOut,
@@ -27,8 +29,10 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
   const { user } = useUser();
+  const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
+  const logoutAccess = useLogoutAccessSession();
   const authAccess = useGetAuthAccess({ query: { enabled: !!user, retry: false, queryKey: getGetAuthAccessQueryKey() } });
-  const isAdmin = authAccess.data?.role === 'admin';
+  const isAdmin = accessSession.data?.kind === 'admin' || authAccess.data?.role === 'admin';
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
@@ -82,6 +86,11 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
               <span className="environment-dot" />
               {isReal ? 'LIVE DERIV ACCOUNT CONNECTED' : 'DERIV DEMO ACCOUNT'}
             </span>
+            {isAdmin && (
+              <Link href="/admin/users" className="admin-top-link">
+                <ShieldCheck size={14} /> Admin panel
+              </Link>
+            )}
             
             {headerContent}
 
@@ -104,16 +113,28 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-[var(--paper)] dark:bg-[#102f38] border-[var(--line)] dark:border-[#31545a]">
                 <DropdownMenuLabel className="font-mono text-xs tracking-wider text-[var(--teal-deep)] dark:text-[#8ce0ca]">
-                  {user?.primaryEmailAddress?.emailAddress || 'User Profile'}
+                   {accessSession.data?.label || user?.primaryEmailAddress?.emailAddress || 'EDGE operator'}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-[var(--line)] dark:bg-[#31545a]" />
-                <DropdownMenuItem 
-                  onClick={() => setLocation('/settings')} 
+                 <DropdownMenuItem 
+                   onClick={() => setLocation('/settings')} 
                   className="cursor-pointer text-[var(--ink-deep)] dark:text-[#d8ece9]"
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Settings</span>
                 </DropdownMenuItem>
+                {accessSession.data && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      logoutAccess.mutate();
+                      setLocation('/');
+                    }}
+                    className="cursor-pointer text-[var(--ink-deep)] dark:text-[#d8ece9]"
+                  >
+                    <LockKeyhole className="mr-2 h-4 w-4" />
+                    <span>Lock EDGE</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem 
                   onClick={() => signOut({ redirectUrl: basePath || "/" })}
                   className="cursor-pointer text-red-600 dark:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/30"
