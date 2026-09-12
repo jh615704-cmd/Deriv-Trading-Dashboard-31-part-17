@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useBuyDerivContract,
   useClearDerivHistory,
   useDeleteDerivToken,
   useGetDerivAccounts,
@@ -23,7 +22,6 @@ import {
   Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Link2, Loader2,
   Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, Trash2, X, Zap,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -63,7 +61,6 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 
 export default function XTraderPage() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const tokenStatus = useGetDerivTokenStatus({ query: { retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
   const accounts = useGetDerivAccounts({ query: { enabled: connectedToken, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
@@ -74,7 +71,6 @@ export default function XTraderPage() {
   const deleteTokenMutation = useDeleteDerivToken();
   const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
-  const buyMutation = useBuyDerivContract();
   const bulkBuyMutation = useBulkBuyDerivContracts();
   const clearMutation = useClearDerivHistory();
 
@@ -101,6 +97,7 @@ export default function XTraderPage() {
   const [sessionTrades, setSessionTrades] = useState(0);
   const [baselinePnl, setBaselinePnl] = useState(0);
   const [indicatorDigit, setIndicatorDigit] = useState(5);
+  const [connectionMessage, setConnectionMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
   const runningRef = useRef(false);
   const configRef = useRef({ direction, barrier, duration, stake, strategy, martingale, bulk, symbol, liveConfirmed });
 
@@ -113,7 +110,7 @@ export default function XTraderPage() {
   const liveContractRow = liveContract
     ? rows.find((trade) => trade.contract_id === liveContract.contract_id)
     : undefined;
-  const liveUnsettledPnl = running && liveContract && (!liveContractRow || liveContractRow.status === "open")
+  const liveUnsettledPnl = liveContract && (!liveContractRow || liveContractRow.status === "open")
     ? liveContract.profit
     : 0;
   const fastSessionPnl = settledPnl - baselinePnl + liveUnsettledPnl;
@@ -130,33 +127,36 @@ export default function XTraderPage() {
   }, [lastDigit]);
 
   useEffect(() => {
-    if (!running) return;
     const pnl = fastSessionPnl;
     setSessionPnl(pnl);
+    if (!running) return;
     if (pnl >= takeProfit || pnl <= -stopLoss) {
       runningRef.current = false;
       setRunning(false);
-      toast({
-        title: pnl >= takeProfit ? "Take profit reached" : "Stop loss reached",
-        description: `X Trader stopped at ${pnl.toFixed(2)} ${currentAccount?.currency ?? "USD"}.`,
+      setConnectionMessage({
+        kind: "info",
+        text: `${pnl >= takeProfit ? "Take profit" : "Stop loss"} reached at ${pnl.toFixed(2)} ${currentAccount?.currency ?? "USD"}.`,
       });
     }
-  }, [fastSessionPnl, running, takeProfit, stopLoss, currentAccount?.currency, toast]);
+  }, [fastSessionPnl, running, takeProfit, stopLoss, currentAccount?.currency]);
 
   useEffect(() => () => { runningRef.current = false; }, []);
 
   const connectPat = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!pat.trim()) return;
+    setConnectionMessage({ kind: "info", text: "Validating PAT and opening the Deriv connection…" });
     try {
-      await tokenMutation.mutateAsync({ data: { token: pat.trim() } });
+      const tokenResult = await tokenMutation.mutateAsync({ data: { token: pat.trim() } });
       setPat("");
-      await queryClient.invalidateQueries();
+      queryClient.setQueryData(getGetDerivAccountsQueryKey(), tokenResult.accounts);
+      await queryClient.invalidateQueries({ queryKey: getGetDerivTokenStatusQueryKey() });
       await connectionMutation.mutateAsync();
-      await queryClient.invalidateQueries();
-      toast({ title: "Deriv connected", description: "Your PAT is encrypted and linked to this browser." });
+      await queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
+      setConnectionMessage({ kind: "info", text: "Deriv connected. Your PAT is encrypted and saved." });
     } catch (error) {
-      toast({ variant: "destructive", title: "Connection failed", description: errorMessage(error) });
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
     }
   };
 
@@ -220,22 +220,21 @@ export default function XTraderPage() {
     if (config.strategy === "martingale" && lastSettled && lastSettled.profit < 0) {
       amount = Number((config.stake * config.martingale).toFixed(2));
     }
-    for (let index = 0; index < config.bulk && runningRef.current; index += 1) {
-      await buyMutation.mutateAsync({
-        data: {
-          amount,
-          duration: config.duration,
-          duration_unit: "t",
-          contract_type: config.direction,
-          barrier: config.barrier,
-          symbol: config.symbol,
-          confirm_live_trade: true,
-        },
-      });
-      setSessionTrades((value) => value + 1);
-      await queryClient.invalidateQueries();
-      if (index < config.bulk - 1) await sleep(1_050);
-    }
+    if (!runningRef.current) return;
+    await bulkBuyMutation.mutateAsync({
+      data: {
+        amount,
+        duration: config.duration,
+        duration_unit: "t",
+        contract_type: config.direction,
+        barrier: config.barrier,
+        symbol: config.symbol,
+        count: config.bulk,
+        confirm_live_trade: true,
+      },
+    });
+    setSessionTrades((value) => value + config.bulk);
+    await queryClient.invalidateQueries();
   };
 
   const runLoop = async () => {
@@ -249,7 +248,7 @@ export default function XTraderPage() {
       } catch (error) {
         runningRef.current = false;
         setRunning(false);
-        toast({ variant: "destructive", title: "X Trader stopped", description: errorMessage(error) });
+        setConnectionMessage({ kind: "error", text: errorMessage(error) });
       }
     }
   };
@@ -257,7 +256,7 @@ export default function XTraderPage() {
   const start = () => {
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
-      toast({ variant: "destructive", title: "Live confirmation required", description: "Confirm live-funds trading before starting." });
+      setConnectionMessage({ kind: "error", text: "Confirm live-funds trading before starting." });
       return;
     }
     setBaselinePnl(settledPnl);
@@ -290,18 +289,18 @@ export default function XTraderPage() {
       await symbolMutation.mutateAsync({ data: { symbol: next } });
       await queryClient.invalidateQueries();
     } catch (error) {
-      toast({ variant: "destructive", title: "Market unavailable", description: errorMessage(error) });
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
     }
   };
 
   const fireBulk = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
-      toast({ variant: "destructive", title: "Live confirmation required", description: "Confirm live-funds trading before sending a bulk." });
+      setConnectionMessage({ kind: "error", text: "Confirm live-funds trading before sending a bulk." });
       return;
     }
     if (currentAccount && stake * bulk > currentAccount.balance) {
-      toast({ variant: "destructive", title: "Bulk exceeds balance", description: "Lower the stake or reduce the number of trades." });
+      setConnectionMessage({ kind: "error", text: "Lower the stake or reduce the number of trades so the batch fits the balance." });
       return;
     }
     try {
@@ -320,9 +319,9 @@ export default function XTraderPage() {
       setDirection(contractType);
       setSessionTrades((value) => value + bulk);
       await queryClient.invalidateQueries();
-      toast({ title: "Bulk sent", description: `${bulk} ${contractType === "DIGITOVER" ? "Over" : "Under"} ${barrier} request${bulk === 1 ? "" : "s"} sent together.` });
+      setConnectionMessage({ kind: "info", text: `${bulk} ${contractType === "DIGITOVER" ? "Over" : "Under"} ${barrier} request${bulk === 1 ? "" : "s"} sent.` });
     } catch (error) {
-      toast({ variant: "destructive", title: "Bulk trade failed", description: errorMessage(error) });
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
     }
   };
 
@@ -330,7 +329,6 @@ export default function XTraderPage() {
     if (!clearHistoryArmed) {
       setClearHistoryArmed(true);
       window.setTimeout(() => setClearHistoryArmed(false), 2_500);
-      toast({ title: "Tap again to clear", description: "Tap the trash button again to fade out recent trades." });
       return;
     }
     setClearHistoryArmed(false);
@@ -372,6 +370,7 @@ export default function XTraderPage() {
             <button onClick={() => void disconnect()} disabled={deleteTokenMutation.isPending}>Disconnect</button>
           </div>
         )}
+        {connectionMessage && <p className={`xt-inline-message ${connectionMessage.kind}`}>{connectionMessage.text}</p>}
       </section>
 
       <section className="xt-account-grid">
@@ -471,9 +470,9 @@ export default function XTraderPage() {
             <p className="xt-batch-note"><Zap size={13} />Immediate bulk buttons send the selected number of trades together when the total stake fits the balance.</p>
           </section>
 
-          <section className={`xt-history ${historyFading ? "fading" : ""}`} title="Recent dashboard trade history">
+          <section className="xt-history" title="Recent dashboard trade history">
             <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Dashboard rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending || historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
-            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after X Trader starts.</div> : rows.slice(0, 12).map((trade) => <div className="xt-trade" key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after X Trader starts.</div> : rows.slice(0, 12).map((trade) => <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
           </section>
         </>
       )}

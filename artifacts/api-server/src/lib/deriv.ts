@@ -486,6 +486,20 @@ function sendProposalRequest(input: ProposalInput) {
   return sent ? reqId : null;
 }
 
+function proposalFromMessage(raw: unknown): DerivProposal | null {
+  if (!raw || typeof raw !== "object") return null;
+  const proposal = raw as Record<string, unknown>;
+  const id = String(proposal.id ?? "");
+  if (!id) return null;
+  return {
+    id,
+    ask_price: Number(proposal.ask_price ?? 0),
+    payout: Number(proposal.payout ?? 0),
+    spot: Number(proposal.spot ?? 0),
+    longcode: typeof proposal.longcode === "string" ? proposal.longcode : null,
+  };
+}
+
 function scheduleReconnect() {
   const ownerId = userContext.getStore();
   const runtime = getState();
@@ -566,21 +580,16 @@ async function connectInternal() {
           sendProposalRequest(getState().lastProposalInput);
         }
       } else if (message.msg_type === "proposal") {
-        getState().lastProposal = {
-          id: String(message.proposal?.id ?? ""),
-          ask_price: Number(message.proposal?.ask_price ?? 0),
-          payout: Number(message.proposal?.payout ?? 0),
-          spot: Number(message.proposal?.spot ?? 0),
-          longcode: message.proposal?.longcode ?? null,
-        };
-        if (getState().lastProposal.id) {
-          getState().proposalIds.add(getState().lastProposal.id);
+        const proposal = proposalFromMessage(message.proposal);
+        if (proposal) {
+          getState().lastProposal = proposal;
+          getState().proposalIds.add(proposal.id);
           const reqId = Number(message.req_id ?? message.echo_req?.req_id);
           const waiter = getState().proposalWaiters.get(reqId);
           if (waiter) {
             clearTimeout(waiter.timer);
             getState().proposalWaiters.delete(reqId);
-            waiter.resolve(getState().lastProposal);
+            waiter.resolve(proposal);
           }
         }
       } else if (message.msg_type === "buy") {
@@ -767,16 +776,29 @@ async function requestFreshProposal(input: ProposalInput) {
   if (!connected) throw new Error("Deriv WebSocket is not ready");
 
   return await new Promise<DerivProposal>((resolve, reject) => {
-    const reqId = sendProposalRequest(input);
-    if (!reqId) {
-      reject(new Error("Deriv WebSocket is not ready"));
-      return;
-    }
+    const reqId = ++getState().proposalSequence;
     const timer = setTimeout(() => {
       getState().proposalWaiters.delete(reqId);
       reject(new Error("Deriv did not return a proposal in time"));
     }, 5000);
     getState().proposalWaiters.set(reqId, { resolve, reject, timer });
+    const sent = send({
+      proposal: 1,
+      amount: input.amount,
+      basis: "stake",
+      contract_type: input.contract_type,
+      currency: defaultCurrency,
+      duration: input.duration,
+      duration_unit: input.duration_unit,
+      underlying_symbol: input.symbol ?? defaultSymbol,
+      ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
+      req_id: reqId,
+    });
+    if (!sent) {
+      clearTimeout(timer);
+      getState().proposalWaiters.delete(reqId);
+      reject(new Error("Deriv WebSocket is not ready"));
+    }
   });
 }
 
