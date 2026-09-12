@@ -68,6 +68,7 @@ const guidePages = [
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const errorMessage = (error: unknown) => {
+  if (!error || typeof error !== "object") return "Request failed";
   const candidate = error as { data?: { error?: string }; message?: string };
   return candidate.data?.error ?? candidate.message ?? "Request failed";
 };
