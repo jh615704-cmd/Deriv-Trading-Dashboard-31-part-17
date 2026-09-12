@@ -3,6 +3,8 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 
 export const ACCESS_COOKIE_NAME = "jdy_access";
+// This is a SHA-256 fingerprint, never the raw administrator credential.
+export const PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
 export const ACCESS_FEATURES = ["edge", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
 export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned";
@@ -40,6 +42,7 @@ export async function findSessionByToken(token: string) {
     .select({
       sessionId: accessKeySessionsTable.id,
       accessKeyId: accessKeysTable.id,
+      keyHash: accessKeysTable.keyHash,
       keyPrefix: accessKeysTable.keyPrefix,
       label: accessKeysTable.label,
       kind: accessKeysTable.kind,
@@ -83,7 +86,7 @@ export async function onlineDeviceCount(accessKeyId: string) {
 }
 
 export function accessCookie(value: string, secure: boolean) {
-  return `${ACCESS_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}${secure ? "; Secure" : ""}`;
+  return `${ACCESS_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
 
 export function clearAccessCookie(secure: boolean) {

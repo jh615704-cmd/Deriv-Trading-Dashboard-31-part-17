@@ -6,6 +6,7 @@ import {
   featureList,
   hashSecret,
   parseAccessCookie,
+  PRIMARY_ADMIN_KEY_HASH,
 } from "../lib/access-keys";
 
 export const requireAccess: RequestHandler = async (req, res, next) => {
@@ -60,13 +61,9 @@ export const requireAccessFeature = (feature: string): RequestHandler => (_req, 
 };
 
 export const requireAccessAdmin: RequestHandler = (req, res, next) => {
-  if (res.locals.role === "admin") {
+  if (res.locals.accessKey?.keyHash === PRIMARY_ADMIN_KEY_HASH) {
     next();
     return;
   }
-  if (res.locals.accessKey?.kind !== "admin") {
-    res.status(403).json({ error: "Administrator access key required" });
-    return;
-  }
-  next();
+  res.status(403).json({ error: "Primary administrator access key required" });
 };

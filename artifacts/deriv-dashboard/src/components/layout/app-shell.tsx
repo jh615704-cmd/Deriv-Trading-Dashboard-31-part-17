@@ -30,7 +30,7 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const { user } = useUser();
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const logoutAccess = useLogoutAccessSession();
-  const isAdmin = accessSession.data?.kind === 'admin';
+  const isAdmin = accessSession.data?.is_admin === true;
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (

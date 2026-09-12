@@ -48,6 +48,23 @@ export function AccessGate({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [accessSession.data, heartbeat]);
 
+  useEffect(() => {
+    if (location.startsWith("/admin") && accessSession.data && !accessSession.data.is_admin) {
+      setLocation("/app");
+    }
+  }, [accessSession.data, location, setLocation]);
+
+  useEffect(() => {
+    if (!accessSession.data) return;
+    const leaveApp = () => {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/api/access/logout", new Blob([], { type: "application/json" }));
+      }
+    };
+    window.addEventListener("pagehide", leaveApp);
+    return () => window.removeEventListener("pagehide", leaveApp);
+  }, [accessSession.data]);
+
   if (location === "/sign-in") return <>{children}</>;
   if (accessSession.isLoading) {
     return (

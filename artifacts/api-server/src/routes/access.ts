@@ -25,6 +25,7 @@ import {
   offlineSeconds,
   onlineDeviceCount,
   parseAccessCookie,
+  PRIMARY_ADMIN_KEY_HASH,
 } from "../lib/access-keys";
 import { requireAccess, requireAccessAdmin } from "../middlewares/requireAccess";
 
@@ -43,12 +44,14 @@ function sessionResponse(session: {
   maxDevices: number;
   features: string[] | null;
   sessionLastSeenAt: Date | null;
+  keyHash: string;
 }) {
   return GetAccessSessionResponse.parse({
     key_id: session.accessKeyId,
     key_prefix: session.keyPrefix,
     label: session.label,
     kind: session.kind,
+    is_admin: session.keyHash === PRIMARY_ADMIN_KEY_HASH,
     status: session.status,
     max_devices: session.maxDevices,
     features: featureList(session.features, session.kind),
@@ -117,6 +120,7 @@ router.post("/access/login", async (req, res): Promise<void> => {
     status: key.status,
     maxDevices: key.maxDevices,
     features: key.features,
+    keyHash: key.keyHash,
     sessionLastSeenAt: session.lastSeenAt,
   }));
 });
@@ -130,6 +134,7 @@ router.get("/access/session", requireAccess, async (_req, res): Promise<void> =>
     status: res.locals.accessKey.status,
     maxDevices: res.locals.accessKey.maxDevices,
     features: res.locals.accessKey.features,
+    keyHash: res.locals.accessKey.keyHash,
     sessionLastSeenAt: new Date(),
   }));
 });

@@ -135,6 +135,7 @@ export interface AccessSession {
   key_prefix: string;
   label: string;
   kind: AccessSessionKind;
+  is_admin: boolean;
   status: AccessSessionStatus;
   max_devices: number;
   features: AccessFeature[];

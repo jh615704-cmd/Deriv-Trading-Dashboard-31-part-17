@@ -652,12 +652,13 @@ components:
       enum: [edge, settings, history, admin]
     AccessSession:
       type: object
-      required: [key_id, key_prefix, label, kind, status, max_devices, features, online, last_seen_at]
+      required: [key_id, key_prefix, label, kind, is_admin, status, max_devices, features, online, last_seen_at]
       properties:
         key_id: { type: string, format: uuid }
         key_prefix: { type: string }
         label: { type: string }
         kind: { type: string, enum: [admin, user] }
+        is_admin: { type: boolean }
         status: { type: string, enum: [active, paused, blocked, banned] }
         max_devices: { type: integer }
         features:
