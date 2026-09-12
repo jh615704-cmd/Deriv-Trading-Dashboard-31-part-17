@@ -43,8 +43,8 @@ export default function XTraderPage() {
   const tokenStatus = useGetDerivTokenStatus({ query: { retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
   const accounts = useGetDerivAccounts({ query: { enabled: connectedToken, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
-  const status = useGetDerivStatus({ query: { enabled: connectedToken, retry: false, refetchInterval: 800, queryKey: getGetDerivStatusQueryKey() } });
-  const history = useGetDerivHistory({ query: { enabled: connectedToken, retry: false, refetchInterval: 1_500, queryKey: getGetDerivHistoryQueryKey() } });
+  const status = useGetDerivStatus({ query: { enabled: connectedToken, retry: false, refetchInterval: 250, queryKey: getGetDerivStatusQueryKey() } });
+  const history = useGetDerivHistory({ query: { enabled: connectedToken, retry: false, refetchInterval: 500, queryKey: getGetDerivHistoryQueryKey() } });
   const tokenMutation = useTestDerivToken();
   const connectionMutation = useTestDerivConnection();
   const deleteTokenMutation = useDeleteDerivToken();
@@ -65,11 +65,13 @@ export default function XTraderPage() {
   const [stopLoss, setStopLoss] = useState(10);
   const [bulk, setBulk] = useState(1);
   const [autoSwitch, setAutoSwitch] = useState(false);
+  const [xTraderEnabled, setXTraderEnabled] = useState(true);
   const [running, setRunning] = useState(false);
   const [liveConfirmed, setLiveConfirmed] = useState(false);
   const [sessionPnl, setSessionPnl] = useState(0);
   const [sessionTrades, setSessionTrades] = useState(0);
   const [baselinePnl, setBaselinePnl] = useState(0);
+  const [indicatorDigit, setIndicatorDigit] = useState(5);
   const runningRef = useRef(false);
   const configRef = useRef({ direction, barrier, duration, stake, strategy, martingale, bulk, symbol, liveConfirmed });
 
@@ -78,6 +80,14 @@ export default function XTraderPage() {
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const rows = history.data ?? [];
   const settledPnl = rows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
+  const liveContract = status.data?.last_contract;
+  const liveContractRow = liveContract
+    ? rows.find((trade) => trade.contract_id === liveContract.contract_id)
+    : undefined;
+  const liveUnsettledPnl = running && liveContract && (!liveContractRow || liveContractRow.status === "open")
+    ? liveContract.profit
+    : 0;
+  const fastSessionPnl = settledPnl - baselinePnl + liveUnsettledPnl;
   const streaks = status.data?.digit_streaks ?? [];
   const selectedStreak = streaks.find((item) => item.digit === barrier);
   const lastDigit = status.data?.last_digit;
@@ -87,8 +97,12 @@ export default function XTraderPage() {
   }, [direction, barrier, duration, stake, strategy, martingale, bulk, symbol, liveConfirmed]);
 
   useEffect(() => {
+    if (lastDigit != null && lastDigit >= 1 && lastDigit <= 9) setIndicatorDigit(lastDigit);
+  }, [lastDigit]);
+
+  useEffect(() => {
     if (!running) return;
-    const pnl = settledPnl - baselinePnl;
+    const pnl = fastSessionPnl;
     setSessionPnl(pnl);
     if (pnl >= takeProfit || pnl <= -stopLoss) {
       runningRef.current = false;
@@ -98,7 +112,7 @@ export default function XTraderPage() {
         description: `X Trader stopped at ${pnl.toFixed(2)} ${currentAccount?.currency ?? "USD"}.`,
       });
     }
-  }, [settledPnl, baselinePnl, running, takeProfit, stopLoss, currentAccount?.currency, toast]);
+  }, [fastSessionPnl, running, takeProfit, stopLoss, currentAccount?.currency, toast]);
 
   useEffect(() => () => { runningRef.current = false; }, []);
 
@@ -210,6 +224,11 @@ export default function XTraderPage() {
     setRunning(false);
   };
 
+  const toggleXTrader = (enabled: boolean) => {
+    setXTraderEnabled(enabled);
+    if (!enabled) stop();
+  };
+
   const reset = () => {
     stop();
     setSessionPnl(0);
@@ -276,60 +295,80 @@ export default function XTraderPage() {
 
       <section className="xt-feature-card">
         <div><Bot size={18} /><span><b>X Trader</b><small>Over / Under digit automation</small></span></div>
-        <label className="xt-switch"><input type="checkbox" checked={connectedToken} readOnly /><span /></label>
+        <label className="xt-switch">
+          <input
+            type="checkbox"
+            checked={xTraderEnabled}
+            onChange={(event) => toggleXTrader(event.target.checked)}
+            aria-label="Toggle X Trader"
+          />
+          <span />
+        </label>
       </section>
 
-      <section className="xt-cockpit">
-        <div className="xt-cockpit-head">
-          <div><Activity size={18} /><span><b>X Trader Cockpit</b><small>Live tick analysis · historical streaks do not guarantee outcomes</small></span></div>
-          <em className={running ? "running" : ""}><i />{activityText}</em>
-        </div>
+      {xTraderEnabled && (
+        <>
+          <section className="xt-cockpit">
+            <div className="xt-cockpit-head">
+              <div><Activity size={18} /><span><b>X Trader Cockpit</b><small>Live tick analysis · historical streaks do not guarantee outcomes</small></span></div>
+              <em className={running ? "running" : ""}><i />{activityText}</em>
+            </div>
 
-        <div className="xt-market-row">
-          <label><small>MARKET</small><select value={symbol} onChange={(event) => void selectMarket(event.target.value)} disabled={!isConnected || running}>{markets.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-          <div className="xt-last-tick"><small>LAST TICK · {marketName}</small><strong>{status.data?.last_tick?.quote?.toFixed(3) ?? "—"}<span>{lastDigit ?? "—"}</span></strong></div>
-        </div>
+            <div className="xt-market-row">
+              <label><small>MARKET</small><select value={symbol} onChange={(event) => void selectMarket(event.target.value)} disabled={!isConnected || running}>{markets.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+              <div className="xt-last-tick"><small>LAST TICK · {marketName}</small><strong>{status.data?.last_tick?.quote?.toFixed(3) ?? "—"}<span>{lastDigit ?? "—"}</span></strong></div>
+            </div>
 
-        <div className="xt-direction">
-          <button className={direction === "DIGITOVER" ? "active over" : ""} onClick={() => setDirection("DIGITOVER")} disabled={running}><b>OVER</b><small>Last digit above barrier</small></button>
-          <button className={direction === "DIGITUNDER" ? "active under" : ""} onClick={() => setDirection("DIGITUNDER")} disabled={running}><b>UNDER</b><small>Last digit below barrier</small></button>
-        </div>
+            <div className="xt-direction">
+              <button className={direction === "DIGITOVER" ? "active over" : ""} onClick={() => setDirection("DIGITOVER")} disabled={running}><b>OVER</b><small>Last digit above barrier</small></button>
+              <button className={direction === "DIGITUNDER" ? "active under" : ""} onClick={() => setDirection("DIGITUNDER")} disabled={running}><b>UNDER</b><small>Last digit below barrier</small></button>
+            </div>
 
-        <div className="xt-digits">
-          {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={`${barrier === item.digit ? "active " : ""}${lastDigit === item.digit ? "market-digit" : ""}`} aria-label={lastDigit === item.digit ? `Current market last digit ${item.digit}` : `Digit ${item.digit}`} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
-        </div>
-        <p className="xt-streak-note">Current consecutive streak at digit {barrier}: <b>Over {selectedStreak?.over ?? 0}</b> · <b>Under {selectedStreak?.under ?? 0}</b>. Based on the most recent {status.data?.digit_sample_count ?? 0} observed ticks.</p>
+            <div className="xt-digits">
+              <span
+                className="xt-market-hover"
+                style={{
+                  left: `calc(${((indicatorDigit - 1) * 100) / 9}% + ${((indicatorDigit - 1) * 2) / 3}px)`,
+                  opacity: lastDigit != null && lastDigit >= 1 && lastDigit <= 9 ? 1 : 0,
+                }}
+                aria-hidden="true"
+              />
+              {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={barrier === item.digit ? "active" : ""} aria-label={lastDigit === item.digit ? `Current market last digit ${item.digit}` : `Digit ${item.digit}`} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
+            </div>
+            <p className="xt-streak-note">Current consecutive streak at digit {barrier}: <b>Over {selectedStreak?.over ?? 0}</b> · <b>Under {selectedStreak?.under ?? 0}</b>. Based on the most recent {status.data?.digit_sample_count ?? 0} observed ticks.</p>
 
-        <div className="xt-form-grid">
-          <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => setDuration(tick)} disabled={running}>{tick}</button>)}</div></label>
-          <label><small>STAKE</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Number(event.target.value))} disabled={running} /></div></label>
-          <label><small>STRATEGY</small><select value={strategy} onChange={(event) => setStrategy(event.target.value as "flat" | "martingale")} disabled={running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
-          <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
-          <label><small>TAKE PROFIT</small><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} disabled={running} /></label>
-          <label><small>STOP LOSS</small><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} disabled={running} /></label>
-          <label><small>TRADES PER BATCH</small><select value={bulk} onChange={(event) => setBulk(Number(event.target.value))} disabled={running}>{[1,2,3,4,5].map((count) => <option key={count} value={count}>{count} trade{count > 1 ? "s" : ""}</option>)}</select></label>
-          <label className="xt-auto-row"><span><small>AUTO-SELECT DIGIT</small><b>Use the longest current streak</b></span><span className="xt-switch"><input type="checkbox" checked={autoSwitch} onChange={(event) => setAutoSwitch(event.target.checked)} disabled={running} /><span /></span></label>
-        </div>
+            <div className="xt-form-grid">
+              <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => setDuration(tick)} disabled={running}>{tick}</button>)}</div></label>
+              <label><small>STAKE</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Number(event.target.value))} disabled={running} /></div></label>
+              <label><small>STRATEGY</small><select value={strategy} onChange={(event) => setStrategy(event.target.value as "flat" | "martingale")} disabled={running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
+              <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
+              <label><small>TAKE PROFIT</small><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} disabled={running} /></label>
+              <label><small>STOP LOSS</small><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} disabled={running} /></label>
+              <label><small>TRADES PER BATCH</small><select value={bulk} onChange={(event) => setBulk(Number(event.target.value))} disabled={running}>{[1,2,3,4,5].map((count) => <option key={count} value={count}>{count} trade{count > 1 ? "s" : ""}</option>)}</select></label>
+              <label className="xt-auto-row"><span><small>AUTO-SELECT DIGIT</small><b>Use the longest current streak</b></span><span className="xt-switch"><input type="checkbox" checked={autoSwitch} onChange={(event) => setAutoSwitch(event.target.checked)} disabled={running} /><span /></span></label>
+            </div>
 
-        {isReal && <label className="xt-live-warning"><ShieldAlert size={18} /><input type="checkbox" checked={liveConfirmed} onChange={(event) => setLiveConfirmed(event.target.checked)} /><span><b>Live funds confirmation</b>I understand X Trader will place real-money contracts.</span></label>}
+            {isReal && <label className="xt-live-warning"><ShieldAlert size={18} /><input type="checkbox" checked={liveConfirmed} onChange={(event) => setLiveConfirmed(event.target.checked)} /><span><b>Live funds confirmation</b>I understand X Trader will place real-money contracts.</span></label>}
 
-        <div className="xt-session">
-          <div><small>SESSION P/L</small><strong className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</strong></div>
-          <div><small>TRADES SENT</small><strong>{sessionTrades}</strong></div>
-          <div><small>CONFIGURATION</small><strong>{direction === "DIGITOVER" ? "OVER" : "UNDER"} {barrier} · {duration}T</strong></div>
-        </div>
+            <div className="xt-session">
+              <div><small>SESSION P/L</small><strong className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</strong></div>
+              <div><small>TRADES SENT</small><strong>{sessionTrades}</strong></div>
+              <div><small>CONFIGURATION</small><strong>{direction === "DIGITOVER" ? "OVER" : "UNDER"} {barrier} · {duration}T</strong></div>
+            </div>
 
-        <div className="xt-controls">
-          {!running ? <button className="run" onClick={start} disabled={!canRun}><Play size={18} fill="currentColor" />RUN X TRADER</button> : <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
-          <button className="reset" onClick={reset}><RotateCcw size={18} />RESET</button>
-        </div>
-        {bulk > 1 && <p className="xt-batch-note"><Zap size={13} />Batch trades are triggered together but sent 1.05 seconds apart to preserve the server-side trade cooldown.</p>}
-      </section>
+            <div className="xt-controls">
+              {!running ? <button className="run" onClick={start} disabled={!canRun}><Play size={18} fill="currentColor" />RUN X TRADER</button> : <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
+              <button className="reset" onClick={reset}><RotateCcw size={18} />RESET</button>
+            </div>
+            {bulk > 1 && <p className="xt-batch-note"><Zap size={13} />Batch trades are triggered together but sent 1.05 seconds apart to preserve the server-side trade cooldown.</p>}
+          </section>
 
-      <section className="xt-history" onDoubleClick={() => void clearHistory()} title="Double-click to clear the local dashboard history">
-        <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Double-click this panel to clear dashboard rows</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending}><Trash2 size={15} />Clear</button></div>
-        {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after X Trader starts.</div> : rows.slice(0, 12).map((trade) => <div className="xt-trade" key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
-      </section>
+          <section className="xt-history" onDoubleClick={() => void clearHistory()} title="Double-click to clear the local dashboard history">
+            <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Double-click this panel to clear dashboard rows</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending}><Trash2 size={15} />Clear</button></div>
+            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after X Trader starts.</div> : rows.slice(0, 12).map((trade) => <div className="xt-trade" key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+          </section>
+        </>
+      )}
     </main>
   );
 }
