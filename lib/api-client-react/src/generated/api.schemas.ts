@@ -138,6 +138,20 @@ export interface DigitStreak {
   under: number;
 }
 
+export interface DerivMarketSignal {
+  symbol: string;
+  quote: number | null;
+  /**
+     * @minimum 0
+     * @maximum 9
+     * @nullable
+     */
+  last_digit: number | null;
+  /** @minimum 0 */
+  sample_count: number;
+  digit_streaks: DigitStreak[];
+}
+
 export interface DerivStatus {
   connected: boolean;
   authorized: boolean;
@@ -161,6 +175,7 @@ export interface DerivStatus {
      */
   last_digit?: number | null;
   digit_streaks?: DigitStreak[];
+  market_signals: DerivMarketSignal[];
 }
 
 export interface DerivConnectionTest {
@@ -258,11 +273,57 @@ export interface DerivBuyInput {
   confirm_live_trade: true;
 }
 
+export type DerivBulkBuyInputDurationUnit = typeof DerivBulkBuyInputDurationUnit[keyof typeof DerivBulkBuyInputDurationUnit];
+
+
+export const DerivBulkBuyInputDurationUnit = {
+  t: 't',
+} as const;
+
+export type DerivBulkBuyInputContractType = typeof DerivBulkBuyInputContractType[keyof typeof DerivBulkBuyInputContractType];
+
+
+export const DerivBulkBuyInputContractType = {
+  DIGITOVER: 'DIGITOVER',
+  DIGITUNDER: 'DIGITUNDER',
+} as const;
+
+export interface DerivBulkBuyInput {
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  duration: number;
+  duration_unit: DerivBulkBuyInputDurationUnit;
+  contract_type: DerivBulkBuyInputContractType;
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  barrier?: number;
+  symbol?: string;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  count: number;
+  confirm_live_trade: true;
+}
+
 export interface DerivBuyResponse {
   ok: boolean;
   message: string;
   proposal?: DerivProposal | null;
   buy?: DerivBuy | null;
+}
+
+export interface DerivBulkBuyResponse {
+  ok: boolean;
+  message: string;
+  count: number;
+  proposals: DerivProposal[];
 }
 
 export type DerivHistoryItemAccountType = typeof DerivHistoryItemAccountType[keyof typeof DerivHistoryItemAccountType];

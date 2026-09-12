@@ -130,6 +130,17 @@ export const getDerivStatusResponseDigitStreaksItemOverMin = 0;
 
 export const getDerivStatusResponseDigitStreaksItemUnderMin = 0;
 
+export const getDerivStatusResponseMarketSignalsItemLastDigitMin = 0;
+export const getDerivStatusResponseMarketSignalsItemLastDigitMax = 9;
+
+export const getDerivStatusResponseMarketSignalsItemSampleCountMin = 0;
+
+export const getDerivStatusResponseMarketSignalsItemDigitStreaksItemDigitMax = 9;
+
+export const getDerivStatusResponseMarketSignalsItemDigitStreaksItemOverMin = 0;
+
+export const getDerivStatusResponseMarketSignalsItemDigitStreaksItemUnderMin = 0;
+
 
 
 export const GetDerivStatusResponse = zod.object({
@@ -185,7 +196,18 @@ export const GetDerivStatusResponse = zod.object({
   "digit": zod.number().int().min(1).max(getDerivStatusResponseDigitStreaksItemDigitMax),
   "over": zod.number().int().min(getDerivStatusResponseDigitStreaksItemOverMin),
   "under": zod.number().int().min(getDerivStatusResponseDigitStreaksItemUnderMin)
-})).optional()
+})).optional(),
+  "market_signals": zod.array(zod.object({
+  "symbol": zod.string(),
+  "quote": zod.union([zod.number(),zod.null()]),
+  "last_digit": zod.number().int().min(getDerivStatusResponseMarketSignalsItemLastDigitMin).max(getDerivStatusResponseMarketSignalsItemLastDigitMax).nullable(),
+  "sample_count": zod.number().int().min(getDerivStatusResponseMarketSignalsItemSampleCountMin),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(getDerivStatusResponseMarketSignalsItemDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(getDerivStatusResponseMarketSignalsItemDigitStreaksItemOverMin),
+  "under": zod.number().int().min(getDerivStatusResponseMarketSignalsItemDigitStreaksItemUnderMin)
+}))
+}))
 })
 
 
@@ -200,6 +222,17 @@ export const testDerivConnectionResponseStatusDigitStreaksItemDigitMax = 9;
 export const testDerivConnectionResponseStatusDigitStreaksItemOverMin = 0;
 
 export const testDerivConnectionResponseStatusDigitStreaksItemUnderMin = 0;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemLastDigitMin = 0;
+export const testDerivConnectionResponseStatusMarketSignalsItemLastDigitMax = 9;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemSampleCountMin = 0;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemDigitMax = 9;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemOverMin = 0;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemUnderMin = 0;
 
 
 
@@ -266,7 +299,18 @@ export const TestDerivConnectionResponse = zod.object({
   "digit": zod.number().int().min(1).max(testDerivConnectionResponseStatusDigitStreaksItemDigitMax),
   "over": zod.number().int().min(testDerivConnectionResponseStatusDigitStreaksItemOverMin),
   "under": zod.number().int().min(testDerivConnectionResponseStatusDigitStreaksItemUnderMin)
-})).optional()
+})).optional(),
+  "market_signals": zod.array(zod.object({
+  "symbol": zod.string(),
+  "quote": zod.union([zod.number(),zod.null()]),
+  "last_digit": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemLastDigitMin).max(testDerivConnectionResponseStatusMarketSignalsItemLastDigitMax).nullable(),
+  "sample_count": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemSampleCountMin),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemOverMin),
+  "under": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemUnderMin)
+}))
+}))
 })
 })
 
@@ -316,6 +360,17 @@ export const selectDerivAccountResponseDigitStreaksItemDigitMax = 9;
 export const selectDerivAccountResponseDigitStreaksItemOverMin = 0;
 
 export const selectDerivAccountResponseDigitStreaksItemUnderMin = 0;
+
+export const selectDerivAccountResponseMarketSignalsItemLastDigitMin = 0;
+export const selectDerivAccountResponseMarketSignalsItemLastDigitMax = 9;
+
+export const selectDerivAccountResponseMarketSignalsItemSampleCountMin = 0;
+
+export const selectDerivAccountResponseMarketSignalsItemDigitStreaksItemDigitMax = 9;
+
+export const selectDerivAccountResponseMarketSignalsItemDigitStreaksItemOverMin = 0;
+
+export const selectDerivAccountResponseMarketSignalsItemDigitStreaksItemUnderMin = 0;
 
 
 
@@ -372,7 +427,18 @@ export const SelectDerivAccountResponse = zod.object({
   "digit": zod.number().int().min(1).max(selectDerivAccountResponseDigitStreaksItemDigitMax),
   "over": zod.number().int().min(selectDerivAccountResponseDigitStreaksItemOverMin),
   "under": zod.number().int().min(selectDerivAccountResponseDigitStreaksItemUnderMin)
-})).optional()
+})).optional(),
+  "market_signals": zod.array(zod.object({
+  "symbol": zod.string(),
+  "quote": zod.union([zod.number(),zod.null()]),
+  "last_digit": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemLastDigitMin).max(selectDerivAccountResponseMarketSignalsItemLastDigitMax).nullable(),
+  "sample_count": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemSampleCountMin),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemOverMin),
+  "under": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemUnderMin)
+}))
+}))
 })
 
 
@@ -394,6 +460,17 @@ export const selectDerivSymbolResponseDigitStreaksItemDigitMax = 9;
 export const selectDerivSymbolResponseDigitStreaksItemOverMin = 0;
 
 export const selectDerivSymbolResponseDigitStreaksItemUnderMin = 0;
+
+export const selectDerivSymbolResponseMarketSignalsItemLastDigitMin = 0;
+export const selectDerivSymbolResponseMarketSignalsItemLastDigitMax = 9;
+
+export const selectDerivSymbolResponseMarketSignalsItemSampleCountMin = 0;
+
+export const selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemDigitMax = 9;
+
+export const selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemOverMin = 0;
+
+export const selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemUnderMin = 0;
 
 
 
@@ -450,7 +527,18 @@ export const SelectDerivSymbolResponse = zod.object({
   "digit": zod.number().int().min(1).max(selectDerivSymbolResponseDigitStreaksItemDigitMax),
   "over": zod.number().int().min(selectDerivSymbolResponseDigitStreaksItemOverMin),
   "under": zod.number().int().min(selectDerivSymbolResponseDigitStreaksItemUnderMin)
-})).optional()
+})).optional(),
+  "market_signals": zod.array(zod.object({
+  "symbol": zod.string(),
+  "quote": zod.union([zod.number(),zod.null()]),
+  "last_digit": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemLastDigitMin).max(selectDerivSymbolResponseMarketSignalsItemLastDigitMax).nullable(),
+  "sample_count": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemSampleCountMin),
+  "digit_streaks": zod.array(zod.object({
+  "digit": zod.number().int().min(1).max(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemDigitMax),
+  "over": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemOverMin),
+  "under": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemUnderMin)
+}))
+}))
 })
 
 
@@ -493,6 +581,46 @@ export const BuyDerivContractResponse = zod.object({
   "payout": zod.number(),
   "start_time": zod.number().int().nullish()
 }),zod.null()]).optional()
+})
+
+
+/**
+ * Requests and sends 1 to 5 digit contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
+ * @summary Buy a batch of digit contracts immediately
+ */
+export const bulkBuyDerivContractsBodyAmountExclusiveMin = 0;
+
+export const bulkBuyDerivContractsBodyDurationMax = 5;
+
+export const bulkBuyDerivContractsBodyBarrierMin = 0;
+export const bulkBuyDerivContractsBodyBarrierMax = 9;
+
+export const bulkBuyDerivContractsBodyCountMax = 5;
+
+
+
+export const BulkBuyDerivContractsBody = zod.object({
+  "amount": zod.number().gt(bulkBuyDerivContractsBodyAmountExclusiveMin),
+  "duration": zod.number().int().min(1).max(bulkBuyDerivContractsBodyDurationMax),
+  "duration_unit": zod.enum(['t']),
+  "contract_type": zod.enum(['DIGITOVER', 'DIGITUNDER']),
+  "barrier": zod.number().int().min(bulkBuyDerivContractsBodyBarrierMin).max(bulkBuyDerivContractsBodyBarrierMax).optional(),
+  "symbol": zod.string().optional(),
+  "count": zod.number().int().min(1).max(bulkBuyDerivContractsBodyCountMax),
+  "confirm_live_trade": zod.literal(true)
+})
+
+export const BulkBuyDerivContractsResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string(),
+  "count": zod.number().int(),
+  "proposals": zod.array(zod.object({
+  "id": zod.string(),
+  "ask_price": zod.number(),
+  "payout": zod.number(),
+  "spot": zod.number(),
+  "longcode": zod.string().nullish()
+}))
 })
 
 

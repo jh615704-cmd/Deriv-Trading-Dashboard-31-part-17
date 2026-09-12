@@ -8,6 +8,7 @@
 import type { DerivAccount } from './derivAccount';
 import type { DerivBuy } from './derivBuy';
 import type { DerivContract } from './derivContract';
+import type { DerivMarketSignal } from './derivMarketSignal';
 import type { DerivProposal } from './derivProposal';
 import type { DerivTick } from './derivTick';
 import type { DigitStreak } from './digitStreak';
@@ -35,4 +36,5 @@ export interface DerivStatus {
      */
   last_digit?: number | null;
   digit_streaks?: DigitStreak[];
+  market_signals: DerivMarketSignal[];
 }

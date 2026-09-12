@@ -6,6 +6,8 @@ import {
   RequestDerivProposalResponse,
   BuyDerivContractBody,
   BuyDerivContractResponse,
+  BulkBuyDerivContractsBody,
+  BulkBuyDerivContractsResponse,
   SelectDerivAccountBody,
   SelectDerivAccountResponse,
   SelectDerivSymbolBody,
@@ -20,6 +22,7 @@ import {
   clearHistory,
   requestProposal,
   buyContract,
+  bulkBuyContracts,
   selectAccount,
   selectSymbol,
   testConnection,
@@ -167,6 +170,29 @@ router.post("/deriv/buy", async (req, res) => {
       : message.includes("cooldown")
         ? 429
       : message.includes("not available") || message.includes("confirmation")
+        ? 400
+        : 503;
+    return res.status(status).json({ error: message });
+  }
+});
+
+router.post("/deriv/bulk-buy", async (req, res) => {
+  const parsed = BulkBuyDerivContractsBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid bulk buy request" });
+
+  try {
+    const result = BulkBuyDerivContractsResponse.parse(
+      await withCredential(res.locals.userId, () => bulkBuyContracts(parsed.data)),
+    );
+    return res.status(202).json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Bulk buy request failed";
+    req.log.error({ err: error }, "Deriv bulk buy request failed");
+    const status = error instanceof MissingDerivCredentialError
+      ? 401
+      : message.includes("disabled") || message.includes("real account")
+      ? 403
+      : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
         ? 400
         : 503;
     return res.status(status).json({ error: message });

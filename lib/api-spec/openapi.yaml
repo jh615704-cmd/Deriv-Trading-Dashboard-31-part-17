@@ -334,6 +334,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /deriv/bulk-buy:
+    post:
+      operationId: bulkBuyDerivContracts
+      tags: [deriv]
+      summary: Buy a batch of digit contracts immediately
+      description: Requests and sends 1 to 5 digit contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivBulkBuyInput"
+      responses:
+        "202":
+          description: Bulk buy requests accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivBulkBuyResponse"
+        "400":
+          description: Invalid bulk buy request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Live trading is disabled or the selected account is not allowed to buy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Deriv WebSocket is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /deriv/history:
     get:
       operationId: getDerivHistory
@@ -471,7 +508,7 @@ components:
           type: [string, "null"]
     DerivStatus:
       type: object
-      required: [connected, authorized, bot_running, symbol, currency, max_trade_amount]
+      required: [connected, authorized, bot_running, symbol, currency, max_trade_amount, market_signals]
       properties:
         connected:
           type: boolean
@@ -521,6 +558,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DigitStreak"
+        market_signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/DerivMarketSignal"
     DigitStreak:
       type: object
       required: [digit, over, under]
@@ -535,6 +576,27 @@ components:
         under:
           type: integer
           minimum: 0
+    DerivMarketSignal:
+      type: object
+      required: [symbol, quote, last_digit, sample_count, digit_streaks]
+      properties:
+        symbol:
+          type: string
+        quote:
+          anyOf:
+            - type: number
+            - type: "null"
+        last_digit:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 9
+        sample_count:
+          type: integer
+          minimum: 0
+        digit_streaks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DigitStreak"
     DerivConnectionTest:
       type: object
       required: [ok, message, accounts, status]
@@ -620,6 +682,36 @@ components:
         confirm_live_trade:
           type: boolean
           const: true
+    DerivBulkBuyInput:
+      type: object
+      required: [amount, duration, duration_unit, contract_type, count, confirm_live_trade]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        duration:
+          type: integer
+          minimum: 1
+          maximum: 5
+        duration_unit:
+          type: string
+          enum: [t]
+        contract_type:
+          type: string
+          enum: [DIGITOVER, DIGITUNDER]
+        barrier:
+          type: integer
+          minimum: 0
+          maximum: 9
+        symbol:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+          maximum: 5
+        confirm_live_trade:
+          type: boolean
+          const: true
     DerivBuy:
       type: object
       required: [contract_id, buy_price, payout]
@@ -648,6 +740,20 @@ components:
           anyOf:
             - $ref: "#/components/schemas/DerivBuy"
             - type: "null"
+    DerivBulkBuyResponse:
+      type: object
+      required: [ok, message, count, proposals]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+        count:
+          type: integer
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/DerivProposal"
     DerivContract:
       type: object
       required: [contract_id, status, is_sold, profit, buy_price, payout]

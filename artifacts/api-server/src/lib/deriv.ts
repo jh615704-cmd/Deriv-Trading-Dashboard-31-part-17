@@ -91,6 +91,13 @@ export type DerivStatus = {
   digit_sample_count: number;
   last_digit: number | null;
   digit_streaks: Array<{ digit: number; over: number; under: number }>;
+  market_signals: Array<{
+    symbol: string;
+    quote: number | null;
+    last_digit: number | null;
+    sample_count: number;
+    digit_streaks: Array<{ digit: number; over: number; under: number }>;
+  }>;
 };
 
 type ProposalInput = {
@@ -143,6 +150,7 @@ return {
   digitEvenCount: 0,
   digitOddCount: 0,
   digitHistory: [] as number[],
+  marketHistory: new Map<string, { quote: number | null; epoch: number; digitHistory: number[] }>(),
   selectedSymbol: defaultSymbol,
   hiddenHistoryIds: new Set<string>(),
   selectedAccountId: configuredAccountId ?? null as string | null,
@@ -298,19 +306,7 @@ function upsertHistory(item: DerivHistoryItem) {
   getState().history = getState().history.slice(0, 100);
 }
 
-function recordLastDigit(quote: unknown) {
-  const digits = String(quote ?? "").replace(/\D/g, "");
-  const lastDigit = digits.at(-1);
-  if (!lastDigit) return;
-  const digit = Number(lastDigit);
-  getState().digitHistory.push(digit);
-  getState().digitHistory = getState().digitHistory.slice(-100);
-  if (digit % 2 === 0) getState().digitEvenCount += 1;
-  else getState().digitOddCount += 1;
-}
-
-function getDigitStreaks() {
-  const history = getState().digitHistory as number[];
+function digitStreaksFor(history: number[]) {
   return Array.from({ length: 9 }, (_, index) => {
     const digit = index + 1;
     let over = 0;
@@ -318,6 +314,41 @@ function getDigitStreaks() {
     for (let cursor = history.length - 1; cursor >= 0 && history[cursor] > digit; cursor -= 1) over += 1;
     for (let cursor = history.length - 1; cursor >= 0 && history[cursor] < digit; cursor -= 1) under += 1;
     return { digit, over, under };
+  });
+}
+
+function recordMarketTick(symbol: string, quote: unknown, epoch: number) {
+  const runtime = getState();
+  const digits = String(quote ?? "").replace(/\D/g, "");
+  const lastDigit = digits.at(-1);
+  const market = runtime.marketHistory.get(symbol) ?? { quote: null, epoch: 0, digitHistory: [] };
+  market.quote = Number(quote ?? 0);
+  market.epoch = epoch;
+  if (lastDigit) market.digitHistory.push(Number(lastDigit));
+  market.digitHistory = market.digitHistory.slice(-100);
+  runtime.marketHistory.set(symbol, market);
+  if (symbol === runtime.selectedSymbol) {
+    runtime.lastTick = { symbol, quote: market.quote, epoch };
+    runtime.digitHistory = [...market.digitHistory];
+    runtime.digitEvenCount = runtime.digitHistory.filter((digit: number) => digit % 2 === 0).length;
+    runtime.digitOddCount = runtime.digitHistory.length - runtime.digitEvenCount;
+  }
+}
+
+function getDigitStreaks() {
+  return digitStreaksFor(getState().digitHistory as number[]);
+}
+
+function getMarketSignals() {
+  return Array.from(supportedSymbols, (symbol) => {
+    const market = getState().marketHistory.get(symbol);
+    return {
+      symbol,
+      quote: market?.quote ?? null,
+      last_digit: market?.digitHistory.at(-1) ?? null,
+      sample_count: market?.digitHistory.length ?? 0,
+      digit_streaks: digitStreaksFor(market?.digitHistory ?? []),
+    };
   });
 }
 
@@ -504,7 +535,7 @@ async function connectInternal() {
       }
       logger.info({ accountId: account.id }, "Deriv WebSocket connected");
       send({ balance: 1, subscribe: 1 });
-      send({ ticks: ownerRuntime.selectedSymbol, subscribe: 1 });
+      for (const symbol of supportedSymbols) send({ ticks: symbol, subscribe: 1 });
       send({ portfolio: 1 });
       send({ profit_table: 1, limit: 50, description: 1, sort: "DESC" });
       resolveOnce(true);
@@ -525,12 +556,11 @@ async function connectInternal() {
           currency: message.balance?.currency ?? account.currency,
         };
       } else if (message.msg_type === "tick") {
-        getState().lastTick = {
-          symbol: String(message.tick?.symbol ?? getState().selectedSymbol),
-          quote: Number(message.tick?.quote ?? 0),
-          epoch: Number(message.tick?.epoch ?? 0),
-        };
-        recordLastDigit(message.tick?.quote);
+        recordMarketTick(
+          String(message.tick?.symbol ?? getState().selectedSymbol),
+          message.tick?.quote,
+          Number(message.tick?.epoch ?? 0),
+        );
         if (getState().lastProposalInput && Date.now() - getState().lastProposalRefreshAt >= 1000) {
           getState().lastProposalRefreshAt = Date.now();
           sendProposalRequest(getState().lastProposalInput);
@@ -689,6 +719,7 @@ export function getStatus(): DerivStatus {
     digit_sample_count: getState().digitEvenCount + getState().digitOddCount,
     last_digit: getState().digitHistory.at(-1) ?? null,
     digit_streaks: getDigitStreaks(),
+    market_signals: getMarketSignals(),
   };
 }
 
@@ -772,6 +803,7 @@ export async function selectAccount(accountId: string) {
   getState().digitEvenCount = 0;
   getState().digitOddCount = 0;
   getState().digitHistory = [];
+  getState().marketHistory.clear();
   await connect();
   return getStatus();
 }
@@ -780,13 +812,15 @@ export async function selectSymbol(symbol: string) {
   if (!supportedSymbols.has(symbol)) throw new Error("That market is not supported");
   if (getState().selectedSymbol === symbol) return getStatus();
   getState().selectedSymbol = symbol;
-  getState().lastTick = null;
-  getState().digitEvenCount = 0;
-  getState().digitOddCount = 0;
-  getState().digitHistory = [];
+  const market = getState().marketHistory.get(symbol);
+  getState().lastTick = market?.quote == null
+    ? null
+    : { symbol, quote: market.quote, epoch: market.epoch };
+  getState().digitHistory = [...(market?.digitHistory ?? [])];
+  getState().digitEvenCount = getState().digitHistory.filter((digit: number) => digit % 2 === 0).length;
+  getState().digitOddCount = getState().digitHistory.length - getState().digitEvenCount;
   getState().lastProposal = null;
   getState().lastProposalInput = null;
-  send({ forget_all: "ticks" });
   send({ ticks: symbol, subscribe: 1 });
   return getStatus();
 }
@@ -826,6 +860,54 @@ export async function buyContract(input: BuyInput) {
       : "Demo buy request sent to Deriv. Contract and balance updates will appear here.",
     proposal,
     buy: getState().lastBuy,
+  };
+}
+
+export async function bulkBuyContracts(input: {
+  amount: number;
+  duration: number;
+  duration_unit: "t";
+  contract_type: "DIGITOVER" | "DIGITUNDER";
+  barrier?: number;
+  symbol?: string;
+  count: number;
+  confirm_live_trade: true;
+}) {
+  if (!getState().account) throw new Error("Select an account before buying contracts");
+  if (getState().account.type === "real" && !liveTradingEnabled) {
+    throw new Error("Live trading is disabled on this server");
+  }
+  if (getState().account.type === "real" && !input.confirm_live_trade) {
+    throw new Error("Explicit live-trade confirmation is required");
+  }
+  if (input.amount * input.count > getState().account.balance) {
+    throw new Error("The selected bulk stake exceeds the current account balance");
+  }
+
+  const proposals = await Promise.all(
+    Array.from({ length: input.count }, () => requestFreshProposal({
+      amount: input.amount,
+      duration: input.duration,
+      duration_unit: input.duration_unit,
+      contract_type: input.contract_type,
+      barrier: input.barrier,
+      symbol: input.symbol,
+    })),
+  );
+  if (proposals.some((proposal) => proposal.ask_price > maxTradeAmount)) {
+    throw new Error(`Price exceeds the configured maximum of ${maxTradeAmount}`);
+  }
+  const connected = await connect();
+  if (!connected || proposals.some((proposal) => !send({ buy: proposal.id, price: proposal.ask_price }))) {
+    throw new Error("Deriv WebSocket is not ready");
+  }
+  return {
+    ok: true,
+    count: proposals.length,
+    message: getState().account.type === "real"
+      ? `${proposals.length} live buy requests sent.`
+      : `${proposals.length} demo buy requests sent.`,
+    proposals,
   };
 }
 

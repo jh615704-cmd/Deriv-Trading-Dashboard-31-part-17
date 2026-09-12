@@ -25,6 +25,8 @@ import type {
   AuthAccess,
   DerivAccount,
   DerivAccountSelection,
+  DerivBulkBuyInput,
+  DerivBulkBuyResponse,
   DerivBuyInput,
   DerivBuyResponse,
   DerivConnectionTest,
@@ -1100,6 +1102,78 @@ export const useBuyDerivContract = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getBuyDerivContractMutationOptions(options));
+    }
+
+export const getBulkBuyDerivContractsUrl = () => {
+
+
+
+
+  return `/api/deriv/bulk-buy`
+}
+
+/**
+ * Requests and sends 1 to 5 digit contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
+ * @summary Buy a batch of digit contracts immediately
+ */
+export const bulkBuyDerivContracts = async (derivBulkBuyInput: DerivBulkBuyInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivBulkBuyResponse> => {
+
+  return customFetch<DerivBulkBuyResponse>(getBulkBuyDerivContractsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivBulkBuyInput)
+  }
+);}
+
+
+
+
+
+export const getBulkBuyDerivContractsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkBuyDerivContracts>>, TError,{data: BodyType<DerivBulkBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkBuyDerivContracts>>, TError,{data: BodyType<DerivBulkBuyInput>}, TContext> => {
+
+const mutationKey = ['bulkBuyDerivContracts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkBuyDerivContracts>>, {data: BodyType<DerivBulkBuyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkBuyDerivContracts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkBuyDerivContractsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkBuyDerivContracts>>>
+    export type BulkBuyDerivContractsMutationBody = BodyType<DerivBulkBuyInput>
+    export type BulkBuyDerivContractsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Buy a batch of digit contracts immediately
+ */
+export const useBulkBuyDerivContracts = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkBuyDerivContracts>>, TError,{data: BodyType<DerivBulkBuyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkBuyDerivContracts>>,
+        TError,
+        {data: BodyType<DerivBulkBuyInput>},
+        TContext
+      > => {
+      return useMutation(getBulkBuyDerivContractsMutationOptions(options));
     }
 
 export const getGetDerivHistoryUrl = () => {
