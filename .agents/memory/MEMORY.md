@@ -3,3 +3,4 @@
 - [Deriv proposal correlation](deriv-proposal-correlation.md) — immediate buys must correlate async proposal responses to the exact request.
 - [Per-user Deriv lifecycle](per-user-deriv-lifecycle.md) — credential changes, reconnects, account switches, and buys share one stable user lock.
 - [Primary admin access](primary-admin-access.md) — only the designated admin-key fingerprint can administer; sessions are intentionally non-persistent.
+- [Access response schemas](access-response-schema.md) — shared AccessSession fields must be returned by every access-key response path.
