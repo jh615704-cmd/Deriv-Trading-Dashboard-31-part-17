@@ -17,11 +17,15 @@ router.post("/token/test", async (req, res): Promise<void> => {
     const accounts = await withUserSerialized(userId, async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12_000);
-      const response = await fetch("https://api.derivws.com/trading/v1/options/accounts", {
-        headers: { "Deriv-App-ID": appId, Authorization: `Bearer ${parsed.data.token}`, "Content-Type": "application/json" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+      let response: Response;
+      try {
+        response = await fetch("https://api.derivws.com/trading/v1/options/accounts", {
+          headers: { "Deriv-App-ID": appId, Authorization: `Bearer ${parsed.data.token}`, "Content-Type": "application/json" },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
       const body = await response.json() as { data?: unknown; accounts?: unknown; errors?: Array<{ message?: string }> };
       if (!response.ok) {
         throw new Error(body.errors?.[0]?.message ?? "Token invalid or missing required scopes");
@@ -30,7 +34,9 @@ router.post("/token/test", async (req, res): Promise<void> => {
         ? body.data
         : body.data && typeof body.data === "object" && Array.isArray((body.data as { accounts?: unknown }).accounts)
           ? (body.data as { accounts: unknown[] }).accounts
-          : Array.isArray(body.accounts) ? body.accounts : [];
+          : body.data && typeof body.data === "object"
+            ? [body.data]
+            : Array.isArray(body.accounts) ? body.accounts : [];
       const normalized = raw.filter((account): account is Record<string, unknown> => Boolean(account && typeof account === "object")).map((account) => ({
         id: String(account.account_id ?? account.accountId ?? account.loginid ?? account.id ?? ""),
         type: (account.account_type === "demo" || account.type === "demo" || String(account.account_id ?? "").startsWith("DOT") ? "demo" : "real") as "demo" | "real",

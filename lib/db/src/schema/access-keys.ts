@@ -6,6 +6,7 @@ import { z } from "zod/v4";
 export const accessKeysTable = pgTable("access_keys", {
   id: uuid("id").defaultRandom().primaryKey(),
   keyHash: text("key_hash").notNull().unique(),
+  encryptedKey: text("encrypted_key"),
   keyPrefix: text("key_prefix").notNull(),
   label: text("label").notNull(),
   kind: text("kind", { enum: ["admin", "user"] }).notNull().default("user"),

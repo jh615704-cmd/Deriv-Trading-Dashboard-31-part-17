@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, hkdfSync, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 
@@ -13,6 +13,27 @@ export const PRESENCE_STALE_MS = 90_000;
 
 export function hashSecret(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function accessKeyEncryptionKey() {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required for access-key encryption");
+  return Buffer.from(hkdfSync("sha256", secret, "access-key-salt", "access-key-encryption", 32));
+}
+
+export function encryptAccessKey(value: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", accessKeyEncryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `${iv.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}.${ciphertext.toString("base64url")}`;
+}
+
+export function decryptAccessKey(value: string) {
+  const [iv, tag, ciphertext] = value.split(".");
+  if (!iv || !tag || !ciphertext) throw new Error("Invalid encrypted access key");
+  const decipher = createDecipheriv("aes-256-gcm", accessKeyEncryptionKey(), Buffer.from(iv, "base64url"));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
 }
 
 export function generateAccessKey(kind: "admin" | "user") {

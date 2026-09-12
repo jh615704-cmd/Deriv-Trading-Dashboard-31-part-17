@@ -293,6 +293,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /access/keys/{id}/reset:
+    post:
+      security:
+        - accessSession: []
+      operationId: resetAccessKey
+      tags: [access]
+      summary: Issue a replacement access key
+      description: Replaces an existing non-primary access key, revokes its sessions, and returns the new raw key only once.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Replacement access key; the raw key is returned only once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessKeyCreated"
+        "400":
+          description: The primary administrator key cannot be replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Access key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /token/test:
     post:
       operationId: testDerivToken
@@ -708,8 +748,9 @@ components:
       allOf:
         - $ref: "#/components/schemas/AccessSession"
         - type: object
-          required: [device_count, online_devices, offline_seconds, created_at]
+          required: [access_key, device_count, online_devices, offline_seconds, created_at]
           properties:
+            access_key: { type: ["string", "null"] }
             device_count: { type: integer }
             online_devices: { type: integer }
             offline_seconds: { type: integer }

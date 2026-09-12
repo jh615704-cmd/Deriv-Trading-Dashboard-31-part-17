@@ -7,9 +7,11 @@
  */
 import type { AccessSession } from './accessSession';
 
-export type AccessKeySummary = AccessSession & {
+export type AccessKeySummary = AccessSession & ({
+  /** @nullable */
+  access_key: string | null;
   device_count: number;
   online_devices: number;
   offline_seconds: number;
   created_at: Date;
-};
+});

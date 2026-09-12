@@ -4,6 +4,7 @@ import {
   getListAccessKeysQueryKey,
   useCreateAccessKey,
   useListAccessKeys,
+  useResetAccessKey,
   useUpdateAccessKey,
   type AccessFeature,
   type AccessKeySummary,
@@ -58,13 +59,16 @@ function KeyRow({
   item,
   onStatus,
   onUpdate,
+  onReset,
 }: {
   item: AccessKeySummary;
   onStatus: (item: AccessKeySummary, status: "active" | "paused" | "blocked" | "banned") => void;
   onUpdate: (item: AccessKeySummary, data: { max_devices?: number; features?: AccessFeature[] }) => void;
+  onReset: (item: AccessKeySummary) => void;
 }) {
   const isBanned = item.status === "banned";
   const [editing, setEditing] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [draftDevices, setDraftDevices] = useState(item.max_devices);
   const [draftFeatures, setDraftFeatures] = useState<AccessFeature[]>(item.features);
 
@@ -80,13 +84,31 @@ function KeyRow({
       : [...current, feature]);
   };
 
+  const copyAccessKey = async () => {
+    if (!item.access_key) return;
+    try {
+      await navigator.clipboard.writeText(item.access_key);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      return;
+    }
+  };
+
   return (
     <div className="key-row">
       <div className="key-row-main">
         <div className="key-avatar">{item.kind === "admin" ? <ShieldCheck size={17} /> : <UserRound size={17} />}</div>
+        {item.access_key ? (
+          <button type="button" className="key-reissue-button" onClick={copyAccessKey} title="Copy access key" aria-label={`Copy access key for ${item.label}`}>
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+          </button>
+        ) : !item.is_admin && !isBanned ? (
+          <button type="button" className="key-reissue-button" onClick={() => onReset(item)} title="Issue a replacement access key" aria-label={`Issue a replacement key for ${item.label}`}><KeyRound size={13} /></button>
+        ) : null}
         <div>
           <div className="key-label">{item.label}</div>
-          <div className="key-prefix">{item.key_prefix}••••••••</div>
+          <div className="key-prefix">{item.access_key ?? `${item.key_prefix}••••••••`}</div>
         </div>
       </div>
       <div className="key-row-data"><span>{item.kind === "admin" ? "Administrator" : "User"}</span><strong>{item.device_count} / {item.max_devices}</strong><small>devices</small></div>
@@ -138,12 +160,13 @@ export default function AdminUsersPage() {
   const { toast } = useToast();
   const keysQuery = useListAccessKeys({ query: { refetchInterval: 15_000, queryKey: getListAccessKeysQueryKey() } });
   const createKey = useCreateAccessKey();
+  const resetKey = useResetAccessKey();
   const updateKey = useUpdateAccessKey();
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<"user" | "admin">("user");
   const [maxDevices, setMaxDevices] = useState(1);
   const [features, setFeatures] = useState<AccessFeature[]>(["edge"]);
-  const [newKey, setNewKey] = useState<{ value: string; kind: "user" | "admin" } | null>(null);
+  const [newKey, setNewKey] = useState<{ value: string; kind: "user" | "admin"; label: string } | null>(null);
   const [formError, setFormError] = useState("");
   const keys = keysQuery.data ?? [];
   const onlineCount = keys.filter((key) => key.online).length;
@@ -162,7 +185,7 @@ export default function AdminUsersPage() {
       { data: { label: label.trim(), kind, max_devices: maxDevices, features: kind === "admin" ? ["edge", "settings", "history", "admin"] : features } },
       {
         onSuccess: (created) => {
-          setNewKey({ value: created.access_key, kind: created.kind });
+           setNewKey({ value: created.access_key, kind: created.kind, label: created.label });
           setLabel("");
           setKind("user");
           setMaxDevices(1);
@@ -202,6 +225,21 @@ export default function AdminUsersPage() {
     );
   };
 
+  const handleReset = (item: AccessKeySummary) => {
+    if (!window.confirm(`Issue a replacement key for ${item.label}? The current key will stop working immediately.`)) return;
+    resetKey.mutate(
+      { id: item.key_id },
+      {
+        onSuccess: (created) => {
+          setNewKey({ value: created.access_key, kind: created.kind, label: created.label });
+          queryClient.invalidateQueries({ queryKey: getListAccessKeysQueryKey() });
+          toast({ title: "Replacement key ready", description: "Copy the new key now. The old key has been revoked." });
+        },
+        onError: (error) => toast({ variant: "destructive", title: "Key replacement failed", description: errorMessage(error) }),
+      },
+    );
+  };
+
   const copyKey = async () => {
     if (!newKey) return;
     await navigator.clipboard?.writeText(newKey.value);
@@ -233,7 +271,7 @@ export default function AdminUsersPage() {
         {newKey && (
           <section className="new-key-callout">
             <div className="new-key-icon"><Check size={20} /></div>
-             <div><span className="panel-overline">ONE-TIME KEY — COPY BEFORE CLOSING</span><h3>New {newKey.kind === "admin" ? "administrator" : "user"} key is ready</h3><code>{newKey.value}</code></div>
+             <div><span className="panel-overline">ONE-TIME KEY — COPY BEFORE CLOSING</span><h3>{newKey.label}: {newKey.kind === "admin" ? "administrator" : "user"} key is ready</h3><code>{newKey.value}</code></div>
             <button type="button" className="copy-key-button" onClick={copyKey}><Copy size={15} /> Copy key</button>
             <button type="button" className="dismiss-key" onClick={() => setNewKey(null)} aria-label="Hide new key">×</button>
           </section>
@@ -258,7 +296,7 @@ export default function AdminUsersPage() {
 
         <section className="panel admin-directory">
           <div className="panel-header"><div><span className="panel-overline">LIVE DIRECTORY</span><h3>Access keys and presence</h3></div><span className="directory-note">{keys.length} records · {onlineCount} online</span></div>
-          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} onStatus={handleStatus} onUpdate={handleUpdate} />)}</div>}
+          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} onStatus={handleStatus} onUpdate={handleUpdate} onReset={handleReset} />)}</div>}
         </section>
       </div>
     </AppShell>

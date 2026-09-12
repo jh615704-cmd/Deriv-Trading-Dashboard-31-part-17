@@ -892,6 +892,78 @@ export const useUpdateAccessKey = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpdateAccessKeyMutationOptions(options));
     }
 
+export const getResetAccessKeyUrl = (id: string,) => {
+
+
+
+
+  return `/api/access/keys/${id}/reset`
+}
+
+/**
+ * Replaces an existing non-primary access key, revokes its sessions, and returns the new raw key only once.
+ * @summary Issue a replacement access key
+ */
+export const resetAccessKey = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<AccessKeyCreated> => {
+
+  return customFetch<AccessKeyCreated>(getResetAccessKeyUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResetAccessKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAccessKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetAccessKey>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['resetAccessKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetAccessKey>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resetAccessKey(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetAccessKeyMutationResult = NonNullable<Awaited<ReturnType<typeof resetAccessKey>>>
+
+    export type ResetAccessKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Issue a replacement access key
+ */
+export const useResetAccessKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAccessKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetAccessKey>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getResetAccessKeyMutationOptions(options));
+    }
+
 export const getTestDerivTokenUrl = () => {
 
 

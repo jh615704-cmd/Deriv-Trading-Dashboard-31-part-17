@@ -140,6 +140,7 @@ export const ListAccessKeysResponseItem = zod.object({
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 }).and(zod.object({
+  "access_key": zod.string().nullable(),
   "device_count": zod.number().int(),
   "online_devices": zod.number().int(),
   "offline_seconds": zod.number().int(),
@@ -211,10 +212,35 @@ export const UpdateAccessKeyResponse = zod.object({
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 }).and(zod.object({
+  "access_key": zod.string().nullable(),
   "device_count": zod.number().int(),
   "online_devices": zod.number().int(),
   "offline_seconds": zod.number().int(),
   "created_at": zod.coerce.date()
+}))
+
+
+/**
+ * Replaces an existing non-primary access key, revokes its sessions, and returns the new raw key only once.
+ * @summary Issue a replacement access key
+ */
+export const ResetAccessKeyParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const ResetAccessKeyResponse = zod.object({
+  "key_id": zod.string().uuid(),
+  "key_prefix": zod.string(),
+  "label": zod.string(),
+  "kind": zod.enum(['admin', 'user']),
+  "is_admin": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
+  "max_devices": zod.number().int(),
+  "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])),
+  "online": zod.boolean(),
+  "last_seen_at": zod.coerce.date().nullable()
+}).and(zod.object({
+  "access_key": zod.string()
 }))
 
 

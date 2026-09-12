@@ -15,7 +15,9 @@ import {
   accessCookie,
   activeDeviceCount,
   clearAccessCookie,
+  decryptAccessKey,
   deviceHash,
+  encryptAccessKey,
   featureList,
   findSessionByToken,
   generateAccessKey,
@@ -33,6 +35,15 @@ const router: IRouter = Router();
 
 function secureCookie(forwardedProto?: string) {
   return forwardedProto === "https";
+}
+
+function readableAccessKey(encryptedKey: string | null) {
+  if (!encryptedKey) return null;
+  try {
+    return decryptAccessKey(encryptedKey);
+  } catch {
+    return null;
+  }
 }
 
 function sessionResponse(session: {
@@ -169,6 +180,7 @@ router.get("/access/keys", async (_req, res): Promise<void> => {
     ]);
     return {
       key_id: key.id,
+      access_key: readableAccessKey(key.encryptedKey),
       key_prefix: key.keyPrefix,
       label: key.label,
       kind: key.kind,
@@ -198,6 +210,7 @@ router.post("/access/keys", async (req, res): Promise<void> => {
   const features = kind === "admin" ? [...ACCESS_FEATURES] : featureList(parsed.data.features, kind);
   const [created] = await db.insert(accessKeysTable).values({
     keyHash: hashSecret(rawKey),
+    encryptedKey: encryptAccessKey(rawKey),
     keyPrefix: rawKey.slice(0, 17),
     label: parsed.data.label.trim(),
     kind,
@@ -217,6 +230,45 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     online: false,
     last_seen_at: null,
     created_at: created.createdAt,
+  }));
+});
+
+router.post("/access/keys/:id/reset", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const [current] = await db.select().from(accessKeysTable).where(eq(accessKeysTable.id, id)).limit(1);
+  if (!current) {
+    res.status(404).json({ error: "Access key not found" });
+    return;
+  }
+  if (current.keyHash === PRIMARY_ADMIN_KEY_HASH) {
+    res.status(400).json({ error: "The primary administrator key cannot be replaced" });
+    return;
+  }
+
+  const rawKey = generateAccessKey(current.kind);
+  const [updated] = await db.update(accessKeysTable).set({
+    keyHash: hashSecret(rawKey),
+    encryptedKey: encryptAccessKey(rawKey),
+    keyPrefix: rawKey.slice(0, 17),
+    updatedAt: new Date(),
+  }).where(eq(accessKeysTable.id, id)).returning();
+  await db.update(accessKeySessionsTable)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(accessKeySessionsTable.accessKeyId, id), isNull(accessKeySessionsTable.revokedAt)));
+
+  res.status(201).json(CreateAccessKeyResponse.parse({
+    key_id: updated.id,
+    access_key: rawKey,
+    key_prefix: updated.keyPrefix,
+    label: updated.label,
+    kind: updated.kind,
+    is_admin: updated.keyHash === PRIMARY_ADMIN_KEY_HASH,
+    status: updated.status,
+    max_devices: updated.maxDevices,
+    features: featureList(updated.features, updated.kind),
+    online: false,
+    last_seen_at: null,
+    created_at: updated.createdAt,
   }));
 });
 
@@ -255,6 +307,7 @@ router.patch("/access/keys/:id", async (req, res): Promise<void> => {
   const onlineDevices = await onlineDeviceCount(updated.id);
   res.json(ListAccessKeysResponseItem.parse({
     key_id: updated.id,
+    access_key: readableAccessKey(updated.encryptedKey),
     key_prefix: updated.keyPrefix,
     label: updated.label,
     kind: updated.kind,

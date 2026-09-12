@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useClerk, useUser } from '@clerk/react';
 import { getGetAccessSessionQueryKey, useGetAccessSession, useLogoutAccessSession } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Gauge,
   LockKeyhole,
@@ -27,6 +28,7 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const [location, setLocation] = useLocation();
   const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
+  const queryClient = useQueryClient();
   const { user } = useUser();
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const logoutAccess = useLogoutAccessSession();
@@ -127,8 +129,12 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
                 {accessSession.data && (
                   <DropdownMenuItem
                     onClick={() => {
-                      logoutAccess.mutate();
-                      setLocation('/');
+                      logoutAccess.mutate(undefined, {
+                        onSettled: () => {
+                          queryClient.removeQueries({ queryKey: getGetAccessSessionQueryKey() });
+                          setLocation('/');
+                        },
+                      });
                     }}
                     className="cursor-pointer text-[var(--ink-deep)] dark:text-[#d8ece9]"
                   >

@@ -144,12 +144,14 @@ export interface AccessSession {
   last_seen_at: string | null;
 }
 
-export type AccessKeySummary = AccessSession & {
+export type AccessKeySummary = AccessSession & ({
+  /** @nullable */
+  access_key: string | null;
   device_count: number;
   online_devices: number;
   offline_seconds: number;
   created_at: string;
-};
+});
 
 export type AccessKeyCreated = AccessSession & {
   access_key: string;
