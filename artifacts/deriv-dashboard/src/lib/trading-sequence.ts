@@ -1,0 +1,97 @@
+export type DigitDirection = "DIGITOVER" | "DIGITUNDER";
+
+export type DigitStreak = {
+  digit: number;
+  over: number;
+  under: number;
+};
+
+export type MarketSignal = {
+  symbol: string;
+  quote: number | null;
+  sample_count: number;
+  digit_streaks: DigitStreak[];
+};
+
+export type BestDigitSignal = {
+  symbol: string;
+  direction: DigitDirection;
+  digit: number;
+  streak: number;
+  sampleCount: number;
+};
+
+export type SettledTrade = {
+  contract_id: string;
+  status: string;
+  profit: number;
+};
+
+export function nextStakeAfterSettlement(
+  profit: number,
+  amount: number,
+  normalStake: number,
+  multiplier: number,
+) {
+  if (profit < 0) {
+    return Number((amount * Math.max(1, multiplier)).toFixed(2));
+  }
+  return normalStake;
+}
+
+export function findNewlySettledTrade(
+  rows: SettledTrade[],
+  knownIds: ReadonlySet<string>,
+) {
+  return rows.find((trade) => !knownIds.has(trade.contract_id) && trade.status !== "open") ?? null;
+}
+
+function candidatesFromSignal(signal: MarketSignal): BestDigitSignal[] {
+  return signal.digit_streaks.flatMap((item) => [
+    {
+      symbol: signal.symbol,
+      direction: "DIGITOVER" as const,
+      digit: item.digit,
+      streak: item.over,
+      sampleCount: signal.sample_count,
+    },
+    {
+      symbol: signal.symbol,
+      direction: "DIGITUNDER" as const,
+      digit: item.digit,
+      streak: item.under,
+      sampleCount: signal.sample_count,
+    },
+  ]);
+}
+
+function bySignalStrength(left: BestDigitSignal, right: BestDigitSignal) {
+  return (right.streak * 3 + Math.min(right.sampleCount, 100) / 100)
+    - (left.streak * 3 + Math.min(left.sampleCount, 100) / 100);
+}
+
+export function chooseBestDigitSignal(
+  signals: MarketSignal[],
+  fallback: MarketSignal | null,
+) {
+  const candidates = signals
+    .filter((signal) => signal.sample_count >= 5 && signal.quote != null)
+    .flatMap(candidatesFromSignal)
+    .sort(bySignalStrength);
+  if (candidates[0]) return candidates[0];
+
+  if (!fallback) return null;
+  return candidatesFromSignal(fallback).sort((left, right) => right.streak - left.streak)[0] ?? null;
+}
+
+export type StopReason = "take-profit" | "stop-loss";
+
+export function sessionStopReason(
+  pnl: number,
+  takeProfit: number,
+  stopLoss: number,
+): StopReason | null {
+  if (pnl >= takeProfit) return "take-profit";
+  if (pnl <= -stopLoss) return "stop-loss";
+  return null;
+}

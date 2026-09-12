@@ -22,6 +22,13 @@ import {
   Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Link2, Loader2,
   Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react";
+import {
+  chooseBestDigitSignal,
+  findNewlySettledTrade,
+  nextStakeAfterSettlement,
+  sessionStopReason,
+  type MarketSignal,
+} from "../lib/trading-sequence";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -137,11 +144,9 @@ export default function XTraderPage() {
   useEffect(() => {
     const watch = martingaleWatchRef.current;
     if (!watch || strategy !== "martingale") return;
-    const settledTrade = rows.find((trade) => !watch.knownIds.has(trade.contract_id) && trade.status !== "open");
+    const settledTrade = findNewlySettledTrade(rows, watch.knownIds);
     if (!settledTrade) return;
-    const next = settledTrade.profit < 0
-      ? Number((watch.amount * Math.max(1, martingale)).toFixed(2))
-      : stake;
+    const next = nextStakeAfterSettlement(settledTrade.profit, watch.amount, stake, martingale);
     nextStakeRef.current = next;
     setNextStake(next);
     martingaleWatchRef.current = null;
@@ -155,12 +160,13 @@ export default function XTraderPage() {
     const pnl = fastSessionPnl;
     setSessionPnl(pnl);
     if (!running) return;
-    if (pnl >= takeProfit || pnl <= -stopLoss) {
+    const stopReason = sessionStopReason(pnl, takeProfit, stopLoss);
+    if (stopReason) {
       runningRef.current = false;
       setRunning(false);
       setConnectionMessage({
         kind: "info",
-        text: `${pnl >= takeProfit ? "Take profit" : "Stop loss"} reached at ${pnl.toFixed(2)} ${currentAccount?.currency ?? "USD"}.`,
+        text: `${stopReason === "take-profit" ? "Take profit" : "Stop loss"} reached at ${pnl.toFixed(2)} ${currentAccount?.currency ?? "USD"}.`,
       });
     }
   }, [fastSessionPnl, running, takeProfit, stopLoss, currentAccount?.currency]);
@@ -194,32 +200,14 @@ export default function XTraderPage() {
   };
 
   const chooseBestDigit = async () => {
-    const signals = status.data?.market_signals ?? [];
-    const candidates = signals
-      .filter((signal) => signal.sample_count >= 5 && signal.quote != null)
-      .flatMap((signal) => signal.digit_streaks.flatMap((item) => [
-        {
-          symbol: signal.symbol,
-          direction: "DIGITOVER" as const,
-          digit: item.digit,
-          streak: item.over,
-          sampleCount: signal.sample_count,
-        },
-        {
-          symbol: signal.symbol,
-          direction: "DIGITUNDER" as const,
-          digit: item.digit,
-          streak: item.under,
-          sampleCount: signal.sample_count,
-        },
-      ]))
-      .sort((left, right) => (right.streak * 3 + Math.min(right.sampleCount, 100) / 100)
-        - (left.streak * 3 + Math.min(left.sampleCount, 100) / 100));
-    const fallback = streaks.flatMap((item) => [
-      { symbol, direction: "DIGITOVER" as const, digit: item.digit, streak: item.over, sampleCount: status.data?.digit_sample_count ?? 0 },
-      { symbol, direction: "DIGITUNDER" as const, digit: item.digit, streak: item.under, sampleCount: status.data?.digit_sample_count ?? 0 },
-    ]).sort((left, right) => right.streak - left.streak)[0];
-    const best = candidates[0] ?? fallback;
+    const signals = (status.data?.market_signals ?? []) as MarketSignal[];
+    const fallback: MarketSignal = {
+      symbol,
+      quote: status.data?.last_tick?.quote ?? null,
+      sample_count: status.data?.digit_sample_count ?? 0,
+      digit_streaks: streaks,
+    };
+    const best = chooseBestDigitSignal(signals, fallback);
     if (!best) return;
     if (best.symbol !== symbol) await selectMarket(best.symbol);
     setDirection(best.direction);
@@ -355,8 +343,14 @@ export default function XTraderPage() {
       return;
     }
     try {
+      const latestRows = await getDerivHistory();
+      if (latestRows.some((trade) => trade.status === "open")) {
+        setConnectionMessage({ kind: "info", text: "The previous contract is still settling. Wait before sending another trade." });
+        return;
+      }
+      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
       martingaleWatchRef.current = strategy === "martingale"
-        ? { knownIds: new Set(rows.map((trade) => trade.contract_id)), amount }
+        ? { knownIds: new Set(latestRows.map((trade) => trade.contract_id)), amount }
         : null;
       await bulkBuyMutation.mutateAsync({
         data: {
