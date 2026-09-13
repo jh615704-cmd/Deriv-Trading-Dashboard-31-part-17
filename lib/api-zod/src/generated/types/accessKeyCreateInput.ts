@@ -16,7 +16,8 @@ export interface AccessKeyCreateInput {
   label: string;
   kind: AccessKeyCreateInputKind;
   /**
-     * @minimum 1
+     * Maximum active devices; 0 means unlimited and is allowed only for administrator keys.
+     * @minimum 0
      * @maximum 50
      */
   max_devices: number;

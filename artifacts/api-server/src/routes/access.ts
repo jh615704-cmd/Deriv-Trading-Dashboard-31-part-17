@@ -100,7 +100,7 @@ router.post("/access/login", async (req, res): Promise<void> => {
   ));
   const existingDevice = sessions.find((session) => session.deviceHash === fingerprint);
   const deviceCount = new Set(sessions.map((session) => session.deviceHash)).size;
-  if (!existingDevice && deviceCount >= key.maxDevices) {
+  if (!existingDevice && key.maxDevices > 0 && deviceCount >= key.maxDevices) {
     res.status(403).json({ error: `This access key is already in use on ${key.maxDevices} device${key.maxDevices === 1 ? "" : "s"}` });
     return;
   }
@@ -206,6 +206,10 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     return;
   }
   const kind = parsed.data.kind;
+  if (parsed.data.max_devices === 0 && kind !== "admin") {
+    res.status(400).json({ error: "Unlimited devices are available only for administrator keys" });
+    return;
+  }
   const rawKey = generateAccessKey(kind);
   const features = kind === "admin" ? [...ACCESS_FEATURES] : featureList(parsed.data.features, kind);
   const [created] = await db.insert(accessKeysTable).values({
@@ -288,6 +292,10 @@ router.patch("/access/keys/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Banned access keys cannot be restored" });
     return;
   }
+  if (parsed.data.max_devices === 0 && current.kind !== "admin") {
+    res.status(400).json({ error: "Unlimited devices are available only for administrator keys" });
+    return;
+  }
   if (id === res.locals.accessKeyId && parsed.data.status && parsed.data.status !== "active") {
     res.status(400).json({ error: "The current administrator key cannot be disabled from its own session" });
     return;
@@ -296,7 +304,7 @@ router.patch("/access/keys/:id", async (req, res): Promise<void> => {
   const nextStatus = parsed.data.status ?? current.status;
   const [updated] = await db.update(accessKeysTable).set({
     ...(parsed.data.status ? { status: parsed.data.status } : {}),
-    ...(parsed.data.max_devices ? { maxDevices: parsed.data.max_devices } : {}),
+    ...(parsed.data.max_devices !== undefined ? { maxDevices: parsed.data.max_devices } : {}),
     ...(parsed.data.features ? { features: featureList(parsed.data.features, current.kind) } : {}),
     updatedAt: new Date(),
   }).where(eq(accessKeysTable.id, id)).returning();

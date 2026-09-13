@@ -70,10 +70,12 @@ function KeyRow({
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [draftDevices, setDraftDevices] = useState(item.max_devices);
+  const [unlimitedDevices, setUnlimitedDevices] = useState(item.kind === "admin" && item.max_devices === 0);
   const [draftFeatures, setDraftFeatures] = useState<AccessFeature[]>(item.features);
 
   const startEditing = () => {
     setDraftDevices(item.max_devices);
+    setUnlimitedDevices(item.kind === "admin" && item.max_devices === 0);
     setDraftFeatures(item.features);
     setEditing(true);
   };
@@ -111,16 +113,18 @@ function KeyRow({
           <div className="key-prefix">{item.access_key ?? `${item.key_prefix}••••••••`}</div>
         </div>
       </div>
-      <div className="key-row-data"><span>{item.kind === "admin" ? "Administrator" : "User"}</span><strong>{item.device_count} / {item.max_devices}</strong><small>devices</small></div>
+      <div className="key-row-data"><span>{item.kind === "admin" ? "Administrator" : "User"}</span><strong>{item.device_count} / {item.max_devices === 0 ? "Unlimited" : item.max_devices}</strong><small>devices</small></div>
       <div className="key-row-data"><StatusBadge item={item} /><small>{formatOffline(item.offline_seconds, item.online)}</small></div>
       {editing ? (
         <div className="key-edit-panel">
+          {item.kind === "admin" && <label className="key-edit-unlimited"><input type="checkbox" checked={unlimitedDevices} onChange={(event) => { setUnlimitedDevices(event.target.checked); if (!event.target.checked) setDraftDevices(1); }} /><span>Unlimited devices</span></label>}
           <label className="key-edit-limit">
             <span>DEVICES</span>
             <input
               type="number"
               min={1}
               max={50}
+              disabled={item.kind === "admin" && unlimitedDevices}
               value={draftDevices}
               onChange={(event) => setDraftDevices(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
             />
@@ -139,7 +143,7 @@ function KeyRow({
             ))}
           </div>
           <div className="key-edit-actions">
-            <button type="button" className="key-action key-action-green" disabled={!draftFeatures.length} onClick={() => { onUpdate(item, { max_devices: draftDevices, features: draftFeatures }); setEditing(false); }}><Save size={13} /> Save</button>
+            <button type="button" className="key-action key-action-green" disabled={!draftFeatures.length} onClick={() => { onUpdate(item, { max_devices: item.kind === "admin" && unlimitedDevices ? 0 : draftDevices, features: draftFeatures }); setEditing(false); }}><Save size={13} /> Save</button>
             <button type="button" className="key-action" onClick={() => setEditing(false)}><X size={13} /> Cancel</button>
           </div>
         </div>
@@ -165,6 +169,7 @@ export default function AdminUsersPage() {
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<"user" | "admin">("user");
   const [maxDevices, setMaxDevices] = useState(1);
+  const [unlimitedDevices, setUnlimitedDevices] = useState(false);
   const [features, setFeatures] = useState<AccessFeature[]>(["edge"]);
   const [newKey, setNewKey] = useState<{ value: string; kind: "user" | "admin"; label: string } | null>(null);
   const [formError, setFormError] = useState("");
@@ -182,13 +187,14 @@ export default function AdminUsersPage() {
     event.preventDefault();
     setFormError("");
     createKey.mutate(
-      { data: { label: label.trim(), kind, max_devices: maxDevices, features: kind === "admin" ? ["edge", "settings", "history", "admin"] : features } },
+      { data: { label: label.trim(), kind, max_devices: kind === "admin" && unlimitedDevices ? 0 : maxDevices, features: kind === "admin" ? ["edge", "settings", "history", "admin"] : features } },
       {
         onSuccess: (created) => {
            setNewKey({ value: created.access_key, kind: created.kind, label: created.label });
           setLabel("");
           setKind("user");
           setMaxDevices(1);
+          setUnlimitedDevices(false);
           setFeatures(["edge"]);
           queryClient.invalidateQueries({ queryKey: getListAccessKeysQueryKey() });
           toast({ title: "Access key created", description: "Copy the key now. It is shown only once." });
@@ -285,13 +291,14 @@ export default function AdminUsersPage() {
               <label className="admin-field"><span>LABEL</span><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. Alex — desktop" maxLength={120} /></label>
               <div className="admin-form-row">
                 <label className="admin-field"><span>KEY TYPE</span><select value={kind} onChange={(event) => setKind(event.target.value as "user" | "admin")}><option value="user">User key</option><option value="admin">Administrator key</option></select></label>
-                <label className="admin-field"><span>DEVICES ALLOWED</span><input type="number" min={1} max={50} value={maxDevices} onChange={(event) => setMaxDevices(Math.max(1, Math.min(50, Number(event.target.value) || 1)))} /></label>
+                <label className="admin-field"><span>DEVICES ALLOWED</span><input type="number" min={1} max={50} disabled={kind === "admin" && unlimitedDevices} value={maxDevices} onChange={(event) => setMaxDevices(Math.max(1, Math.min(50, Number(event.target.value) || 1)))} /></label>
               </div>
+              {kind === "admin" && <label className="admin-unlimited-toggle"><input type="checkbox" checked={unlimitedDevices} onChange={(event) => setUnlimitedDevices(event.target.checked)} /><span>Unlimited devices</span></label>}
               <div className="admin-feature-picker"><span className="admin-field-label">FEATURE ACCESS</span>{featureOptions.map((feature) => <label className={`admin-feature-option ${kind === "admin" || features.includes(feature.value) ? "selected" : ""}`} key={feature.value}><input type="checkbox" checked={kind === "admin" || features.includes(feature.value)} disabled={kind === "admin"} onChange={() => toggleFeature(feature.value)} /><span><b>{feature.label}</b><small>{feature.description}</small></span></label>)}</div>
               <button type="submit" className="primary-button admin-create-submit" disabled={!canCreate}><KeyRound size={16} />{createKey.isPending ? "Generating…" : `Generate ${kind === "admin" ? "admin" : "user"} key`}</button>
             </form>
           </div>
-          <div className="admin-safety-note"><div className="admin-safety-icon"><ShieldCheck size={20} /></div><h3>Built-in safety rules</h3><ul><li>New keys are locked to one device unless you change the limit.</li><li>Pausing can be resumed. Blocking can be undone.</li><li>Banning revokes all sessions permanently and cannot be undone.</li><li>Presence is refreshed every 15 seconds in this panel.</li></ul></div>
+           <div className="admin-safety-note"><div className="admin-safety-icon"><ShieldCheck size={20} /></div><h3>Built-in safety rules</h3><ul><li>New keys are locked to one device unless you change the limit.</li><li>Administrator keys can allow unlimited devices.</li><li>Pausing can be resumed. Blocking can be undone.</li><li>Banning revokes all sessions permanently and cannot be undone.</li><li>Presence is refreshed every 15 seconds in this panel.</li></ul></div>
         </section>
 
         <section className="panel admin-directory">

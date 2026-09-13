@@ -154,6 +154,7 @@ export const ListAccessKeysResponse = zod.array(ListAccessKeysResponseItem)
  */
 export const createAccessKeyBodyLabelMax = 120;
 
+export const createAccessKeyBodyMaxDevicesMin = 0;
 export const createAccessKeyBodyMaxDevicesMax = 50;
 
 
@@ -162,7 +163,7 @@ export const createAccessKeyBodyMaxDevicesMax = 50;
 export const CreateAccessKeyBody = zod.object({
   "label": zod.string().min(1).max(createAccessKeyBodyLabelMax),
   "kind": zod.enum(['admin', 'user']),
-  "max_devices": zod.number().int().min(1).max(createAccessKeyBodyMaxDevicesMax),
+  "max_devices": zod.number().int().min(createAccessKeyBodyMaxDevicesMin).max(createAccessKeyBodyMaxDevicesMax).describe('Maximum active devices; 0 means unlimited and is allowed only for administrator keys.'),
   "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])).min(1)
 })
 
@@ -189,6 +190,7 @@ export const UpdateAccessKeyParams = zod.object({
   "id": zod.coerce.string().uuid()
 })
 
+export const updateAccessKeyBodyMaxDevicesMin = 0;
 export const updateAccessKeyBodyMaxDevicesMax = 50;
 
 
@@ -196,7 +198,7 @@ export const updateAccessKeyBodyMaxDevicesMax = 50;
 
 export const UpdateAccessKeyBody = zod.object({
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']).optional(),
-  "max_devices": zod.number().int().min(1).max(updateAccessKeyBodyMaxDevicesMax).optional(),
+  "max_devices": zod.number().int().min(updateAccessKeyBodyMaxDevicesMin).max(updateAccessKeyBodyMaxDevicesMax).optional().describe('Maximum active devices; 0 means unlimited and is allowed only for administrator keys.'),
   "features": zod.array(zod.enum(['edge', 'settings', 'history', 'admin'])).min(1).optional()
 })
 
