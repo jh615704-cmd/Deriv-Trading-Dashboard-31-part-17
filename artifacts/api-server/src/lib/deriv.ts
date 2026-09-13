@@ -126,6 +126,16 @@ type DerivResponse = {
   accounts?: unknown;
 };
 
+export class DerivCredentialError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "DerivCredentialError";
+    this.status = status;
+  }
+}
+
 function createState() {
 return {
   socket: null as WebSocket | null,
@@ -400,7 +410,14 @@ async function derivRequest(pathname: string, init: RequestInit = {}) {
   });
   const body = (await response.json().catch(() => ({}))) as DerivResponse;
   if (!response.ok) {
-    throw new Error(body.errors?.[0]?.message ?? `Deriv REST request failed (${response.status})`);
+    const message = body.errors?.[0]?.message ?? `Deriv REST request failed (${response.status})`;
+    if (response.status === 401 || response.status === 403) {
+      throw new DerivCredentialError(
+        "Deriv rejected this PAT or its permissions. Connect a PAT with Options read and trade scopes.",
+        response.status,
+      );
+    }
+    throw new Error(message);
   }
   return body;
 }
@@ -748,6 +765,9 @@ export function getStatus(): DerivStatus {
 
 export async function getLiveStatus() {
   await refreshSelectedBalance();
+  if (getState().socket?.readyState !== WebSocket.OPEN) {
+    await connect();
+  }
   return getStatus();
 }
 

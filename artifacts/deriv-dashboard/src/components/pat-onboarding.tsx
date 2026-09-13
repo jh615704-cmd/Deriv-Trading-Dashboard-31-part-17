@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useTestDerivToken, getGetDerivTokenStatusQueryKey, getGetDerivAccountsQueryKey, getGetDerivStatusQueryKey } from '@workspace/api-client-react';
+import { useTestDerivToken, useTestDerivConnection, getGetDerivTokenStatusQueryKey, getGetDerivAccountsQueryKey, getGetDerivStatusQueryKey } from '@workspace/api-client-react';
 import { KeyRound, ShieldCheck, ArrowRight, RefreshCw, CircleAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,47 +11,41 @@ export function PatOnboarding() {
   const [expiresAt, setExpiresAt] = useState('');
   const queryClient = useQueryClient();
   const testTokenMutation = useTestDerivToken();
+  const testConnectionMutation = useTestDerivConnection();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token.trim()) return;
 
-    testTokenMutation.mutate(
-      { data: { token: token.trim(), expires_at: expiresAt || undefined } },
-      {
-        onSuccess: (result) => {
-          if (result.success) {
-            toast({
-              title: "Token saved",
-              description: result.message,
-            });
-            // Clear input
-            setToken('');
-            setExpiresAt('');
-            // Invalidate to refresh app state
-            queryClient.invalidateQueries({ queryKey: getGetDerivTokenStatusQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
-            setLocation('/app');
-          } else {
-            toast({
-              variant: "destructive",
-              title: "Validation failed",
-              description: result.message,
-            });
-          }
-        },
-        onError: (error: any) => {
-          toast({
-            variant: "destructive",
-            title: "Connection error",
-            description: error.message || "Failed to validate token.",
-          });
-        }
-      }
-    );
+    try {
+      const result = await testTokenMutation.mutateAsync({
+        data: { token: token.trim(), expires_at: expiresAt || undefined },
+      });
+      if (!result.success) throw new Error(result.message);
+
+      await queryClient.invalidateQueries({ queryKey: getGetDerivTokenStatusQueryKey() });
+      const connection = await testConnectionMutation.mutateAsync();
+      if (!connection.ok) throw new Error(connection.message);
+
+      toast({
+        title: "Deriv connected",
+        description: "Your PAT passed the REST and authenticated WebSocket checks.",
+      });
+      setToken('');
+      setExpiresAt('');
+      await queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
+      setLocation('/app');
+    } catch (error: any) {
+      const message = error?.data?.error || error?.message || "Failed to connect this Deriv PAT.";
+      toast({
+        variant: "destructive",
+        title: "Connection failed",
+        description: message,
+      });
+    }
   };
 
   return (
@@ -104,22 +98,24 @@ export function PatOnboarding() {
 
           <button 
             type="submit" 
-            disabled={!token.trim() || testTokenMutation.isPending}
+             disabled={!token.trim() || testTokenMutation.isPending || testConnectionMutation.isPending}
             className="w-full h-12 bg-[var(--teal)] hover:bg-[var(--teal-deep)] text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="button-save-pat"
           >
-            {testTokenMutation.isPending ? (
-              <><RefreshCw className="animate-spin" size={18} /> Connecting...</>
+             {testTokenMutation.isPending ? (
+               <><RefreshCw className="animate-spin" size={18} /> Validating PAT...</>
+             ) : testConnectionMutation.isPending ? (
+               <><RefreshCw className="animate-spin" size={18} /> Verifying live connection...</>
             ) : (
-              <>Connect Workspace <ArrowRight size={18} /></>
+               <>Connect Deriv <ArrowRight size={18} /></>
             )}
           </button>
         </form>
         
-        {testTokenMutation.isError && (
+        {(testTokenMutation.isError || testConnectionMutation.isError) && (
           <div className="mt-4 flex items-center gap-2 text-[#d75046] dark:text-[#e6b6b2] text-sm p-3 bg-[#fff4f2] dark:bg-[#3c2426] border border-[#e5aaa5] dark:border-[#8c4d4a] rounded-lg">
             <CircleAlert size={16} />
-            <p>Token verification failed. Please check the scopes and try again.</p>
+            <p>Connection failed. Check that the PAT has Options read and trade scopes, then try again.</p>
           </div>
         )}
       </div>

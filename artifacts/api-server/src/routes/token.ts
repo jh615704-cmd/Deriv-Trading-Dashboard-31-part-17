@@ -11,6 +11,8 @@ const appId = process.env.DERIV_APP_ID;
 router.post("/token/test", async (req, res): Promise<void> => {
   const parsed = TestDerivTokenBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "A Deriv token is required" }); return; }
+  const token = parsed.data.token.trim();
+  if (!token) { res.status(400).json({ error: "A Deriv token is required" }); return; }
   if (!appId) { res.status(500).json({ error: "DERIV_APP_ID is not configured" }); return; }
   try {
     const userId = res.locals.userId as string;
@@ -20,13 +22,13 @@ router.post("/token/test", async (req, res): Promise<void> => {
       let response: Response;
       try {
         response = await fetch("https://api.derivws.com/trading/v1/options/accounts", {
-          headers: { "Deriv-App-ID": appId, Authorization: `Bearer ${parsed.data.token}`, "Content-Type": "application/json" },
+          headers: { "Deriv-App-ID": appId, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           signal: controller.signal,
         });
       } finally {
         clearTimeout(timeout);
       }
-      const body = await response.json() as { data?: unknown; accounts?: unknown; errors?: Array<{ message?: string }> };
+       const body = await response.json().catch(() => ({})) as { data?: unknown; accounts?: unknown; errors?: Array<{ message?: string }> };
       if (!response.ok) {
         throw new Error(body.errors?.[0]?.message ?? "Token invalid or missing required scopes");
       }
@@ -44,14 +46,14 @@ router.post("/token/test", async (req, res): Promise<void> => {
       })).filter((account) => account.id);
       if (!normalized.length) throw new Error("Deriv returned no Options accounts");
       const expiresAt = parsed.data.expires_at ? parsed.data.expires_at.toISOString().slice(0, 10) : null;
-      const encryptedPat = encryptPat(parsed.data.token);
+       const encryptedPat = encryptPat(token);
       await db.insert(derivCredentialsTable).values({
         clerkUserId: userId, encryptedPat, expiresAt, lastVerifiedAt: new Date(),
       }).onConflictDoUpdate({ target: derivCredentialsTable.clerkUserId, set: {
         encryptedPat, expiresAt, lastVerifiedAt: new Date(), updatedAt: new Date(),
       }});
       disposeUser(userId);
-      setUserPat(userId, parsed.data.token);
+       setUserPat(userId, token);
       return normalized;
     });
     res.json(TestDerivTokenResponse.parse({ success: true, message: "Deriv token validated and saved", accounts }));
