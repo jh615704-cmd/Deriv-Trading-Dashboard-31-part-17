@@ -732,6 +732,46 @@ html.dark { color-scheme: dark; }.dark body { background: #091419; }.dark .app-f
 .xt-streak-option.selected strong { color:inherit; }
 .xt-streak-option:disabled { cursor:not-allowed; opacity:.7; }
 .xt-field-help { color:#6f9eb8; font-size:8px; font-weight:500; }
+.xt-market-row.market-only { grid-template-columns:1fr; }
+.xt-analysis-panel { margin-top:14px; padding:14px; border:1px solid rgba(85,150,184,.24); border-radius:12px; background:rgba(3,20,38,.58); }
+.xt-analysis-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.xt-analysis-title { display:flex; align-items:center; gap:8px; }
+.xt-analysis-title svg { color:#43d9c0; }
+.xt-analysis-title span { display:grid; gap:3px; }
+.xt-analysis-title b { color:#d5edf3; font-size:10px; letter-spacing:.1em; }
+.xt-analysis-title small { color:#6f9eb8; font-size:8px; }
+.xt-analysis-actions { display:flex; align-items:center; gap:5px; }
+.xt-analysis-quick,.xt-analysis-refresh { display:inline-flex; align-items:center; justify-content:center; border-radius:6px; cursor:pointer; font-size:8px; font-weight:900; letter-spacing:.04em; }
+.xt-analysis-quick { height:27px; padding:0 8px; border:1px solid #245979; background:#061f37; color:#9ec6d5; }
+.xt-analysis-quick.over { border-color:#238e86; color:#6ce5cd; }
+.xt-analysis-quick.under { border-color:#995461; color:#ffaaa6; }
+.xt-analysis-quick:hover:not(:disabled),.xt-analysis-refresh:hover:not(:disabled) { filter:brightness(1.2); }
+.xt-analysis-refresh { width:27px; height:27px; border:1px solid #2b6281; background:#082641; color:#8ec0d0; }
+.xt-analysis-quick:disabled,.xt-analysis-refresh:disabled { cursor:not-allowed; opacity:.4; }
+.xt-analysis-track { display:flex; height:9px; gap:5px; margin-top:13px; padding:2px; overflow:hidden; border-radius:8px; background:#09243d; }
+.xt-analysis-track span { display:block; height:100%; border-radius:5px; transition:width .3s ease; }
+.xt-analysis-track .over { background:linear-gradient(90deg,#1abedc,#3de1bf); box-shadow:0 0 9px rgba(54,220,194,.35); }
+.xt-analysis-track .under { background:linear-gradient(90deg,#e15472,#fa7f7c); box-shadow:0 0 9px rgba(239,94,112,.27); }
+.xt-analysis-summary { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:9px; margin-top:9px; color:#aac9d5; font-size:8px; font-weight:800; letter-spacing:.04em; }
+.xt-analysis-summary span:nth-child(2) { color:#9cb7c5; text-align:center; text-transform:none; }
+.xt-analysis-summary .over { color:#65e7cb; }
+.xt-analysis-summary .under { color:#ff9e9d; text-align:right; }
+.xt-analysis-chart { display:grid; grid-template-columns:repeat(10,1fr); align-items:end; gap:5px; height:116px; margin-top:15px; padding:0 1px; }
+.xt-analysis-column { display:flex; flex-direction:column; align-items:center; justify-content:end; min-width:0; height:100%; gap:4px; }
+.xt-analysis-column span { width:100%; min-height:5px; border-radius:3px 3px 1px 1px; transition:height .3s ease,background .3s ease; }
+.xt-analysis-column small { min-height:9px; color:#6f9eb8; font-size:7px; }
+.xt-analysis-column b { color:#80a7bb; font:8px ui-monospace,monospace; }
+.xt-analysis-column.over span { background:linear-gradient(180deg,#39c1ee,#237fae); }
+.xt-analysis-column.under span { background:linear-gradient(180deg,#e36b82,#963b59); }
+.xt-analysis-column.selected span { background:linear-gradient(180deg,#f2c443,#b88422); box-shadow:0 0 9px rgba(243,190,55,.24); }
+.xt-analysis-column.selected b { color:#f4d45d; }
+.xt-analysis-trail { display:flex; flex-wrap:wrap; gap:5px; min-height:23px; margin-top:11px; }
+.xt-analysis-trail span { display:grid; place-items:center; width:23px; height:23px; border:1px solid transparent; border-radius:5px; font:10px ui-monospace,monospace; }
+.xt-analysis-trail .over { border-color:#195c7a; background:#0b3c59; color:#67d9ee; }
+.xt-analysis-trail .under { border-color:#693b52; background:#3d263d; color:#ef8694; }
+.xt-analysis-trail .selected { border-color:#b18b28; background:#5a491f; color:#f7d15a; }
+.xt-analysis-trail > small { align-self:center; color:#648ca4; font-size:8px; }
+.xt-analysis-note { margin:10px 1px 0; color:#638da6; font-size:8px; line-height:1.45; }
 .access-gate { min-height: 100dvh; display: grid; place-items: center; position: relative; overflow: hidden; padding: 24px; background: #091419; color: #dcebea; }
 .access-gate-orbit { position: absolute; width: 720px; height: 720px; border: 1px solid rgba(53,214,182,.13); border-radius: 50%; box-shadow: 0 0 0 80px rgba(53,214,182,.025), 0 0 0 160px rgba(53,214,182,.018); transform: translate(28%, -35%) rotate(18deg); }
 .access-gate-card { position: relative; width: min(100%, 430px); padding: 38px; border: 1px solid #24434a; border-radius: 15px; background: rgba(16,38,45,.94); box-shadow: 0 25px 70px rgba(0,0,0,.28); }

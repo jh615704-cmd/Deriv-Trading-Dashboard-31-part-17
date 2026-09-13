@@ -293,6 +293,12 @@ export interface DerivStatus {
      * @nullable
      */
   last_digit?: number | null;
+  /**
+     * @maxItems 50
+     * @items.minimum 0
+     * @items.maximum 9
+     */
+  digit_history?: number[];
   digit_streaks?: DigitStreak[];
   market_signals: DerivMarketSignal[];
 }

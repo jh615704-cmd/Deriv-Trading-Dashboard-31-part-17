@@ -120,13 +120,15 @@ export default function XTraderPage() {
   const [sessionPnl, setSessionPnl] = useState(0);
   const [sessionTrades, setSessionTrades] = useState(0);
   const [baselinePnl, setBaselinePnl] = useState(0);
-  const [indicatorDigit, setIndicatorDigit] = useState(5);
+  const [analysisDigits, setAnalysisDigits] = useState<number[]>([]);
+  const [analysisTickCount, setAnalysisTickCount] = useState(0);
   const [connectionMessage, setConnectionMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
   const [nextStake, setNextStake] = useState(stake);
   const runningRef = useRef(false);
   const autoSwitchRef = useRef(autoSwitch);
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
+  const analysisEpochRef = useRef<number | null>(null);
   const configRef = useRef({ direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed });
 
   const currentAccount = status.data?.account;
@@ -144,6 +146,24 @@ export default function XTraderPage() {
   const fastSessionPnl = settledPnl - baselinePnl + liveUnsettledPnl;
   const streaks = status.data?.digit_streaks ?? [];
   const lastDigit = status.data?.last_digit;
+  const analysis = useMemo(() => {
+    const counts = Array.from({ length: 10 }, (_, digit) => analysisDigits.filter((value) => value === digit).length);
+    const overCount = analysisDigits.filter((digit) => digit > barrier).length;
+    const underCount = analysisDigits.filter((digit) => digit < barrier).length;
+    const decisiveCount = overCount + underCount;
+    const overPercent = decisiveCount ? (overCount / decisiveCount) * 100 : 50;
+    const underPercent = decisiveCount ? (underCount / decisiveCount) * 100 : 50;
+    const lean = overPercent >= underPercent ? "OVER" : "UNDER";
+    const confidence = decisiveCount ? Math.round(Math.max(overPercent, underPercent)) : 0;
+    return {
+      counts,
+      overPercent,
+      underPercent,
+      lean,
+      confidence,
+      maxCount: Math.max(1, ...counts),
+    };
+  }, [analysisDigits, barrier]);
 
   useEffect(() => {
     configRef.current = { direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed };
@@ -184,8 +204,14 @@ export default function XTraderPage() {
   }, [rows, strategy, martingale, stake]);
 
   useEffect(() => {
-    if (lastDigit != null && lastDigit >= 1 && lastDigit <= 9) setIndicatorDigit(lastDigit);
-  }, [lastDigit]);
+    const epoch = status.data?.last_tick?.epoch;
+    const digit = status.data?.last_digit;
+    if (epoch == null || digit == null) return;
+    if (analysisEpochRef.current != null && epoch <= analysisEpochRef.current) return;
+    analysisEpochRef.current = epoch;
+    setAnalysisDigits((current) => [...current, digit].slice(-50));
+    setAnalysisTickCount((current) => current + 1);
+  }, [status.data?.last_tick?.epoch, status.data?.last_digit]);
 
   useEffect(() => {
     const pnl = fastSessionPnl;
@@ -296,9 +322,10 @@ export default function XTraderPage() {
       try {
         if (autoSwitchRef.current) await chooseBestDigit();
         await executeBatch();
-        // Give the contract time to settle before the next loop reads the
-        // result. A single loss then affects exactly the following trade.
-        if (runningRef.current) await sleep(Math.max(1_300, configRef.current.duration * 1_100));
+        // executeBatch waits for the active contract to settle. Do not add a
+        // duration-based cooldown after settlement; Deriv's tick duration is
+        // the source of truth for how long the contract runs.
+        if (runningRef.current) await sleep(250);
       } catch (error) {
         runningRef.current = false;
         setRunning(false);
@@ -338,6 +365,12 @@ export default function XTraderPage() {
     nextStakeRef.current = stake;
     setNextStake(stake);
     martingaleWatchRef.current = null;
+  };
+
+  const refreshAnalysis = () => {
+    analysisEpochRef.current = status.data?.last_tick?.epoch ?? null;
+    setAnalysisDigits([]);
+    setAnalysisTickCount(0);
   };
 
   const toggleAutoBestDigit = (enabled: boolean) => {
@@ -466,7 +499,6 @@ export default function XTraderPage() {
   };
 
   const accountOptions = accounts.data ?? [];
-  const marketName = markets.find(([id]) => id === symbol)?.[1] ?? symbol;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
@@ -534,30 +566,50 @@ export default function XTraderPage() {
               <em className={running ? "running" : ""}><i />{activityText}</em>
             </div>
 
-            <div className="xt-market-row">
+             <div className="xt-market-row market-only">
               <label><small>MARKET</small><select value={symbol} onChange={(event) => void selectMarket(event.target.value)} disabled={!isConnected || running}>{markets.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-              <div className="xt-last-tick"><small>LAST TICK · {marketName}</small><strong>{status.data?.last_tick?.quote?.toFixed(3) ?? "—"}<span>{lastDigit ?? "—"}</span></strong></div>
             </div>
+
+             <section className="xt-analysis-panel" aria-live="polite">
+               <div className="xt-analysis-header">
+                 <div className="xt-analysis-title"><Activity size={16} /><span><b>LIVE ANALYSIS · {analysisTickCount}T</b><small>{analysisTickCount ? "Live market digits" : "Waiting for the next live tick"}</small></span></div>
+                 <div className="xt-analysis-actions">
+                   <button type="button" className="xt-analysis-quick over" onClick={() => { setDirection("DIGITOVER"); setDuration(2); }} disabled={running} title="Set a two-tick Over contract">2× OVER</button>
+                   <button type="button" className="xt-analysis-quick under" onClick={() => { setDirection("DIGITUNDER"); setDuration(2); }} disabled={running} title="Set a two-tick Under contract">2× UNDER</button>
+                   <button type="button" className="xt-analysis-refresh" onClick={refreshAnalysis} disabled={!isConnected} title="Restart live analysis count"><RefreshCw size={14} /></button>
+                 </div>
+               </div>
+               <div className="xt-analysis-track" aria-label={`Live analysis: ${analysis.overPercent.toFixed(1)} percent over and ${analysis.underPercent.toFixed(1)} percent under`}>
+                 <span className="over" style={{ width: `${analysis.overPercent}%` }} />
+                 <span className="under" style={{ width: `${analysis.underPercent}%` }} />
+               </div>
+               <div className="xt-analysis-summary">
+                 <span className="over">▲ OVER {barrier} · {analysis.overPercent.toFixed(1)}%</span>
+                 <span>Lean: <b>{analysis.lean}</b> · Conf {analysis.confidence}%</span>
+                 <span className="under">{analysis.underPercent.toFixed(1)}% · UNDER {barrier} ▼</span>
+               </div>
+               <div className="xt-analysis-chart" aria-label="Live digit distribution">
+                 {analysis.counts.map((count, digit) => {
+                   const tone = digit === barrier ? "selected" : digit > barrier ? "over" : "under";
+                   const height = count ? Math.max(18, (count / analysis.maxCount) * 100) : 10;
+                   return <div className={`xt-analysis-column ${tone}`} key={digit}><small>{count}</small><span style={{ height: `${height}%` }} /><b>{digit}</b></div>;
+                 })}
+               </div>
+               <div className="xt-analysis-trail" aria-label="Recent live digits">
+                 {analysisDigits.slice(-20).map((digit, index) => <span className={digit === barrier ? "selected" : digit > barrier ? "over" : "under"} key={`${digit}-${index}`}>{digit}</span>)}
+                 {!analysisDigits.length && <small>New ticks will appear here after the market connects.</small>}
+               </div>
+               <p className="xt-analysis-note">Green marks digits above the selected barrier, red marks digits below it, and yellow marks the selected barrier. Confidence describes this sample; it is not a guaranteed win rate.</p>
+             </section>
 
             <div className="xt-direction">
               <button className={direction === "DIGITOVER" ? "active over" : ""} onClick={() => setDirection("DIGITOVER")} disabled={running}><b>OVER</b><small>Last digit above barrier</small></button>
               <button className={direction === "DIGITUNDER" ? "active under" : ""} onClick={() => setDirection("DIGITUNDER")} disabled={running}><b>UNDER</b><small>Last digit below barrier</small></button>
             </div>
 
-            <div className="xt-digits">
-              <span
-                className="xt-market-hover"
-                style={{
-                  left: `calc(${((indicatorDigit - 1) * 100) / 9}% + ${((indicatorDigit - 1) * 2) / 3}px)`,
-                  opacity: lastDigit != null && lastDigit >= 1 && lastDigit <= 9 ? 1 : 0,
-                }}
-                aria-hidden="true"
-              />
-              {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={barrier === item.digit ? "active" : ""} aria-label={lastDigit === item.digit ? `Current market last digit ${item.digit}` : `Digit ${item.digit}`} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
-            </div>
             <div className="xt-form-grid">
               <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => setDuration(tick)} disabled={running}>{tick}</button>)}</div></label>
-               <label><small>STAKE · NO APP CAP</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Number(event.target.value))} disabled={running} /></div><b className="xt-field-help">Up to the available account balance</b></label>
+               <label><small>STAKE · MIN 0.35</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Math.max(.35, Number(event.target.value) || .35))} disabled={running} /></div><b className="xt-field-help">Up to the available account balance</b></label>
               <label><small>STRATEGY</small><select value={strategy} onChange={(event) => setStrategy(event.target.value as "flat" | "martingale")} disabled={running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
               <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
               <label><small>TAKE PROFIT</small><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} disabled={running} /></label>

@@ -90,6 +90,7 @@ export type DerivStatus = {
   digit_odd_percentage: number;
   digit_sample_count: number;
   last_digit: number | null;
+  digit_history: number[];
   digit_streaks: Array<{ digit: number; over: number; under: number }>;
   market_signals: Array<{
     symbol: string;
@@ -739,6 +740,7 @@ export function getStatus(): DerivStatus {
     digit_odd_percentage: digitPercentages.odd,
     digit_sample_count: getState().digitEvenCount + getState().digitOddCount,
     last_digit: getState().digitHistory.at(-1) ?? null,
+    digit_history: getState().digitHistory.slice(-50),
     digit_streaks: getDigitStreaks(),
     market_signals: getMarketSignals(),
   };
