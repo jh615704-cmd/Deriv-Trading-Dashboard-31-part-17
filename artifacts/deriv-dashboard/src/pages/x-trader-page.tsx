@@ -28,7 +28,9 @@ import {
 } from "lucide-react";
 import {
   chooseBestDigitSignal,
+  digitForTick,
   nextStakeAfterSettlement,
+  rankDigitsByDistribution,
   sessionStopReason,
   type MarketSignal,
 } from "../lib/trading-sequence";
@@ -129,7 +131,17 @@ export default function XTraderPage() {
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const analysisEpochRef = useRef<number | null>(null);
-  const configRef = useRef({ direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed });
+  const configRef = useRef({
+    direction,
+    barrier,
+    duration,
+    stake,
+    strategy,
+    martingale,
+    symbol,
+    liveConfirmed,
+    rankedDigits: [] as number[],
+  });
 
   const currentAccount = status.data?.account;
   const isReal = currentAccount?.type === "real";
@@ -164,10 +176,14 @@ export default function XTraderPage() {
       maxCount: Math.max(1, ...counts),
     };
   }, [analysisDigits, barrier]);
+  const rankedDigits = useMemo(
+    () => analysisTickCount > 0 ? rankDigitsByDistribution(analysis.counts) : [],
+    [analysis.counts, analysisTickCount],
+  );
 
   useEffect(() => {
-    configRef.current = { direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed };
-  }, [direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed]);
+    configRef.current = { direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed, rankedDigits };
+  }, [direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed, rankedDigits]);
 
   useEffect(() => {
     if (storedPatInvalid) void tokenStatus.refetch();
@@ -287,6 +303,7 @@ export default function XTraderPage() {
 
   const executeBatch = async () => {
     const config = configRef.current;
+    const entryDigit = digitForTick(config.duration, config.rankedDigits, config.barrier);
     let amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
     // Do not decide the next stake from an older settled result while the
     // immediately preceding contract is still open.
@@ -307,7 +324,7 @@ export default function XTraderPage() {
         duration: config.duration,
         duration_unit: "t",
         contract_type: config.direction,
-        barrier: config.barrier,
+         barrier: entryDigit,
         symbol: config.symbol,
         count: 1,
         confirm_live_trade: true,
@@ -403,6 +420,11 @@ export default function XTraderPage() {
     }
   };
 
+  const selectDuration = (next: number) => {
+    setDuration(next);
+    setBarrier(digitForTick(next, rankedDigits, barrier));
+  };
+
   const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
@@ -410,6 +432,7 @@ export default function XTraderPage() {
       return;
     }
     const amount = strategy === "martingale" ? nextStakeRef.current : stake;
+    const entryDigit = digitForTick(duration, rankedDigits, barrier);
     if (currentAccount && amount > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
       return;
@@ -428,7 +451,7 @@ export default function XTraderPage() {
           duration,
           duration_unit: "t",
           contract_type: contractType,
-          barrier,
+           barrier: entryDigit,
           symbol,
           count: 1,
           confirm_live_trade: true,
@@ -450,6 +473,7 @@ export default function XTraderPage() {
       return;
     }
     const amount = strategy === "martingale" ? nextStakeRef.current : stake;
+    const entryDigit = digitForTick(duration, rankedDigits, barrier);
     if (currentAccount && amount * 2 > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "Dual Mode needs two stakes within the available balance." });
       return;
@@ -467,13 +491,13 @@ export default function XTraderPage() {
           amount,
           duration,
           duration_unit: "t",
-          barrier,
+           barrier: entryDigit,
           symbol,
           confirm_live_trade: true,
         },
       });
       setSessionTrades((value) => value + 2);
-      setConnectionMessage({ kind: "info", text: `Dual Mode sent Over ${barrier} and Under ${barrier} without the single-trade cooldown.` });
+       setConnectionMessage({ kind: "info", text: `Dual Mode sent Over ${entryDigit} and Under ${entryDigit} without the single-trade cooldown.` });
       await queryClient.invalidateQueries();
     } catch (error) {
       martingaleWatchRef.current = null;
@@ -499,6 +523,7 @@ export default function XTraderPage() {
   };
 
   const accountOptions = accounts.data ?? [];
+  const entryDigit = digitForTick(duration, rankedDigits, barrier);
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
@@ -574,8 +599,8 @@ export default function XTraderPage() {
                <div className="xt-analysis-header">
                  <div className="xt-analysis-title"><Activity size={16} /><span><b>LIVE ANALYSIS · {analysisTickCount}T</b><small>{analysisTickCount ? "Live market digits" : "Waiting for the next live tick"}</small></span></div>
                  <div className="xt-analysis-actions">
-                   <button type="button" className="xt-analysis-quick over" onClick={() => { setDirection("DIGITOVER"); setDuration(2); }} disabled={running} title="Set a two-tick Over contract">2× OVER</button>
-                   <button type="button" className="xt-analysis-quick under" onClick={() => { setDirection("DIGITUNDER"); setDuration(2); }} disabled={running} title="Set a two-tick Under contract">2× UNDER</button>
+                    <button type="button" className="xt-analysis-quick over" onClick={() => { setDirection("DIGITOVER"); selectDuration(2); }} disabled={running} title="Set a two-tick Over contract">2× OVER</button>
+                    <button type="button" className="xt-analysis-quick under" onClick={() => { setDirection("DIGITUNDER"); selectDuration(2); }} disabled={running} title="Set a two-tick Under contract">2× UNDER</button>
                    <button type="button" className="xt-analysis-refresh" onClick={refreshAnalysis} disabled={!isConnected} title="Restart live analysis count"><RefreshCw size={14} /></button>
                  </div>
                </div>
@@ -608,7 +633,7 @@ export default function XTraderPage() {
             </div>
 
             <div className="xt-form-grid">
-              <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => setDuration(tick)} disabled={running}>{tick}</button>)}</div></label>
+               <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => selectDuration(tick)} disabled={running}>{tick}</button>)}</div><b className="xt-field-help">Tick {duration} uses ranked digit #{duration}: {entryDigit}</b></label>
                <label><small>STAKE · MIN 0.35</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Math.max(.35, Number(event.target.value) || .35))} disabled={running} /></div><b className="xt-field-help">Up to the available account balance</b></label>
               <label><small>STRATEGY</small><select value={strategy} onChange={(event) => setStrategy(event.target.value as "flat" | "martingale")} disabled={running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
               <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
@@ -623,7 +648,7 @@ export default function XTraderPage() {
             <div className="xt-session">
               <div><small>SESSION P/L</small><strong className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</strong></div>
               <div><small>TRADES SENT</small><strong>{sessionTrades}</strong></div>
-              <div><small>CONFIGURATION</small><strong>{direction === "DIGITOVER" ? "OVER" : "UNDER"} {barrier} · {duration}T</strong></div>
+               <div><small>CONFIGURATION</small><strong>{direction === "DIGITOVER" ? "OVER" : "UNDER"} {entryDigit} · {duration}T</strong></div>
             </div>
 
             <div className="xt-controls">
@@ -632,11 +657,11 @@ export default function XTraderPage() {
             </div>
             <div className="xt-bulk-controls">
               <button className="xt-bulk-over" onClick={() => void fireTrade("DIGITOVER")} disabled={!canTrade}>
-                <span><Play size={14} fill="currentColor" />OVER {barrier}</span>
+                 <span><Play size={14} fill="currentColor" />OVER {entryDigit}</span>
                 <small>Send one trade</small>
               </button>
               <button className="xt-bulk-under" onClick={() => void fireTrade("DIGITUNDER")} disabled={!canTrade}>
-                <span><Play size={14} fill="currentColor" />UNDER {barrier}</span>
+                 <span><Play size={14} fill="currentColor" />UNDER {entryDigit}</span>
                 <small>Send one trade</small>
               </button>
               <button className="xt-bulk-dual" onClick={() => void dualMode()} disabled={!canTrade}>

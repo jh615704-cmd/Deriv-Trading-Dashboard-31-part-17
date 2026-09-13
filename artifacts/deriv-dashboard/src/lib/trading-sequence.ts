@@ -27,6 +27,24 @@ export type SettledTrade = {
   profit: number;
 };
 
+export function rankDigitsByDistribution(counts: ReadonlyArray<number>): number[] {
+  return Array.from({ length: 10 }, (_, digit) => ({
+    digit,
+    count: Number.isFinite(counts[digit]) ? counts[digit] : 0,
+  }))
+    .sort((left, right) => right.count - left.count || left.digit - right.digit)
+    .map(({ digit }) => digit);
+}
+
+export function digitForTick(
+  tickDuration: number,
+  rankedDigits: ReadonlyArray<number>,
+  fallbackDigit: number,
+): number {
+  const position = Math.min(5, Math.max(1, Math.trunc(tickDuration))) - 1;
+  return rankedDigits[position] ?? fallbackDigit;
+}
+
 export function nextStakeAfterSettlement(
   profit: number,
   amount: number,

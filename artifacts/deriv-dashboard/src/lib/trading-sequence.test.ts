@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   chooseBestDigitSignal,
+  digitForTick,
   findNewlySettledTrade,
   nextStakeAfterSettlement,
+  rankDigitsByDistribution,
   sessionStopReason,
   type MarketSignal,
 } from "./trading-sequence.ts";
@@ -20,6 +22,28 @@ const market = (
   quote,
   sample_count,
   digit_streaks: [{ digit, over, under }],
+});
+
+describe("digit-distribution tick selection", () => {
+  it("ranks digits from the live distribution with deterministic tie ordering", () => {
+    assert.deepEqual(
+      rankDigitsByDistribution([2, 8, 3, 8, 0, 1, 3, 0, 0, 1]),
+      [1, 3, 2, 6, 0, 5, 9, 4, 7, 8],
+    );
+  });
+
+  it("maps tick duration to the matching ranked digit position", () => {
+    const rankedDigits = [7, 2, 9, 1, 4, 0, 3, 5, 6, 8];
+    assert.equal(digitForTick(1, rankedDigits, 5), 7);
+    assert.equal(digitForTick(2, rankedDigits, 5), 2);
+    assert.equal(digitForTick(3, rankedDigits, 5), 9);
+    assert.equal(digitForTick(4, rankedDigits, 5), 1);
+    assert.equal(digitForTick(5, rankedDigits, 5), 4);
+  });
+
+  it("keeps the configured digit until a live ranking is available", () => {
+    assert.equal(digitForTick(1, [], 5), 5);
+  });
 });
 
 describe("martingale settlement sequencing", () => {
