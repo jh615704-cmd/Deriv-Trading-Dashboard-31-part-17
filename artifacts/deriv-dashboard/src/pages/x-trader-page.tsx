@@ -10,7 +10,6 @@ import {
   useGetDerivStatus,
   useGetDerivTokenStatus,
   useBulkBuyDerivContracts,
-  useDualBuyDerivContracts,
   getDerivHistory,
   useSelectDerivAccount,
   useSelectDerivSymbol,
@@ -24,7 +23,7 @@ import {
 import { Link } from "wouter";
 import {
   Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Link2, Loader2,
-  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Trash2, X, Zap,
+  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Trash2, X,
 } from "lucide-react";
 import {
   chooseBestDigitSignal,
@@ -121,7 +120,6 @@ export default function XTraderPage() {
   const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
-  const dualBuyMutation = useDualBuyDerivContracts();
   const clearMutation = useClearDerivHistory();
 
   const [pat, setPat] = useState("");
@@ -135,8 +133,8 @@ export default function XTraderPage() {
   const [takeProfit, setTakeProfit] = useState(10);
   const [stopLoss, setStopLoss] = useState(10);
   const [autoSwitch, setAutoSwitch] = useState(false);
-  const [xTraderEnabled, setXTraderEnabled] = useState(true);
-  const [tradeXEnabled, setTradeXEnabled] = useState(true);
+  const [xTraderEnabled, setXTraderEnabled] = useState(false);
+  const [tradeXEnabled, setTradeXEnabled] = useState(false);
   const [tradeXMarketType, setTradeXMarketType] = useState<TradeXMarketType>("volatility");
   const [tradeXSymbol, setTradeXSymbol] = useState("R_75");
   const [tradeXStake, setTradeXStake] = useState(1);
@@ -156,6 +154,8 @@ export default function XTraderPage() {
   const [guideMode, setGuideMode] = useState<"edge" | "trade-x">("edge");
   const [clearHistoryArmed, setClearHistoryArmed] = useState(false);
   const [historyFading, setHistoryFading] = useState(false);
+  const [tradeXHistoryClearArmed, setTradeXHistoryClearArmed] = useState(false);
+  const [tradeXHiddenHistoryIds, setTradeXHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [liveConfirmed, setLiveConfirmed] = useState(false);
   const [sessionPnl, setSessionPnl] = useState(0);
   const [sessionTrades, setSessionTrades] = useState(0);
@@ -199,6 +199,7 @@ export default function XTraderPage() {
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const rows = history.data ?? [];
+  const tradeXRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF" && !tradeXHiddenHistoryIds.has(trade.contract_id));
   const settledPnl = rows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const liveContract = status.data?.last_contract;
   const liveContractRow = liveContract
@@ -422,7 +423,7 @@ export default function XTraderPage() {
 
   const executeBatch = async () => {
     const config = configRef.current;
-    const entryDigit = digitForTick(config.duration, config.rankedDigits, config.barrier);
+    const entryDigit = config.barrier;
     let amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
     // Do not decide the next stake from an older settled result while the
     // immediately preceding contract is still open.
@@ -662,7 +663,6 @@ export default function XTraderPage() {
 
   const selectDuration = (next: number) => {
     setDuration(next);
-    setBarrier(digitForTick(next, rankedDigits, barrier));
   };
 
   const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
@@ -672,7 +672,7 @@ export default function XTraderPage() {
       return;
     }
     const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-    const entryDigit = digitForTick(duration, rankedDigits, barrier);
+    const entryDigit = barrier;
     if (currentAccount && amount > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
       return;
@@ -706,45 +706,6 @@ export default function XTraderPage() {
     }
   };
 
-  const dualMode = async () => {
-    if (!isConnected) return;
-    if (isReal && !liveConfirmed) {
-      setConnectionMessage({ kind: "error", text: "Confirm live funds before sending Dual Mode." });
-      return;
-    }
-    const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-    const entryDigit = digitForTick(duration, rankedDigits, barrier);
-    if (currentAccount && amount * 2 > currentAccount.balance) {
-      setConnectionMessage({ kind: "error", text: "Dual Mode needs two stakes within the available balance." });
-      return;
-    }
-    try {
-      const latestRows = await getDerivHistory();
-      if (latestRows.some((trade) => trade.status === "open")) {
-        setConnectionMessage({ kind: "info", text: "Wait for the previous contract to settle before using Dual Mode." });
-        return;
-      }
-      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-      armMartingaleWatch(latestRows, amount, 2);
-      await dualBuyMutation.mutateAsync({
-        data: {
-          amount,
-          duration,
-          duration_unit: "t",
-           barrier: entryDigit,
-          symbol,
-          confirm_live_trade: true,
-        },
-      });
-      setSessionTrades((value) => value + 2);
-       setConnectionMessage({ kind: "info", text: `Dual Mode sent Over ${entryDigit} and Under ${entryDigit} without the single-trade cooldown.` });
-      await queryClient.invalidateQueries();
-    } catch (error) {
-      martingaleWatchRef.current = null;
-      setConnectionMessage({ kind: "error", text: errorMessage(error) });
-    }
-  };
-
   const clearHistory = async () => {
     if (!clearHistoryArmed) {
       setClearHistoryArmed(true);
@@ -762,13 +723,27 @@ export default function XTraderPage() {
     }
   };
 
+  const clearTradeXHistory = () => {
+    if (!tradeXHistoryClearArmed) {
+      setTradeXHistoryClearArmed(true);
+      window.setTimeout(() => setTradeXHistoryClearArmed(false), 2_500);
+      return;
+    }
+    setTradeXHistoryClearArmed(false);
+    setTradeXHiddenHistoryIds((current) => {
+      const next = new Set(current);
+      tradeXRows.forEach((trade) => next.add(trade.contract_id));
+      return next;
+    });
+  };
+
   const accountOptions = accounts.data ?? [];
-  const entryDigit = digitForTick(duration, rankedDigits, barrier);
+  const entryDigit = barrier;
   const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
-  const canTrade = isConnected && !running && !bulkBuyMutation.isPending && !dualBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
+  const canTrade = isConnected && !running && !bulkBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
     && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
   return (
@@ -806,49 +781,23 @@ export default function XTraderPage() {
         </select><ChevronDown size={15} /></div></label>
       </section>
 
-      <TradeXPanel
-        enabled={tradeXEnabled}
-        marketType={tradeXMarketType}
-        symbol={tradeXSymbol}
-        tradeType="DIGITDIFF"
-        stake={tradeXStake}
-        selectedDigit={tradeXEntryDigit}
-        duration={tradeXDuration}
-        manualSelectMode={tradeXManualSelect}
-        randomDifferRunning={tradeXRandomRunning}
-        smartAutoEnabled={tradeXSmartAuto}
-        smartConfidence={tradeXSmartConfidence}
-        smartTradeCount={tradeXSmartTradeCount}
-        smartAiTicks={tradeXSmartAiTicks}
-        distribution={tradeXDistribution}
-        rankedSafestDigits={tradeXRankedDigits}
-        symbols={tradeXSymbols}
-        analysisTickCount={analysisTickCount}
-        analysisUpdatedAt={lastDigit == null ? "waiting for live ticks" : `last digit ${lastDigit}`}
-        isAnalyzing={status.isFetching}
-        isPlacingTrade={bulkBuyMutation.isPending}
-        isRefreshingAnalysis={analysisTickCount === 0 && !isConnected}
-        disabled={running}
-        onEnabledChange={toggleTradeX}
-        onGuideOpen={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}
-        onMarketTypeChange={setTradeXMarketType}
-        onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
-        onTradeTypeChange={() => undefined}
-        onStakeChange={(next) => setTradeXStake(Math.max(0.35, Number.isFinite(next) ? next : 0.35))}
-        onSelectedDigitChange={setTradeXSelectedDigit}
-        onDurationChange={setTradeXDuration}
-        onManualSelectModeChange={setTradeXManualSelect}
-        onTradeSelect={(digit) => void executeTradeX(1, tradeXDuration, digit)}
-        onPlaceTrade={() => void executeTradeX(1)}
-        onRandomDifferAutoChange={toggleTradeXRandom}
-        onInstantFive={() => void executeTradeX(5)}
-        onSmartAutoChange={toggleTradeXSmart}
-        onSmartConfidenceChange={setTradeXSmartConfidence}
-        onSmartTradeCountChange={setTradeXSmartTradeCount}
-        onSmartAiTicksChange={(next) => setTradeXSmartAiTicks(next as TradeXDuration)}
-        onRefreshAnalysis={refreshAnalysis}
-      />
-      {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}
+      <section className="xt-feature-card xt-feature-card-trade-x">
+        <div><Activity size={18} /><span><b>Trade X</b><small>Digit Differs distribution and safe-entry automation</small></span></div>
+        <div className="xt-feature-actions">
+          <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}>
+            <BookOpen size={14} />Guide
+          </button>
+          <label className="xt-switch">
+            <input
+              type="checkbox"
+              checked={tradeXEnabled}
+              onChange={(event) => toggleTradeX(event.target.checked)}
+              aria-label="Toggle Trade X"
+            />
+            <span />
+          </label>
+        </div>
+      </section>
 
       <section className="xt-feature-card">
         <div><Bot size={18} /><span><b>EDGE 🏔️</b><small>Over / Under digit automation</small></span></div>
@@ -918,7 +867,7 @@ export default function XTraderPage() {
             </div>
 
             <div className="xt-form-grid">
-               <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => selectDuration(tick)} disabled={running}>{tick}</button>)}</div><b className="xt-field-help">Tick {duration} uses ranked digit #{duration}: {entryDigit}</b></label>
+               <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => selectDuration(tick)} disabled={running}>{tick}</button>)}</div><b className="xt-field-help">Selected barrier {entryDigit} · contract runs for {duration} tick{duration === 1 ? "" : "s"}</b></label>
                <label><small>STAKE · MIN 0.35</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Math.max(.35, Number(event.target.value) || .35))} disabled={running} /></div><b className="xt-field-help">Up to the available account balance</b></label>
               <label><small>STRATEGY</small><select value={strategy} onChange={(event) => setStrategy(event.target.value as "flat" | "martingale")} disabled={running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
               <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
@@ -940,7 +889,7 @@ export default function XTraderPage() {
               {!running ? <button className="run" onClick={start} disabled={!canRun}><Play size={18} fill="currentColor" />RUN EDGE</button> : <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
               <button className="reset" onClick={reset}><RotateCcw size={18} />RESET</button>
             </div>
-            <div className="xt-bulk-controls">
+             <div className="xt-bulk-controls">
               <button className="xt-bulk-over" onClick={() => void fireTrade("DIGITOVER")} disabled={!canTrade}>
                  <span><Play size={14} fill="currentColor" />OVER {entryDigit}</span>
                 <small>Send one trade</small>
@@ -948,10 +897,6 @@ export default function XTraderPage() {
               <button className="xt-bulk-under" onClick={() => void fireTrade("DIGITUNDER")} disabled={!canTrade}>
                  <span><Play size={14} fill="currentColor" />UNDER {entryDigit}</span>
                 <small>Send one trade</small>
-              </button>
-              <button className="xt-bulk-dual" onClick={() => void dualMode()} disabled={!canTrade}>
-                <span><Zap size={14} fill="currentColor" />DUAL MODE</span>
-                <small>Over + Under · one press</small>
               </button>
             </div>
             {strategy === "martingale" && <p className="xt-streak-note">Next stake after settlement: <b>{nextStake.toFixed(2)} {currentAccount?.currency ?? "USD"}</b>. Every loss multiplies the next stake; any profit resets it to normal.</p>}
@@ -962,6 +907,64 @@ export default function XTraderPage() {
             {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : rows.slice(0, 12).map((trade) => <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
            </section>}
         </>
+      )}
+
+      {tradeXEnabled && (
+        <section className="xt-bottom-feature">
+          <TradeXPanel
+            enabled={tradeXEnabled}
+            marketType={tradeXMarketType}
+            symbol={tradeXSymbol}
+            tradeType="DIGITDIFF"
+            stake={tradeXStake}
+            selectedDigit={tradeXEntryDigit}
+            duration={tradeXDuration}
+            manualSelectMode={tradeXManualSelect}
+            randomDifferRunning={tradeXRandomRunning}
+            smartAutoEnabled={tradeXSmartAuto}
+            smartConfidence={tradeXSmartConfidence}
+            smartTradeCount={tradeXSmartTradeCount}
+            smartAiTicks={tradeXSmartAiTicks}
+            distribution={tradeXDistribution}
+            rankedSafestDigits={tradeXRankedDigits}
+            symbols={tradeXSymbols}
+            analysisTickCount={analysisTickCount}
+            analysisUpdatedAt={lastDigit == null ? "waiting for live ticks" : `last digit ${lastDigit}`}
+            lastDigit={lastDigit}
+            isAnalyzing={status.isFetching}
+            isPlacingTrade={bulkBuyMutation.isPending}
+            isRefreshingAnalysis={analysisTickCount === 0 && !isConnected}
+            disabled={running}
+            onEnabledChange={toggleTradeX}
+            onGuideOpen={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}
+            onMarketTypeChange={setTradeXMarketType}
+            onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
+            onTradeTypeChange={() => undefined}
+            onStakeChange={(next) => setTradeXStake(Math.max(0.35, Number.isFinite(next) ? next : 0.35))}
+            onSelectedDigitChange={setTradeXSelectedDigit}
+            onDurationChange={setTradeXDuration}
+            onManualSelectModeChange={setTradeXManualSelect}
+            onTradeSelect={(digit) => void executeTradeX(1, tradeXDuration, digit)}
+            onPlaceTrade={() => void executeTradeX(1)}
+            onRandomDifferAutoChange={toggleTradeXRandom}
+            onInstantFive={() => void executeTradeX(5)}
+            onSmartAutoChange={toggleTradeXSmart}
+            onSmartConfidenceChange={setTradeXSmartConfidence}
+            onSmartTradeCountChange={setTradeXSmartTradeCount}
+            onSmartAiTicksChange={(next) => setTradeXSmartAiTicks(next as TradeXDuration)}
+            onRefreshAnalysis={refreshAnalysis}
+          />
+          {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}
+          {canViewHistory && (
+            <section className="xt-history xt-history-trade-x" title="Recent Trade X trade history">
+              <div className="xt-history-head">
+                <div><CircleDollarSign size={18} /><span><b>Trade X Recent Trades</b><small>Digit Differs rows only · Deriv records are not deleted</small></span></div>
+                <button onClick={clearTradeXHistory} disabled={!tradeXRows.length}><Trash2 size={15} />{tradeXHistoryClearArmed ? "Tap again" : "Clear"}</button>
+              </div>
+              {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.slice(0, 12).map((trade) => <div className="xt-trade" key={trade.contract_id}><span><b>DIGIT DIFFERS</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+            </section>
+          )}
+        </section>
       )}
 
       {guideOpen && (

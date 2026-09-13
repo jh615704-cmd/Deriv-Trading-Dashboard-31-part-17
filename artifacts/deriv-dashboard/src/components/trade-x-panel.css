@@ -665,3 +665,196 @@
   .tx-confidence-control,
   .tx-smart-summary { grid-column: auto; }
 }
+
+/* Trade X uses the same deep EDGE surface as the surrounding cockpit. */
+.tx-panel {
+  --tx-ink: #eaf7ff;
+  --tx-muted: #7ea4bd;
+  --tx-line: rgba(73, 150, 194, .24);
+  --tx-panel: #061f37;
+  --tx-soft: #0b3f56;
+  --tx-teal: #2be1b9;
+  --tx-teal-dark: #77f0d4;
+  --tx-lime: #0aa8d7;
+  --tx-gold: #f2c443;
+  --tx-coral: #ff7d79;
+  border-color: rgba(73, 150, 194, .28);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 86% 4%, rgba(0, 190, 238, .12), transparent 28%),
+    linear-gradient(145deg, rgba(9, 49, 82, .98), rgba(5, 35, 62, .98));
+  box-shadow: 0 18px 45px rgba(0, 8, 20, .2);
+  color: var(--tx-ink);
+}
+.tx-panel button:focus-visible,
+.tx-panel input:focus-visible,
+.tx-panel select:focus-visible { outline-color: rgba(43, 225, 185, .72); }
+.tx-header { min-height: 88px; border-bottom-color: rgba(85, 150, 184, .2); background: rgba(4, 27, 49, .62); }
+.tx-mark { color: #01243c; background: linear-gradient(140deg, #00e5c0, #0098e5); box-shadow: 5px 5px 0 rgba(0, 178, 255, .12); }
+.tx-eyebrow { color: #55e5c6; }
+.tx-heading h2 { color: #f1fbff; }
+.tx-heading p,
+.tx-section-heading p { color: #719db9; }
+.tx-header-state { display: inline-flex; align-items: center; gap: 6px; color: #7c9daf; font: 800 8px var(--app-font-mono, monospace); letter-spacing: .1em; }
+.tx-header-state > span { width: 6px; height: 6px; border-radius: 50%; background: #71899a; }
+.tx-header-state-live { color: #56e8c1; }
+.tx-header-state-live > span { background: #3aebba; box-shadow: 0 0 0 4px rgba(58, 235, 186, .12); }
+.tx-status-line { color: #70e7cb; border-bottom: 1px solid rgba(85, 150, 184, .14); background: #082d49; }
+.tx-status-muted { color: #719db9; }
+.tx-status-divider { background: #245979; }
+.tx-body { padding: 17px; }
+.tx-section { border-color: rgba(73, 150, 194, .24); background: rgba(3, 24, 44, .42); }
+.tx-section-heading { border-bottom-color: rgba(85, 150, 184, .2); }
+.tx-section-heading h3 { color: #eaf7ff; }
+.tx-section-heading h3 span { color: #73ecd1; }
+.tx-index,
+.tx-field-label,
+.tx-micro-label { color: #6f9eb8; }
+.tx-field-label b { color: #77f0d4; }
+.tx-market-layout { padding: 16px; }
+.tx-field select,
+.tx-input-prefix,
+.tx-segment,
+.tx-duration-button,
+.tx-mode-button,
+.tx-trade-select-button,
+.tx-smart-control select {
+  border-color: #225d80;
+  background: #061f37;
+  color: #dceefa;
+}
+.tx-segment { color: #8aacbf; }
+.tx-segment-selected,
+.tx-duration-selected,
+.tx-mode-button-active { border-color: #2adbb8; background: #0b4a4b; color: #74efd2; }
+.tx-input-prefix input { color: #eaf7ff; }
+.tx-distribution-readout { background: #082641; }
+.tx-distribution-readout strong { color: #eaf7ff; }
+.tx-distribution-readout strong small { color: #719db9; }
+.tx-distribution-actions { display: flex; align-items: center; gap: 5px; }
+.tx-header-badge { padding: 5px 7px; border: 1px solid #245979; border-radius: 6px; color: #8fb8cb; background: #061f37; font: 800 7px var(--app-font-mono, monospace); white-space: nowrap; }
+.tx-header-badge-last { border-color: #97515e; color: #ffaaa6; }
+.tx-icon-button { border-color: #2b6281; background: #082641; color: #8ec0d0; }
+.tx-icon-button:hover { border-color: #39d9bb; color: #d9fff7; background: #0b3f56; }
+.tx-digit-grid { position: relative; gap: 8px; padding: 16px; }
+.tx-digit {
+  min-height: 74px;
+  z-index: 1;
+  border-color: #245979;
+  border-radius: 12px;
+  background: #061f37;
+  color: #eaf7ff;
+}
+.tx-digit:hover { border-color: #45c8c0; background: #082c48; box-shadow: 0 5px 13px rgba(0, 190, 238, .12); }
+.tx-digit-ranked { border-color: #257e83; }
+.tx-digit-selected {
+  border-color: #20c7ee;
+  background: #0b4b68;
+  color: #f2fdff;
+  box-shadow: 0 0 0 2px rgba(25, 193, 239, .2), 0 0 16px rgba(0, 181, 224, .18);
+}
+.tx-digit-number { color: inherit; font-size: 22px; }
+.tx-digit-percent { color: #68dfd1; }
+.tx-digit-trend { color: #6f9bb3; }
+.tx-trend-up { color: #48dfc1; }
+.tx-trend-down { color: #ff8d8a; }
+.tx-absence-dot { color: #f2c443; }
+.tx-market-digit {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  top: calc(var(--tx-market-row) * (50% + 4px) + 16px);
+  left: calc(var(--tx-market-column) * ((100% + 8px) / 5) + 16px);
+  width: calc((100% - 4 * 8px) / 5);
+  height: calc(50% - 4px);
+  border: 2px solid rgba(255, 95, 102, .96);
+  border-radius: 12px;
+  background: rgba(239, 72, 84, .1);
+  box-shadow: inset 0 -3px 0 rgba(239, 72, 84, .86), 0 0 14px rgba(239, 72, 84, .28);
+  transition: top 280ms cubic-bezier(.22, .8, .3, 1), left 280ms cubic-bezier(.22, .8, .3, 1);
+}
+.tx-market-digit::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: -1px; height: 3px; border-radius: 4px; background: #ff5f66; box-shadow: 0 0 7px rgba(255, 75, 84, .75); }
+.tx-signal-detail { margin: 0 16px 14px; padding: 13px; border: 1px solid rgba(126, 80, 98, .55); border-radius: 10px; background: rgba(59, 39, 53, .8); }
+.tx-signal-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tx-signal-detail-head > div { display: flex; align-items: center; gap: 7px; }
+.tx-signal-detail-head b { color: #f0e8ee; font-size: 12px; letter-spacing: .04em; }
+.tx-signal-detail-head strong { color: #ffa14b; font: 800 18px var(--app-font-mono, monospace); }
+.tx-safe-label,
+.tx-risk-label { padding: 3px 5px; border-radius: 4px; font: 800 7px var(--app-font-mono, monospace); letter-spacing: .05em; }
+.tx-safe-label { color: #70f1d0; background: #145d58; }
+.tx-risk-label { color: #ffb070; background: #6e392c; }
+.tx-signal-metrics { display: grid; gap: 7px; margin-top: 12px; color: #a88f9a; font-size: 9px; }
+.tx-signal-metrics span { display: flex; justify-content: space-between; gap: 8px; }
+.tx-signal-metrics b { color: #ebdce4; font-weight: 500; text-align: right; }
+.tx-signal-metrics small { color: #927d8b; font-size: 8px; }
+.tx-signal-progress { height: 5px; margin-top: 12px; overflow: hidden; border-radius: 8px; background: #3d2938; }
+.tx-signal-progress i { display: block; height: 100%; border-radius: inherit; background: #f39a51; }
+.tx-signal-progress-safe i { background: linear-gradient(90deg, #17bcd2, #55e7c3); }
+.tx-signal-detail p { margin: 9px 0 0; color: #c19aa5; font-size: 8px; line-height: 1.4; }
+.tx-distribution-foot { color: #648ca4; }
+.tx-key-ranked { background: #25b6be; }
+.tx-key-selected { background: #20c7ee; }
+.tx-foot-note { color: #648ca4; }
+.tx-safe-panel { background: rgba(9, 42, 65, .72); }
+.tx-safe-panel .tx-section-heading { border-color: rgba(85, 150, 184, .2); }
+.tx-rank-row { grid-template-columns: minmax(82px, 1fr) minmax(45px, 1fr) 62px auto; gap: 8px; min-height: 58px; padding: 0 10px; border-color: transparent; background: #061f37; color: #eaf7ff; }
+.tx-rank-row:hover { border-color: #2a8aa0; background: #082c48; }
+.tx-rank-row-selected { border-color: #2adbb8; background: #0b4a4b; }
+.tx-rank-select { display: flex; align-items: center; gap: 11px; border: 0; background: none; color: inherit; cursor: pointer; text-align: left; }
+.tx-rank-number { color: #6f9eb8; }
+.tx-rank-digit { color: #f1fbff; }
+.tx-rank-bar { background: #123f5d; }
+.tx-rank-bar i { background: linear-gradient(90deg, #16b7c9, #4be4c1); }
+.tx-rank-metrics b { color: #6fe8ce; }
+.tx-rank-metrics small { color: #6f9eb8; }
+.tx-tap-trade { padding: 7px 8px; border: 1px solid #176f8c; border-radius: 5px; background: #0b3d5d; color: #68dff0; cursor: pointer; font: 800 7px var(--app-font-mono, monospace); white-space: nowrap; }
+.tx-tap-trade:hover:not(:disabled) { border-color: #2be1b9; background: #0b4b50; color: #77f0d4; }
+.tx-tick-hint { border-color: #245979; background: #082d49; color: #76a7bd; }
+.tx-tick-hint b { color: #73ecd1; }
+.tx-selection-line { border-color: rgba(85, 150, 184, .2); color: #6f9eb8; }
+.tx-selection-line > span:first-child { color: #73ecd1; }
+.tx-selection-line strong { color: #eaf7ff; }
+.tx-execution,
+.tx-smart { margin-top: 12px; }
+.tx-action-grid { border-color: rgba(73, 150, 194, .24); }
+.tx-action { border-color: rgba(73, 150, 194, .24); color: #eaf7ff; background: #061f37; }
+.tx-action:hover:not(:disabled) { background: #082d49; }
+.tx-action-primary { background: linear-gradient(90deg, #2be1b9, #10b7c9); color: #01253c; }
+.tx-action-primary small { color: #084658; }
+.tx-action-secondary { background: #5b481b; color: #ffe07a; }
+.tx-action-tertiary { background: #0b3d5d; color: #a8deed; }
+.tx-action-running { background: #5b481b; }
+.tx-action small { color: #719db9; }
+.tx-smart { background: rgba(9, 42, 65, .72); }
+.tx-smart-heading { border-color: rgba(85, 150, 184, .2); }
+.tx-smart-toggle { color: #7c9daf; background: #173f5b; }
+.tx-smart-toggle-on { color: #77f0d4; background: #0b4b50; }
+.tx-smart-controls { opacity: .65; }
+.tx-smart-controls-enabled { opacity: 1; }
+.tx-smart-control select { border-color: #225d80; background: #061f37; color: #dceefa; }
+.tx-smart-control input[type="range"] { accent-color: #2be1b9; }
+.tx-range-labels,
+.tx-smart-summary { color: #719db9; }
+.tx-smart-summary { border-color: #245979; background: #082d49; }
+.tx-smart-pulse-on { background: #3aebba; }
+.tx-parent-message { border-color: rgba(73, 150, 194, .24); background: #082d49; color: #83c6d4; }
+
+@media (max-width: 720px) {
+  .tx-body { padding: 12px; }
+  .tx-distribution-actions { flex-wrap: wrap; justify-content: end; }
+  .tx-header-badge { font-size: 6px; }
+  .tx-market-digit { top: calc(var(--tx-market-row) * (50% + 3px) + 13px); left: calc(var(--tx-market-column) * ((100% + 5px) / 5) + 13px); width: calc((100% - 4 * 5px) / 5); height: calc(50% - 3px); }
+  .tx-rank-row { grid-template-columns: minmax(70px, 1fr) 1fr auto; }
+  .tx-rank-bar { display: none; }
+}
+
+@media (max-width: 430px) {
+  .tx-heading h2 { font-size: 23px; }
+  .tx-distribution-actions { gap: 3px; }
+  .tx-header-badge { padding: 4px 5px; }
+  .tx-signal-metrics span { display: grid; gap: 3px; }
+  .tx-signal-metrics b { text-align: left; }
+  .tx-rank-row { grid-template-columns: 1fr auto; gap: 6px; padding: 8px; }
+  .tx-rank-metrics { grid-column: 1 / 2; text-align: left; }
+  .tx-tap-trade { grid-column: 2; grid-row: 1 / span 2; }
+}
