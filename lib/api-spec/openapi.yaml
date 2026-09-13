@@ -980,7 +980,7 @@ components:
           enum: [t, s, m]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF]
         barrier:
           type: integer
           minimum: 0
@@ -1025,7 +1025,7 @@ components:
           enum: [t]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF]
         barrier:
           type: integer
           minimum: 0
@@ -1051,7 +1051,7 @@ components:
           enum: [t]
         contract_type:
           type: string
-          enum: [DIGITOVER, DIGITUNDER]
+          enum: [DIGITOVER, DIGITUNDER, DIGITDIFF]
         barrier:
           type: integer
           minimum: 0

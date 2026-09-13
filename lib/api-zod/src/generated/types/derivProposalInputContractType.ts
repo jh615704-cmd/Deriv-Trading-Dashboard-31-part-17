@@ -14,4 +14,5 @@ export const DerivProposalInputContractType = {
   DIGITODD: 'DIGITODD',
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
+  DIGITDIFF: 'DIGITDIFF',
 } as const;

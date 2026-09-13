@@ -30,10 +30,18 @@ import {
   chooseBestDigitSignal,
   digitForTick,
   nextStakeAfterSettlement,
+  rankDigitsForDiffers,
   rankDigitsByDistribution,
   sessionStopReason,
   type MarketSignal,
 } from "../lib/trading-sequence";
+import TradeXPanel, {
+  type TradeXDigitDistribution,
+  type TradeXDuration,
+  type TradeXMarketType,
+  type TradeXSymbolOption,
+  type TradeXTradeCount,
+} from "../components/trade-x-panel";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -67,6 +75,21 @@ const guidePages = [
   { title: "A safe pre-trade checklist", body: "Before sending anything, confirm the account, market, direction, barrier, duration, stake, strategy, and risk limits.", points: ["Start with a demo account.", "Martingale increases exposure after losses, so keep a reserve.", "Never rely on a claimed guaranteed win rate."] },
   { title: "Let's start trading", body: "You now know how the market selector, Over and Under contracts, Martingale, Auto Best Digit, and risk controls work.", points: ["Start with one small demo trade.", "Watch the settlement and confirm the history updates.", "Keep the guide available whenever you change strategy."] },
 ] as const;
+
+const tradeXGuidePages = [
+  { title: "Welcome to Trade X", body: "Trade X is the Digit Differs workspace. It watches the live digit distribution, ranks the least frequent digits, and lets you decide whether to send one trade or use controlled automation.", points: ["Use a demo account while learning the signal.", "The signal describes observed ticks; it cannot guarantee the next digit.", "The switch pauses every Trade X action without changing EDGE."] },
+  { title: "Read the distribution", body: "Each digit shows its observed percentage and current absence streak. The safest differs list ranks digits with the lowest observed frequency first, because a Differs contract wins when the expiry digit is not the selected barrier.", points: ["Tap any oval digit to make it the active selection.", "The top three list follows the same live ranking.", "Refresh restarts the local sample window from the next market tick."] },
+  { title: "Tick mapping", body: "Trade X maps the selected duration to the ranked safe-entry position. One tick uses rank 1, two ticks uses rank 2, and so on through five ticks.", points: ["Leave Manual Select off to follow the ranked tick mapping.", "Turn Manual Select on when you want to choose a specific digit.", "The active entry is shown before every action."] },
+  { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select confirms the currently tapped digit when Manual Select is on. Random Differ Auto rotates through the ranked signal every three seconds until stopped.", points: ["Check market, stake, duration, and digit before sending.", "Random Differ Auto waits for a 30-tick sample before it can trade.", "Instant 5 sends five contracts together using the current ranked entry."] },
+  { title: "Smart Auto Trade", body: "Smart Auto Trade is an optional confidence gate. It only sends when the observed differs signal reaches your selected threshold, then waits through a 20-second cooldown before checking again.", points: ["Confidence is a sample-based filter, not a promise of profit.", "The AI tick setting uses the same ranked tick mapping.", "Disable Smart Auto Trade to stop its loop immediately."] },
+  { title: "A careful workflow", body: "Start with a small demo stake, wait for a meaningful sample, and treat every signal as descriptive market context rather than certainty.", points: ["Confirm the selected account is the one you intend to use.", "Use the lowest practical stake while evaluating a market.", "Stop automation before changing markets or strategy assumptions."] },
+] as const;
+
+const tradeXSymbols: readonly TradeXSymbolOption[] = markets.map(([value, label]) => ({
+  value,
+  label,
+  marketType: value.startsWith("JD") ? "jumps" : "volatility",
+}));
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const errorMessage = (error: unknown) => {
@@ -113,9 +136,24 @@ export default function XTraderPage() {
   const [stopLoss, setStopLoss] = useState(10);
   const [autoSwitch, setAutoSwitch] = useState(false);
   const [xTraderEnabled, setXTraderEnabled] = useState(true);
+  const [tradeXEnabled, setTradeXEnabled] = useState(true);
+  const [tradeXMarketType, setTradeXMarketType] = useState<TradeXMarketType>("volatility");
+  const [tradeXSymbol, setTradeXSymbol] = useState("R_75");
+  const [tradeXStake, setTradeXStake] = useState(1);
+  const [tradeXSelectedDigit, setTradeXSelectedDigit] = useState(5);
+  const [tradeXDuration, setTradeXDuration] = useState<TradeXDuration>(1);
+  const [tradeXManualSelect, setTradeXManualSelect] = useState(false);
+  const [tradeXRandomRunning, setTradeXRandomRunning] = useState(false);
+  const [tradeXSmartAuto, setTradeXSmartAuto] = useState(false);
+  const [tradeXSmartConfidence, setTradeXSmartConfidence] = useState(95);
+  const [tradeXSmartTradeCount, setTradeXSmartTradeCount] = useState<TradeXTradeCount>(1);
+  const [tradeXSmartAiTicks, setTradeXSmartAiTicks] = useState<TradeXDuration>(1);
+  const [tradeXTradesSent, setTradeXTradesSent] = useState(0);
+  const [tradeXMessage, setTradeXMessage] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guidePage, setGuidePage] = useState(0);
+  const [guideMode, setGuideMode] = useState<"edge" | "trade-x">("edge");
   const [clearHistoryArmed, setClearHistoryArmed] = useState(false);
   const [historyFading, setHistoryFading] = useState(false);
   const [liveConfirmed, setLiveConfirmed] = useState(false);
@@ -131,6 +169,9 @@ export default function XTraderPage() {
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const analysisEpochRef = useRef<number | null>(null);
+  const tradeXRandomRef = useRef(false);
+  const tradeXSmartRef = useRef(false);
+  const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
   const configRef = useRef({
     direction,
     barrier,
@@ -140,6 +181,17 @@ export default function XTraderPage() {
     martingale,
     symbol,
     liveConfirmed,
+    rankedDigits: [] as number[],
+  });
+  const tradeXConfigRef = useRef({
+    symbol: tradeXSymbol,
+    stake: tradeXStake,
+    selectedDigit: tradeXSelectedDigit,
+    duration: tradeXDuration,
+    manualSelect: tradeXManualSelect,
+    smartConfidence: tradeXSmartConfidence,
+    smartTradeCount: tradeXSmartTradeCount,
+    smartAiTicks: tradeXSmartAiTicks,
     rankedDigits: [] as number[],
   });
 
@@ -176,6 +228,41 @@ export default function XTraderPage() {
       maxCount: Math.max(1, ...counts),
     };
   }, [analysisDigits, barrier]);
+  const tradeXDistribution = useMemo<TradeXDigitDistribution[]>(() => {
+    const total = analysisDigits.length;
+    return analysis.counts.map((count, digit) => {
+      let absentStreak = 0;
+      for (let index = analysisDigits.length - 1; index >= 0 && analysisDigits[index] !== digit; index -= 1) {
+        absentStreak += 1;
+      }
+      const midpoint = Math.floor(analysisDigits.length / 2);
+      const previousCount = analysisDigits.slice(0, midpoint).filter((value) => value === digit).length;
+      const recentCount = analysisDigits.slice(midpoint).filter((value) => value === digit).length;
+      return {
+        digit,
+        percentage: total ? Number(((count / total) * 100).toFixed(1)) : 0,
+        streak: absentStreak,
+        momentum: recentCount > previousCount ? "up" : recentCount < previousCount ? "down" : "flat",
+        sampleCount: total,
+      };
+    });
+  }, [analysis.counts, analysisDigits]);
+  const tradeXRankedDigits = useMemo(
+    () => analysisTickCount > 0
+      ? rankDigitsForDiffers(analysis.counts, tradeXDistribution.map((item) => item.streak))
+      : [],
+    [analysis.counts, analysisTickCount, tradeXDistribution],
+  );
+  const tradeXEntryDigit = tradeXManualSelect
+    ? tradeXSelectedDigit
+    : digitForTick(tradeXDuration, tradeXRankedDigits, tradeXSelectedDigit);
+  const tradeXConfidence = tradeXDistribution.length
+    ? Math.min(99, Math.max(50, Math.round(100 - (tradeXDistribution[tradeXEntryDigit]?.percentage ?? 0))))
+    : 50;
+
+  useEffect(() => {
+    tradeXAnalysisRef.current = { tickCount: analysisTickCount, confidence: tradeXConfidence };
+  }, [analysisTickCount, tradeXConfidence]);
   const rankedDigits = useMemo(
     () => analysisTickCount > 0 ? rankDigitsByDistribution(analysis.counts) : [],
     [analysis.counts, analysisTickCount],
@@ -184,6 +271,30 @@ export default function XTraderPage() {
   useEffect(() => {
     configRef.current = { direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed, rankedDigits };
   }, [direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed, rankedDigits]);
+
+  useEffect(() => {
+    tradeXConfigRef.current = {
+      symbol: tradeXSymbol,
+      stake: tradeXStake,
+      selectedDigit: tradeXEntryDigit,
+      duration: tradeXDuration,
+      manualSelect: tradeXManualSelect,
+      smartConfidence: tradeXSmartConfidence,
+      smartTradeCount: tradeXSmartTradeCount,
+      smartAiTicks: tradeXSmartAiTicks,
+      rankedDigits: tradeXRankedDigits,
+    };
+  }, [
+    tradeXSymbol,
+    tradeXStake,
+    tradeXEntryDigit,
+    tradeXDuration,
+    tradeXManualSelect,
+    tradeXSmartConfidence,
+    tradeXSmartTradeCount,
+    tradeXSmartAiTicks,
+    tradeXRankedDigits,
+  ]);
 
   useEffect(() => {
     if (storedPatInvalid) void tokenStatus.refetch();
@@ -225,8 +336,8 @@ export default function XTraderPage() {
     if (epoch == null || digit == null) return;
     if (analysisEpochRef.current != null && epoch <= analysisEpochRef.current) return;
     analysisEpochRef.current = epoch;
-    setAnalysisDigits((current) => [...current, digit].slice(-50));
-    setAnalysisTickCount((current) => current + 1);
+    setAnalysisDigits((current) => [...current, digit].slice(-100));
+    setAnalysisTickCount((current) => Math.min(5000, current + 1));
   }, [status.data?.last_tick?.epoch, status.data?.last_digit]);
 
   useEffect(() => {
@@ -244,7 +355,11 @@ export default function XTraderPage() {
     }
   }, [fastSessionPnl, running, takeProfit, stopLoss, currentAccount?.currency]);
 
-  useEffect(() => () => { runningRef.current = false; }, []);
+  useEffect(() => () => {
+    runningRef.current = false;
+    tradeXRandomRef.current = false;
+    tradeXSmartRef.current = false;
+  }, []);
 
   const connectPat = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -266,7 +381,11 @@ export default function XTraderPage() {
 
   const disconnect = async () => {
     runningRef.current = false;
+    tradeXRandomRef.current = false;
+    tradeXSmartRef.current = false;
     setRunning(false);
+    setTradeXRandomRunning(false);
+    setTradeXSmartAuto(false);
     await deleteTokenMutation.mutateAsync();
     queryClient.clear();
     void tokenStatus.refetch();
@@ -420,6 +539,127 @@ export default function XTraderPage() {
     }
   };
 
+  const executeTradeX = async (count = 1, durationOverride = tradeXConfigRef.current.duration, digitOverride?: number) => {
+    const config = tradeXConfigRef.current;
+    const entryDigit = digitOverride ?? (config.manualSelect
+      ? config.selectedDigit
+      : digitForTick(durationOverride, config.rankedDigits, config.selectedDigit));
+    if (!isConnected) {
+      setTradeXMessage("Connect Deriv before sending a Trade X contract.");
+      return false;
+    }
+    if (isReal && !liveConfirmed) {
+      setTradeXMessage("Confirm live funds before sending a Trade X contract.");
+      return false;
+    }
+    if (tradeXAnalysisRef.current.tickCount < 30 && count === 1 && !config.manualSelect) {
+      setTradeXMessage("Trade X is collecting its first 30 ticks before automatic ranked entries can trade.");
+      return false;
+    }
+    if (currentAccount && config.stake * count > currentAccount.balance) {
+      setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
+      return false;
+    }
+    try {
+      await bulkBuyMutation.mutateAsync({
+        data: {
+          amount: config.stake,
+          duration: durationOverride,
+          duration_unit: "t",
+          contract_type: "DIGITDIFF",
+          barrier: entryDigit,
+          symbol: config.symbol,
+          count,
+          confirm_live_trade: true,
+        },
+      });
+      setTradeXTradesSent((value) => value + count);
+      setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
+      await queryClient.invalidateQueries();
+      return true;
+    } catch (error) {
+      setTradeXMessage(errorMessage(error));
+      return false;
+    }
+  };
+
+  const runTradeXRandomLoop = async () => {
+    while (tradeXRandomRef.current) {
+      if (tradeXAnalysisRef.current.tickCount < 30) {
+        setTradeXMessage("Random Differ Auto is waiting for 30 live ticks before it can trade.");
+        await sleep(1000);
+        continue;
+      }
+      await executeTradeX(1);
+      if (tradeXRandomRef.current) await sleep(3000);
+    }
+  };
+
+  const runTradeXSmartLoop = async () => {
+    while (tradeXSmartRef.current) {
+      const { tickCount, confidence } = tradeXAnalysisRef.current;
+      const config = tradeXConfigRef.current;
+      if (tickCount < 30) {
+        setTradeXMessage("Smart Auto Trade is waiting for 30 live ticks before evaluating the signal.");
+        await sleep(1000);
+        continue;
+      }
+      if (confidence < config.smartConfidence) {
+        setTradeXMessage(`Smart Auto Trade is waiting for a ${config.smartConfidence}% signal; current sample is ${confidence}%.`);
+        await sleep(3000);
+        continue;
+      }
+      await executeTradeX(config.smartTradeCount, config.smartAiTicks);
+      if (tradeXSmartRef.current) {
+        setTradeXMessage("Smart Auto Trade entered its 20-second cooldown.");
+        await sleep(20_000);
+      }
+    }
+  };
+
+  const toggleTradeXRandom = (enabled: boolean) => {
+    if (!enabled) {
+      tradeXRandomRef.current = false;
+      setTradeXRandomRunning(false);
+      setTradeXMessage("Random Differ Auto stopped.");
+      return;
+    }
+    if (!tradeXEnabled) return;
+    tradeXRandomRef.current = true;
+    setTradeXRandomRunning(true);
+    void runTradeXRandomLoop();
+  };
+
+  const toggleTradeXSmart = (enabled: boolean) => {
+    if (!enabled) {
+      tradeXSmartRef.current = false;
+      setTradeXSmartAuto(false);
+      setTradeXMessage("Smart Auto Trade stopped.");
+      return;
+    }
+    if (!isConnected) {
+      setTradeXMessage("Connect Deriv before enabling Smart Auto Trade.");
+      return;
+    }
+    if (isReal && !liveConfirmed) {
+      setTradeXMessage("Confirm live funds before enabling Smart Auto Trade.");
+      return;
+    }
+    tradeXSmartRef.current = true;
+    setTradeXSmartAuto(true);
+    void runTradeXSmartLoop();
+  };
+
+  const toggleTradeX = (enabled: boolean) => {
+    setTradeXEnabled(enabled);
+    if (enabled) return;
+    tradeXRandomRef.current = false;
+    tradeXSmartRef.current = false;
+    setTradeXRandomRunning(false);
+    setTradeXSmartAuto(false);
+    setTradeXMessage("Trade X paused. EDGE remains unchanged.");
+  };
+
   const selectDuration = (next: number) => {
     setDuration(next);
     setBarrier(digitForTick(next, rankedDigits, barrier));
@@ -524,6 +764,7 @@ export default function XTraderPage() {
 
   const accountOptions = accounts.data ?? [];
   const entryDigit = digitForTick(duration, rankedDigits, barrier);
+  const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
@@ -565,10 +806,54 @@ export default function XTraderPage() {
         </select><ChevronDown size={15} /></div></label>
       </section>
 
+      <TradeXPanel
+        enabled={tradeXEnabled}
+        marketType={tradeXMarketType}
+        symbol={tradeXSymbol}
+        tradeType="DIGITDIFF"
+        stake={tradeXStake}
+        selectedDigit={tradeXEntryDigit}
+        duration={tradeXDuration}
+        manualSelectMode={tradeXManualSelect}
+        randomDifferRunning={tradeXRandomRunning}
+        smartAutoEnabled={tradeXSmartAuto}
+        smartConfidence={tradeXSmartConfidence}
+        smartTradeCount={tradeXSmartTradeCount}
+        smartAiTicks={tradeXSmartAiTicks}
+        distribution={tradeXDistribution}
+        rankedSafestDigits={tradeXRankedDigits}
+        symbols={tradeXSymbols}
+        analysisTickCount={analysisTickCount}
+        analysisUpdatedAt={lastDigit == null ? "waiting for live ticks" : `last digit ${lastDigit}`}
+        isAnalyzing={status.isFetching}
+        isPlacingTrade={bulkBuyMutation.isPending}
+        isRefreshingAnalysis={analysisTickCount === 0 && !isConnected}
+        disabled={running}
+        onEnabledChange={toggleTradeX}
+        onGuideOpen={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}
+        onMarketTypeChange={setTradeXMarketType}
+        onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
+        onTradeTypeChange={() => undefined}
+        onStakeChange={(next) => setTradeXStake(Math.max(0.35, Number.isFinite(next) ? next : 0.35))}
+        onSelectedDigitChange={setTradeXSelectedDigit}
+        onDurationChange={setTradeXDuration}
+        onManualSelectModeChange={setTradeXManualSelect}
+        onTradeSelect={(digit) => void executeTradeX(1, tradeXDuration, digit)}
+        onPlaceTrade={() => void executeTradeX(1)}
+        onRandomDifferAutoChange={toggleTradeXRandom}
+        onInstantFive={() => void executeTradeX(5)}
+        onSmartAutoChange={toggleTradeXSmart}
+        onSmartConfidenceChange={setTradeXSmartConfidence}
+        onSmartTradeCountChange={setTradeXSmartTradeCount}
+        onSmartAiTicksChange={(next) => setTradeXSmartAiTicks(next as TradeXDuration)}
+        onRefreshAnalysis={refreshAnalysis}
+      />
+      {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}
+
       <section className="xt-feature-card">
         <div><Bot size={18} /><span><b>EDGE 🏔️</b><small>Over / Under digit automation</small></span></div>
         <div className="xt-feature-actions">
-          <button className="xt-guide-button" type="button" onClick={() => { setGuidePage(0); setGuideOpen(true); }}>
+          <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("edge"); setGuidePage(0); setGuideOpen(true); }}>
             <BookOpen size={14} />Guide
           </button>
           <label className="xt-switch">
@@ -683,23 +968,23 @@ export default function XTraderPage() {
         <div className="xt-guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideOpen(false); }}>
           <section className="xt-guide" role="dialog" aria-modal="true" aria-labelledby="xt-guide-title">
             <header className="xt-guide-header">
-              <div><BookOpen size={18} /><span><b> EDGE Guide</b><small>Page {guidePage + 1} of {guidePages.length}</small></span></div>
+              <div><BookOpen size={18} /><span><b>{guideMode === "trade-x" ? " Trade X Guide" : " EDGE Guide"}</b><small>Page {guidePage + 1} of {activeGuidePages.length}</small></span></div>
               <button type="button" aria-label="Close guide" onClick={() => setGuideOpen(false)}><X size={17} /></button>
             </header>
-            <div className="xt-guide-progress"><span style={{ width: `${((guidePage + 1) / guidePages.length) * 100}%` }} /></div>
+            <div className="xt-guide-progress"><span style={{ width: `${((guidePage + 1) / activeGuidePages.length) * 100}%` }} /></div>
             <article className="xt-guide-page">
-              <small className="xt-guide-kicker">EDGE FIELD GUIDE</small>
-              <h2 id="xt-guide-title">{guidePages[guidePage].title}</h2>
-              <p>{guidePages[guidePage].body}</p>
-              <ul>{guidePages[guidePage].points.map((point) => <li key={point}>{point}</li>)}</ul>
+              <small className="xt-guide-kicker">{guideMode === "trade-x" ? "TRADE X FIELD GUIDE" : "EDGE FIELD GUIDE"}</small>
+              <h2 id="xt-guide-title">{activeGuidePages[guidePage].title}</h2>
+              <p>{activeGuidePages[guidePage].body}</p>
+              <ul>{activeGuidePages[guidePage].points.map((point) => <li key={point}>{point}</li>)}</ul>
             </article>
             <footer className="xt-guide-footer">
               <button type="button" className="xt-guide-nav" onClick={() => setGuidePage((page) => Math.max(0, page - 1))} disabled={guidePage === 0}><ChevronLeft size={15} />Back</button>
-              <span>{guidePage + 1} / {guidePages.length}</span>
-              {guidePage === guidePages.length - 1 ? (
-                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); setXTraderEnabled(true); }}>Let's start trading</button>
+              <span>{guidePage + 1} / {activeGuidePages.length}</span>
+              {guidePage === activeGuidePages.length - 1 ? (
+                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? setTradeXEnabled(true) : setXTraderEnabled(true); }}>Let's start trading</button>
               ) : (
-                <button type="button" className="xt-guide-nav next" onClick={() => setGuidePage((page) => Math.min(guidePages.length - 1, page + 1))}>Next<ChevronRight size={15} /></button>
+                <button type="button" className="xt-guide-nav next" onClick={() => setGuidePage((page) => Math.min(activeGuidePages.length - 1, page + 1))}>Next<ChevronRight size={15} /></button>
               )}
             </footer>
           </section>

@@ -36,6 +36,24 @@ export function rankDigitsByDistribution(counts: ReadonlyArray<number>): number[
     .map(({ digit }) => digit);
 }
 
+export function rankDigitsForDiffers(
+  counts: ReadonlyArray<number>,
+  absentStreaks: ReadonlyArray<number> = [],
+): number[] {
+  return Array.from({ length: 10 }, (_, digit) => ({
+    digit,
+    count: Number.isFinite(counts[digit]) ? counts[digit] : 0,
+    absentStreak: Number.isFinite(absentStreaks[digit]) ? absentStreaks[digit] : 0,
+  }))
+    .sort(
+      (left, right) =>
+        left.count - right.count ||
+        right.absentStreak - left.absentStreak ||
+        left.digit - right.digit,
+    )
+    .map(({ digit }) => digit);
+}
+
 export function digitForTick(
   tickDuration: number,
   rankedDigits: ReadonlyArray<number>,

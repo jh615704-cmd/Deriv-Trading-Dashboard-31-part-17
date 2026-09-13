@@ -4,6 +4,7 @@ import {
   chooseBestDigitSignal,
   digitForTick,
   findNewlySettledTrade,
+  rankDigitsForDiffers,
   nextStakeAfterSettlement,
   rankDigitsByDistribution,
   sessionStopReason,
@@ -43,6 +44,13 @@ describe("digit-distribution tick selection", () => {
 
   it("keeps the configured digit until a live ranking is available", () => {
     assert.equal(digitForTick(1, [], 5), 5);
+  });
+
+  it("ranks low-frequency digits first for Digit Differs safe entries", () => {
+    assert.deepEqual(
+      rankDigitsForDiffers([4, 1, 3, 1, 0, 5, 2, 0, 2, 1], [0, 2, 0, 5, 8, 0, 1, 7, 3, 4]).slice(0, 3),
+      [4, 7, 3],
+    );
   });
 });
 

@@ -15,7 +15,7 @@ const supportedSymbols = new Set([
   "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
   "JD10", "JD25", "JD50", "JD75", "JD100",
 ]);
-type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER";
+type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF";
 
 export type DerivAccount = {
   id: string;
@@ -953,7 +953,7 @@ export async function bulkBuyContracts(input: {
   amount: number;
   duration: number;
   duration_unit: "t";
-  contract_type: "DIGITOVER" | "DIGITUNDER";
+  contract_type: "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF";
   barrier?: number;
   symbol?: string;
   count: number;

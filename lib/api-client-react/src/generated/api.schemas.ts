@@ -327,6 +327,7 @@ export const DerivProposalInputContractType = {
   DIGITODD: 'DIGITODD',
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
+  DIGITDIFF: 'DIGITDIFF',
 } as const;
 
 export interface DerivProposalInput {
@@ -377,6 +378,7 @@ export const DerivBuyInputContractType = {
   DIGITODD: 'DIGITODD',
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
+  DIGITDIFF: 'DIGITDIFF',
 } as const;
 
 export interface DerivBuyInput {
@@ -411,6 +413,7 @@ export type DerivBulkBuyInputContractType = typeof DerivBulkBuyInputContractType
 export const DerivBulkBuyInputContractType = {
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
+  DIGITDIFF: 'DIGITDIFF',
 } as const;
 
 export interface DerivBulkBuyInput {
