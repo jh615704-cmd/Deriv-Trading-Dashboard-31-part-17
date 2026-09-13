@@ -79,7 +79,7 @@ const tradeXGuidePages = [
   { title: "Welcome to Trade X", body: "Trade X is the Digit Differs workspace. It watches the live digit distribution, ranks the least frequent digits, and lets you decide whether to send one trade or use controlled automation.", points: ["Use a demo account while learning the signal.", "The signal describes observed ticks; it cannot guarantee the next digit.", "The switch pauses every Trade X action without changing EDGE."] },
   { title: "Read the distribution", body: "Each digit shows its observed percentage and current absence streak. The safest differs list ranks digits with the lowest observed frequency first, because a Differs contract wins when the expiry digit is not the selected barrier.", points: ["Tap any oval digit to make it the active selection.", "The top three list follows the same live ranking.", "Refresh restarts the local sample window from the next market tick."] },
   { title: "Tick mapping", body: "Trade X maps the selected duration to the ranked safe-entry position. One tick uses rank 1, two ticks uses rank 2, and so on through five ticks.", points: ["Leave Manual Select off to follow the ranked tick mapping.", "Turn Manual Select on when you want to choose a specific digit.", "The active entry is shown before every action."] },
-  { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select confirms the currently tapped digit when Manual Select is on. Random Differ Auto rotates through the ranked signal every three seconds until stopped.", points: ["Check market, stake, duration, and digit before sending.", "Random Differ Auto waits for a 30-tick sample before it can trade.", "Instant 5 sends five contracts together using the current ranked entry."] },
+  { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select confirms the currently tapped digit when Manual Select is on. Smart Auto waits for the configured signal floor before entering.", points: ["Check market, stake, duration, and digit before sending.", "Manual digit taps only select a digit; the separate trade action sends it.", "Smart Auto uses the confidence floor, AI ticks, and trade count you choose."] },
   { title: "Smart Auto Trade", body: "Smart Auto Trade is an optional confidence gate. It only sends when the observed differs signal reaches your selected threshold, then waits through a 20-second cooldown before checking again.", points: ["Confidence is a sample-based filter, not a promise of profit.", "The AI tick setting uses the same ranked tick mapping.", "Disable Smart Auto Trade to stop its loop immediately."] },
   { title: "A careful workflow", body: "Start with a small demo stake, wait for a meaningful sample, and treat every signal as descriptive market context rather than certainty.", points: ["Confirm the selected account is the one you intend to use.", "Use the lowest practical stake while evaluating a market.", "Stop automation before changing markets or strategy assumptions."] },
 ] as const;
@@ -141,7 +141,6 @@ export default function XTraderPage() {
   const [tradeXSelectedDigit, setTradeXSelectedDigit] = useState(5);
   const [tradeXDuration, setTradeXDuration] = useState<TradeXDuration>(1);
   const [tradeXManualSelect, setTradeXManualSelect] = useState(false);
-  const [tradeXRandomRunning, setTradeXRandomRunning] = useState(false);
   const [tradeXSmartAuto, setTradeXSmartAuto] = useState(false);
   const [tradeXSmartConfidence, setTradeXSmartConfidence] = useState(95);
   const [tradeXSmartTradeCount, setTradeXSmartTradeCount] = useState<TradeXTradeCount>(1);
@@ -169,8 +168,8 @@ export default function XTraderPage() {
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const analysisEpochRef = useRef<number | null>(null);
-  const tradeXRandomRef = useRef(false);
   const tradeXSmartRef = useRef(false);
+  const tradeXActionLockRef = useRef(false);
   const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
   const configRef = useRef({
     direction,
@@ -200,6 +199,9 @@ export default function XTraderPage() {
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const rows = history.data ?? [];
   const tradeXRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF" && !tradeXHiddenHistoryIds.has(trade.contract_id));
+  const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
+  const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
+  const tradeXLosses = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit < 0).length;
   const settledPnl = rows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const liveContract = status.data?.last_contract;
   const liveContractRow = liveContract
@@ -358,7 +360,6 @@ export default function XTraderPage() {
 
   useEffect(() => () => {
     runningRef.current = false;
-    tradeXRandomRef.current = false;
     tradeXSmartRef.current = false;
   }, []);
 
@@ -382,10 +383,8 @@ export default function XTraderPage() {
 
   const disconnect = async () => {
     runningRef.current = false;
-    tradeXRandomRef.current = false;
     tradeXSmartRef.current = false;
     setRunning(false);
-    setTradeXRandomRunning(false);
     setTradeXSmartAuto(false);
     await deleteTokenMutation.mutateAsync();
     queryClient.clear();
@@ -492,7 +491,13 @@ export default function XTraderPage() {
 
   const toggleXTrader = (enabled: boolean) => {
     setXTraderEnabled(enabled);
-    if (!enabled) stop();
+    if (!enabled) {
+      stop();
+      return;
+    }
+    setTradeXEnabled(false);
+    tradeXSmartRef.current = false;
+    setTradeXSmartAuto(false);
   };
 
   const reset = () => {
@@ -532,6 +537,9 @@ export default function XTraderPage() {
 
   const selectMarket = async (next: string) => {
     setSymbol(next);
+    analysisEpochRef.current = null;
+    setAnalysisDigits([]);
+    setAnalysisTickCount(0);
     try {
       await symbolMutation.mutateAsync({ data: { symbol: next } });
       await queryClient.invalidateQueries();
@@ -541,6 +549,10 @@ export default function XTraderPage() {
   };
 
   const executeTradeX = async (count = 1, durationOverride = tradeXConfigRef.current.duration, digitOverride?: number) => {
+    if (tradeXActionLockRef.current) {
+      setTradeXMessage("Trade X is already sending. Wait for the current request to finish.");
+      return false;
+    }
     const config = tradeXConfigRef.current;
     const entryDigit = digitOverride ?? (config.manualSelect
       ? config.selectedDigit
@@ -561,6 +573,7 @@ export default function XTraderPage() {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
       return false;
     }
+    tradeXActionLockRef.current = true;
     try {
       await bulkBuyMutation.mutateAsync({
         data: {
@@ -581,18 +594,8 @@ export default function XTraderPage() {
     } catch (error) {
       setTradeXMessage(errorMessage(error));
       return false;
-    }
-  };
-
-  const runTradeXRandomLoop = async () => {
-    while (tradeXRandomRef.current) {
-      if (tradeXAnalysisRef.current.tickCount < 30) {
-        setTradeXMessage("Random Differ Auto is waiting for 30 live ticks before it can trade.");
-        await sleep(1000);
-        continue;
-      }
-      await executeTradeX(1);
-      if (tradeXRandomRef.current) await sleep(3000);
+    } finally {
+      tradeXActionLockRef.current = false;
     }
   };
 
@@ -618,19 +621,6 @@ export default function XTraderPage() {
     }
   };
 
-  const toggleTradeXRandom = (enabled: boolean) => {
-    if (!enabled) {
-      tradeXRandomRef.current = false;
-      setTradeXRandomRunning(false);
-      setTradeXMessage("Random Differ Auto stopped.");
-      return;
-    }
-    if (!tradeXEnabled) return;
-    tradeXRandomRef.current = true;
-    setTradeXRandomRunning(true);
-    void runTradeXRandomLoop();
-  };
-
   const toggleTradeXSmart = (enabled: boolean) => {
     if (!enabled) {
       tradeXSmartRef.current = false;
@@ -653,12 +643,16 @@ export default function XTraderPage() {
 
   const toggleTradeX = (enabled: boolean) => {
     setTradeXEnabled(enabled);
-    if (enabled) return;
-    tradeXRandomRef.current = false;
+    if (enabled) {
+      setXTraderEnabled(false);
+      stop();
+      autoSwitchRef.current = false;
+      setAutoSwitch(false);
+      return;
+    }
     tradeXSmartRef.current = false;
-    setTradeXRandomRunning(false);
     setTradeXSmartAuto(false);
-    setTradeXMessage("Trade X paused. EDGE remains unchanged.");
+    setTradeXMessage("Trade X paused.");
   };
 
   const selectDuration = (next: number) => {
@@ -920,7 +914,6 @@ export default function XTraderPage() {
             selectedDigit={tradeXEntryDigit}
             duration={tradeXDuration}
             manualSelectMode={tradeXManualSelect}
-            randomDifferRunning={tradeXRandomRunning}
             smartAutoEnabled={tradeXSmartAuto}
             smartConfidence={tradeXSmartConfidence}
             smartTradeCount={tradeXSmartTradeCount}
@@ -931,12 +924,9 @@ export default function XTraderPage() {
             analysisTickCount={analysisTickCount}
             analysisUpdatedAt={lastDigit == null ? "waiting for live ticks" : `last digit ${lastDigit}`}
             lastDigit={lastDigit}
-            isAnalyzing={status.isFetching}
             isPlacingTrade={bulkBuyMutation.isPending}
             isRefreshingAnalysis={analysisTickCount === 0 && !isConnected}
             disabled={running}
-            onEnabledChange={toggleTradeX}
-            onGuideOpen={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}
             onMarketTypeChange={setTradeXMarketType}
             onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
             onTradeTypeChange={() => undefined}
@@ -946,8 +936,6 @@ export default function XTraderPage() {
             onManualSelectModeChange={setTradeXManualSelect}
             onTradeSelect={(digit) => void executeTradeX(1, tradeXDuration, digit)}
             onPlaceTrade={() => void executeTradeX(1)}
-            onRandomDifferAutoChange={toggleTradeXRandom}
-            onInstantFive={() => void executeTradeX(5)}
             onSmartAutoChange={toggleTradeXSmart}
             onSmartConfidenceChange={setTradeXSmartConfidence}
             onSmartTradeCountChange={setTradeXSmartTradeCount}
@@ -960,6 +948,11 @@ export default function XTraderPage() {
               <div className="xt-history-head">
                 <div><CircleDollarSign size={18} /><span><b>Trade X Recent Trades</b><small>Digit Differs rows only · Deriv records are not deleted</small></span></div>
                 <button onClick={clearTradeXHistory} disabled={!tradeXRows.length}><Trash2 size={15} />{tradeXHistoryClearArmed ? "Tap again" : "Clear"}</button>
+              </div>
+              <div className="xt-pnl-strip" aria-label="Trade X profit and loss summary">
+                <div><small>TRADE X P/L</small><strong className={tradeXProfit < 0 ? "loss" : ""}>{tradeXProfit >= 0 ? "+" : ""}{tradeXProfit.toFixed(2)}</strong></div>
+                <div><small>WINS</small><strong>{tradeXWins}</strong></div>
+                <div><small>LOSSES</small><strong className={tradeXLosses ? "loss" : ""}>{tradeXLosses}</strong></div>
               </div>
               {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.slice(0, 12).map((trade) => <div className="xt-trade" key={trade.contract_id}><span><b>DIGIT DIFFERS</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
             </section>
@@ -985,7 +978,7 @@ export default function XTraderPage() {
               <button type="button" className="xt-guide-nav" onClick={() => setGuidePage((page) => Math.max(0, page - 1))} disabled={guidePage === 0}><ChevronLeft size={15} />Back</button>
               <span>{guidePage + 1} / {activeGuidePages.length}</span>
               {guidePage === activeGuidePages.length - 1 ? (
-                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? setTradeXEnabled(true) : setXTraderEnabled(true); }}>Let's start trading</button>
+                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? toggleTradeX(true) : toggleXTrader(true); }}>Let's start trading</button>
               ) : (
                 <button type="button" className="xt-guide-nav next" onClick={() => setGuidePage((page) => Math.min(activeGuidePages.length - 1, page + 1))}>Next<ChevronRight size={15} /></button>
               )}

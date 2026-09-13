@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import {
   Activity,
   Bot,
@@ -9,10 +8,8 @@ import {
   Play,
   RefreshCw,
   ShieldCheck,
-  Sparkles,
   Target,
   TimerReset,
-  Zap,
 } from "lucide-react";
 import "./trade-x-panel.css";
 
@@ -45,7 +42,6 @@ export interface TradeXPanelProps {
   selectedDigit: number;
   duration: TradeXDuration;
   manualSelectMode: boolean;
-  randomDifferRunning: boolean;
   smartAutoEnabled: boolean;
   smartConfidence: number;
   smartTradeCount: TradeXTradeCount;
@@ -56,12 +52,9 @@ export interface TradeXPanelProps {
   analysisTickCount?: number;
   analysisUpdatedAt?: string;
   lastDigit?: number | null;
-  isAnalyzing?: boolean;
   isPlacingTrade?: boolean;
   isRefreshingAnalysis?: boolean;
   disabled?: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-  onGuideOpen: () => void;
   onMarketTypeChange: (marketType: TradeXMarketType) => void;
   onSymbolChange: (symbol: string) => void;
   onTradeTypeChange: (tradeType: TradeXTradeType) => void;
@@ -71,8 +64,6 @@ export interface TradeXPanelProps {
   onManualSelectModeChange: (enabled: boolean) => void;
   onTradeSelect: (digit: number) => void;
   onPlaceTrade: () => void;
-  onRandomDifferAutoChange: (enabled: boolean) => void;
-  onInstantFive: () => void;
   onSmartAutoChange: (enabled: boolean) => void;
   onSmartConfidenceChange: (confidence: number) => void;
   onSmartTradeCountChange: (count: TradeXTradeCount) => void;
@@ -126,7 +117,6 @@ export default function TradeXPanel({
   selectedDigit,
   duration,
   manualSelectMode,
-  randomDifferRunning,
   smartAutoEnabled,
   smartConfidence,
   smartTradeCount,
@@ -137,7 +127,6 @@ export default function TradeXPanel({
   analysisTickCount = 48,
   analysisUpdatedAt = "live stream",
   lastDigit = null,
-  isAnalyzing = false,
   isPlacingTrade = false,
   isRefreshingAnalysis = false,
   disabled = false,
@@ -150,8 +139,6 @@ export default function TradeXPanel({
   onManualSelectModeChange,
   onTradeSelect,
   onPlaceTrade,
-  onRandomDifferAutoChange,
-  onInstantFive,
   onSmartAutoChange,
   onSmartConfidenceChange,
   onSmartTradeCountChange,
@@ -316,30 +303,18 @@ export default function TradeXPanel({
                 <span className="tx-micro-label">SELECTED DIGIT</span>
                 <strong data-testid="text-trade-x-selected-digit">{selectedDigit}<small>{safeEntry ? "ranked entry" : "manual entry"}</small></strong>
               </div>
-              <div className="tx-distribution-state">
-                <Activity size={14} />
-                {isAnalyzing ? "recalculating" : "streaming"}
-              </div>
+               <div className="tx-distribution-state"><Activity size={14} />LIVE TICKS</div>
             </div>
             <div className="tx-digit-grid" role="group" aria-label="Select a digit">
-              {lastDigit != null && (
-                <span
-                  className="tx-market-digit"
-                  style={{
-                    "--tx-market-column": lastDigit % 5,
-                    "--tx-market-row": Math.floor(lastDigit / 5),
-                  } as CSSProperties}
-                  aria-hidden="true"
-                />
-              )}
               {digitData.map((item) => {
                 const isSelected = selectedDigit === item.digit;
                 const isRanked = ranking.includes(item.digit);
+                const isMarketDigit = lastDigit === item.digit;
                 return (
                   <button
                     type="button"
                     key={item.digit}
-                    className={`tx-digit ${isSelected ? "tx-digit-selected" : ""} ${isRanked ? "tx-digit-ranked" : ""}`}
+                    className={`tx-digit ${isSelected ? "tx-digit-selected" : ""} ${isRanked ? "tx-digit-ranked" : ""} ${isMarketDigit ? "tx-digit-market" : ""}`}
                     onClick={() => onSelectedDigitChange(item.digit)}
                     disabled={disabled}
                     aria-pressed={isSelected}
@@ -478,16 +453,6 @@ export default function TradeXPanel({
             <button type="button" className="tx-action tx-action-primary" onClick={onPlaceTrade} disabled={disabled || isPlacingTrade || !enabled} data-testid="button-place-trade-x">
               <span className="tx-action-icon">{isPlacingTrade ? <RefreshCw size={17} className="tx-spin" /> : <Play size={17} fill="currentColor" />}</span>
               <span><b>{isPlacingTrade ? "Sending Trade X…" : "Place Trade X Trade"}</b><small>Digit {selectedDigit} · {duration} {duration === 1 ? "tick" : "ticks"} · ${stake.toFixed(2)}</small></span>
-              <ChevronRight size={17} />
-            </button>
-            <button type="button" className={`tx-action tx-action-secondary ${randomDifferRunning ? "tx-action-running" : ""}`} onClick={() => onRandomDifferAutoChange(!randomDifferRunning)} disabled={disabled || !enabled} data-testid="button-random-differ-auto">
-              <span className="tx-action-icon"><Zap size={17} /></span>
-              <span><b>{randomDifferRunning ? "Stop Random Differ Auto" : "Random Differ Auto"}</b><small>{randomDifferRunning ? "automation is active" : "ranked differ rotation"}</small></span>
-              <span className="tx-action-live">{randomDifferRunning ? "LIVE" : "START"}</span>
-            </button>
-            <button type="button" className="tx-action tx-action-tertiary" onClick={onInstantFive} disabled={disabled || !enabled} data-testid="button-instant-five">
-              <span className="tx-action-icon"><Sparkles size={17} /></span>
-              <span><b>Instant 5</b><small>send a five-tick read</small></span>
               <ChevronRight size={17} />
             </button>
           </div>
