@@ -143,7 +143,6 @@ export default function XTraderPage() {
     : 0;
   const fastSessionPnl = settledPnl - baselinePnl + liveUnsettledPnl;
   const streaks = status.data?.digit_streaks ?? [];
-  const selectedStreak = streaks.find((item) => item.digit === barrier);
   const lastDigit = status.data?.last_digit;
 
   useEffect(() => {
@@ -556,36 +555,6 @@ export default function XTraderPage() {
               />
               {Array.from({ length: 9 }, (_, index) => streaks.find((item) => item.digit === index + 1) ?? { digit: index + 1, over: 0, under: 0 }).map((item) => <button key={item.digit} className={barrier === item.digit ? "active" : ""} aria-label={lastDigit === item.digit ? `Current market last digit ${item.digit}` : `Digit ${item.digit}`} onClick={() => setBarrier(item.digit)} disabled={running}><b>{item.digit}</b><small><span>O {item.over}</span><span>U {item.under}</span></small></button>)}
             </div>
-             <div className="xt-streak-panel" aria-live="polite">
-               <div className="xt-streak-heading">
-                 <span>CURRENT CONSECUTIVE STREAK</span>
-                 <small>DIGIT {barrier} · {status.data?.digit_sample_count ?? 0} OBSERVED TICKS</small>
-               </div>
-               <div className="xt-streak-options">
-                 <button
-                   type="button"
-                   className={`xt-streak-option over ${direction === "DIGITOVER" ? "selected" : ""}`}
-                   onClick={() => setDirection("DIGITOVER")}
-                   disabled={running}
-                 >
-                   <small>OVER {barrier}</small>
-                   <strong>{selectedStreak?.over ?? 0}</strong>
-                   <span>above digit {barrier}</span>
-                 </button>
-                 <button
-                   type="button"
-                   className={`xt-streak-option under ${direction === "DIGITUNDER" ? "selected" : ""}`}
-                   onClick={() => setDirection("DIGITUNDER")}
-                   disabled={running}
-                 >
-                   <small>UNDER {barrier}</small>
-                   <strong>{selectedStreak?.under ?? 0}</strong>
-                   <span>below digit {barrier}</span>
-                 </button>
-               </div>
-               <p className="xt-streak-note">Select either signal to set the contract direction. A streak describes recent ticks; it is not a guaranteed prediction.</p>
-             </div>
-
             <div className="xt-form-grid">
               <label><small>DURATION</small><div className="xt-ticks">{[1,2,3,4,5].map((tick) => <button key={tick} className={duration === tick ? "active" : ""} onClick={() => setDuration(tick)} disabled={running}>{tick}</button>)}</div></label>
                <label><small>STAKE · NO APP CAP</small><div className="xt-money"><span>{currentAccount?.currency ?? "USD"}</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => setStake(Number(event.target.value))} disabled={running} /></div><b className="xt-field-help">Up to the available account balance</b></label>
