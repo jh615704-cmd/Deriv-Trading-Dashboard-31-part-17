@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 import {
   CreateAccessKeyBody,
@@ -51,7 +51,7 @@ function sessionResponse(session: {
   keyPrefix: string;
   label: string;
   kind: "admin" | "user";
-  status: "active" | "paused" | "blocked" | "banned";
+  status: "active" | "paused" | "blocked" | "banned" | "deleted";
   maxDevices: number;
   features: string[] | null;
   sessionLastSeenAt: Date | null;
@@ -88,6 +88,8 @@ router.post("/access/login", async (req, res): Promise<void> => {
   if (key.status !== "active") {
     const message = key.status === "banned"
       ? "This access key is permanently banned"
+      : key.status === "deleted"
+        ? "This access key has been deleted"
       : `This access key is ${key.status}`;
     res.status(403).json({ error: message });
     return;
@@ -172,7 +174,9 @@ router.post("/access/logout", requireAccess, async (req, res): Promise<void> => 
 router.use("/access/keys", requireAccess, requireAccessAdmin);
 
 router.get("/access/keys", async (_req, res): Promise<void> => {
-  const keys = await db.select().from(accessKeysTable).orderBy(asc(accessKeysTable.createdAt));
+  const keys = await db.select().from(accessKeysTable)
+    .where(ne(accessKeysTable.status, "deleted"))
+    .orderBy(asc(accessKeysTable.createdAt));
   const response = await Promise.all(keys.map(async (key) => {
     const [deviceCount, onlineDevices] = await Promise.all([
       activeDeviceCount(key.id),
@@ -210,13 +214,22 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Unlimited devices are available only for administrator keys" });
     return;
   }
+  const label = parsed.data.label.trim();
+  const [labelMatch] = await db.select({ id: accessKeysTable.id })
+    .from(accessKeysTable)
+    .where(eq(accessKeysTable.label, label))
+    .limit(1);
+  if (labelMatch) {
+    res.status(409).json({ error: "That access-key label is already reserved. Choose a different name." });
+    return;
+  }
   const rawKey = generateAccessKey(kind);
   const features = kind === "admin" ? [...ACCESS_FEATURES] : featureList(parsed.data.features, kind);
   const [created] = await db.insert(accessKeysTable).values({
     keyHash: hashSecret(rawKey),
     encryptedKey: encryptAccessKey(rawKey),
     keyPrefix: rawKey.slice(0, 17),
-    label: parsed.data.label.trim(),
+    label,
     kind,
     maxDevices: parsed.data.max_devices,
     features,
@@ -235,6 +248,33 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     last_seen_at: null,
     created_at: created.createdAt,
   }));
+});
+
+router.delete("/access/keys/:id", async (req, res): Promise<void> => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const [current] = await db.select().from(accessKeysTable).where(eq(accessKeysTable.id, id)).limit(1);
+  if (!current) {
+    res.status(404).json({ error: "Access key not found" });
+    return;
+  }
+  if (current.keyHash === PRIMARY_ADMIN_KEY_HASH) {
+    res.status(400).json({ error: "The primary administrator key cannot be deleted" });
+    return;
+  }
+  if (current.status === "deleted") {
+    res.json({ success: true });
+    return;
+  }
+
+  // Keep a tombstone so the raw key can never authenticate again and the
+  // deleted label cannot be reassigned to another person.
+  await db.update(accessKeysTable)
+    .set({ status: "deleted", encryptedKey: null, updatedAt: new Date() })
+    .where(eq(accessKeysTable.id, id));
+  await db.update(accessKeySessionsTable)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(accessKeySessionsTable.accessKeyId, id), isNull(accessKeySessionsTable.revokedAt)));
+  res.json({ success: true });
 });
 
 router.post("/access/keys/:id/reset", async (req, res): Promise<void> => {

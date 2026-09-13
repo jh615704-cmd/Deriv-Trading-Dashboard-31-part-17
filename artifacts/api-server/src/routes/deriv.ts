@@ -28,6 +28,7 @@ import {
   selectAccount,
   selectSymbol,
   testConnection,
+  withUser,
   withUserSerialized,
   setUserPat,
   DerivCredentialError,
@@ -46,8 +47,12 @@ function isCredentialError(error: unknown): error is Error {
     || error instanceof DerivCredentialError;
 }
 
-async function withCredential<T>(userId: string, operation: () => Promise<T>): Promise<T> {
-  return withUserSerialized(userId, async () => {
+async function withCredential<T>(
+  userId: string,
+  operation: () => Promise<T>,
+  serialize = true,
+): Promise<T> {
+  const run = async () => {
     const [credential] = await db
       .select()
       .from(derivCredentialsTable)
@@ -63,12 +68,13 @@ async function withCredential<T>(userId: string, operation: () => Promise<T>): P
     }
     setUserPat(userId, pat);
     return operation();
-  });
+  };
+  return serialize ? withUserSerialized(userId, run) : withUser(userId, run);
 }
 
 router.get("/deriv/accounts", async (req, res) => {
   try {
-    const accounts = GetDerivAccountsResponse.parse(await withCredential(res.locals.userId, getAccounts));
+    const accounts = GetDerivAccountsResponse.parse(await withCredential(res.locals.userId, getAccounts, false));
     res.set("Cache-Control", "no-store");
     res.json(accounts);
   } catch (error) {
@@ -82,7 +88,7 @@ router.get("/deriv/accounts", async (req, res) => {
 });
 
 router.get("/deriv/status", (_req, res) => {
-  void withCredential(res.locals.userId, getLiveStatus)
+  void withCredential(res.locals.userId, getLiveStatus, false)
     .then((status) => {
       res.set("Cache-Control", "no-store");
       res.json(GetDerivStatusResponse.parse(status));
@@ -97,7 +103,7 @@ router.get("/deriv/status", (_req, res) => {
 
 router.get("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  withCredential(res.locals.userId, async () => getHistory())
+  withCredential(res.locals.userId, async () => getHistory(), false)
     .then((history) => res.json(history))
      .catch((error) => {
        const missingCredential = isCredentialError(error);

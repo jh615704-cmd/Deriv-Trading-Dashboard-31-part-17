@@ -5,3 +5,5 @@
 - [Primary admin access](primary-admin-access.md) — only the designated admin-key fingerprint can administer; sessions are intentionally non-persistent.
 - [Access response schemas](access-response-schema.md) — shared AccessSession fields must be returned by every access-key response path.
 - [Access-key recovery](access-key-recovery.md) — admin recovery uses encrypted copies; legacy hashed-only keys must be replaced.
+- [Deriv read concurrency](deriv-read-concurrency.md) — status, accounts, and history reads must not queue behind per-user buy mutations.
+- [Runtime scaling boundary](runtime-scaling-boundary.md) — 900k active Deriv sessions requires horizontal runtime capacity, not a single Node process.

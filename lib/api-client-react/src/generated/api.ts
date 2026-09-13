@@ -892,6 +892,77 @@ export const useUpdateAccessKey = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpdateAccessKeyMutationOptions(options));
     }
 
+export const getDeleteAccessKeyUrl = (id: string,) => {
+
+
+
+
+  return `/api/access/keys/${id}`
+}
+
+/**
+ * @summary Delete an access key permanently
+ */
+export const deleteAccessKey = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteAccessKeyUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteAccessKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccessKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAccessKey>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAccessKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAccessKey>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAccessKey(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAccessKeyMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAccessKey>>>
+
+    export type DeleteAccessKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete an access key permanently
+ */
+export const useDeleteAccessKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccessKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAccessKey>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAccessKeyMutationOptions(options));
+    }
+
 export const getResetAccessKeyUrl = (id: string,) => {
 
 

@@ -5,9 +5,9 @@ import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 export const ACCESS_COOKIE_NAME = "jdy_access";
 // This is a SHA-256 fingerprint, never the raw administrator credential.
 export const PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
-export const ACCESS_FEATURES = ["edge", "settings", "history", "admin"] as const;
+export const ACCESS_FEATURES = ["edge", "trade-x", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
-export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned";
+export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned" | "deleted";
 
 export const PRESENCE_STALE_MS = 90_000;
 
@@ -128,5 +128,6 @@ export function featureList(features: string[] | null | undefined, kind: "admin"
     (ACCESS_FEATURES as readonly string[]).includes(feature),
   )));
   if (kind === "admin") return ACCESS_FEATURES.slice();
-  return normalized.length ? normalized : ["edge"];
+  const userFeatures = normalized.filter((feature) => feature !== "admin");
+  return userFeatures.length ? userFeatures : ["edge"];
 }

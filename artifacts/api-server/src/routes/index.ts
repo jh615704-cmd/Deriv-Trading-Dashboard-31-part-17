@@ -10,8 +10,8 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(accessRouter);
-router.use("/token", requireAccess, requireAnyAccessFeature("edge", "settings"));
-router.use("/deriv", requireAccess, requireAccessFeature("edge"));
+router.use("/token", requireAccess, requireAnyAccessFeature("edge", "trade-x", "settings"));
+router.use("/deriv", requireAccess, requireAnyAccessFeature("edge", "trade-x"));
 router.use("/deriv/history", requireAccessFeature("history"));
 router.use(derivRouter);
 router.use(tokenRouter);

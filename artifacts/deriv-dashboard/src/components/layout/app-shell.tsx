@@ -35,6 +35,8 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const isAdmin = accessSession.data?.is_admin === true;
   const features = accessSession.data?.features ?? [];
   const canUseEdge = isAdmin || features.includes("edge");
+  const canUseTradeX = isAdmin || features.includes("trade-x");
+  const canUseTrading = canUseEdge || canUseTradeX;
   const canUseSettings = isAdmin || features.includes("settings");
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -48,7 +50,7 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
           </div>
           <p className="sidebar-kicker">Connection center</p>
           <nav className="sidebar-nav" aria-label="Primary navigation">
-            {canUseEdge && <Link 
+            {canUseTrading && <Link
               href="/app" 
               className={`nav-item ${location === '/app' ? 'nav-item-active' : ''}`} 
               data-testid="link-nav-dashboard"

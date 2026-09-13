@@ -14,4 +14,5 @@ export const AccessKeyUpdateInputStatus = {
   paused: 'paused',
   blocked: 'blocked',
   banned: 'banned',
+  deleted: 'deleted',
 } as const;

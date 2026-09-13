@@ -40,7 +40,10 @@ export const requireAccess: RequestHandler = async (req, res, next) => {
 
     res.locals.accessKeyId = session.accessKeyId;
     res.locals.accessSessionId = session.sessionId;
-    res.locals.userId = session.accessKeyId;
+    // Deriv credentials and runtime state belong to this browser session,
+    // not to the reusable access-key record. A second session using the same
+    // key must enter its own PAT and choose its own account.
+    res.locals.userId = session.sessionId;
     res.locals.accessKey = {
       ...session,
       features: featureList(session.features, session.kind),
@@ -54,7 +57,7 @@ export const requireAccess: RequestHandler = async (req, res, next) => {
 export const requireAccessFeature = (feature: string): RequestHandler => (_req, res, next) => {
   const features = res.locals.accessKey?.features as string[] | undefined;
   if (!features?.includes(feature)) {
-    res.status(403).json({ error: `This access key does not include the ${feature} feature` });
+    res.status(403).json({ error: `Restricted — admin access only: this access key does not include the ${feature} feature` });
     return;
   }
   next();
@@ -66,7 +69,7 @@ export const requireAnyAccessFeature = (...allowedFeatures: string[]): RequestHa
     next();
     return;
   }
-  res.status(403).json({ error: `This access key does not include one of: ${allowedFeatures.join(", ")}` });
+  res.status(403).json({ error: `Restricted — admin access only: this access key does not include one of: ${allowedFeatures.join(", ")}` });
 };
 
 export const requireAccessAdmin: RequestHandler = (req, res, next) => {

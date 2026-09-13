@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAccessKeysQueryKey,
   useCreateAccessKey,
+  useDeleteAccessKey,
   useListAccessKeys,
   useResetAccessKey,
   useUpdateAccessKey,
@@ -17,6 +18,7 @@ import {
   Check,
   CirclePause,
   Copy,
+  Eraser,
   KeyRound,
   LockKeyhole,
   Pencil,
@@ -32,9 +34,9 @@ import {
 
 const featureOptions: Array<{ value: AccessFeature; label: string; description: string }> = [
   { value: "edge", label: "EDGE trading", description: "PAT connection, live telemetry, and trades" },
+  { value: "trade-x", label: "Trade X", description: "Digit Differs trading and automation" },
   { value: "settings", label: "Settings", description: "View and manage the Deriv connection" },
   { value: "history", label: "History", description: "Read recent trading activity" },
-  { value: "admin", label: "Admin panel", description: "Create and manage access keys" },
 ];
 
 function errorMessage(error: unknown) {
@@ -60,11 +62,15 @@ function KeyRow({
   onStatus,
   onUpdate,
   onReset,
+  onDelete,
+  deletingKey,
 }: {
   item: AccessKeySummary;
   onStatus: (item: AccessKeySummary, status: "active" | "paused" | "blocked" | "banned") => void;
   onUpdate: (item: AccessKeySummary, data: { max_devices?: number; features?: AccessFeature[] }) => void;
   onReset: (item: AccessKeySummary) => void;
+  onDelete: (item: AccessKeySummary) => void;
+  deletingKey?: boolean;
 }) {
   const isBanned = item.status === "banned";
   const [editing, setEditing] = useState(false);
@@ -98,7 +104,7 @@ function KeyRow({
   };
 
   return (
-    <div className="key-row">
+    <div className={`key-row ${deletingKey ? "key-row-deleting" : ""}`}>
       <div className="key-row-main">
         <div className="key-avatar">{item.kind === "admin" ? <ShieldCheck size={17} /> : <UserRound size={17} />}</div>
         {item.access_key ? (
@@ -111,6 +117,7 @@ function KeyRow({
         <div>
           <div className="key-label">{item.label}</div>
           <div className="key-prefix">{item.access_key ?? `${item.key_prefix}••••••••`}</div>
+          {item.access_key && <code className="key-full-value">{item.access_key}</code>}
         </div>
       </div>
       <div className="key-row-data"><span>{item.kind === "admin" ? "Administrator" : "User"}</span><strong>{item.device_count} / {item.max_devices === 0 ? "Unlimited" : item.max_devices}</strong><small>devices</small></div>
@@ -154,6 +161,7 @@ function KeyRow({
         {item.status === "active" && <button type="button" className="key-action" onClick={() => onStatus(item, "paused")} title="Pause this key"><CirclePause size={14} /> Pause</button>}
         {item.status !== "blocked" && !isBanned && <button type="button" className="key-action" onClick={() => onStatus(item, "blocked")} title="Block this key"><LockKeyhole size={14} /> Block</button>}
         {!isBanned && <button type="button" className="key-action key-action-red" onClick={() => onStatus(item, "banned")} title="Permanently ban this key"><Ban size={14} /> Ban</button>}
+        {!item.is_admin && <button type="button" className="key-action key-action-red key-delete-action" onClick={() => onDelete(item)} title="Delete this key permanently"><Eraser size={14} /> Delete</button>}
       </div>
     </div>
   );
@@ -165,6 +173,7 @@ export default function AdminUsersPage() {
   const keysQuery = useListAccessKeys({ query: { refetchInterval: 15_000, queryKey: getListAccessKeysQueryKey() } });
   const createKey = useCreateAccessKey();
   const resetKey = useResetAccessKey();
+  const deleteKey = useDeleteAccessKey();
   const updateKey = useUpdateAccessKey();
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<"user" | "admin">("user");
@@ -173,6 +182,7 @@ export default function AdminUsersPage() {
   const [features, setFeatures] = useState<AccessFeature[]>(["edge"]);
   const [newKey, setNewKey] = useState<{ value: string; kind: "user" | "admin"; label: string } | null>(null);
   const [formError, setFormError] = useState("");
+  const [deletingKeyIds, setDeletingKeyIds] = useState<Set<string>>(new Set());
   const keys = keysQuery.data ?? [];
   const onlineCount = keys.filter((key) => key.online).length;
   const userCount = keys.filter((key) => key.kind === "user").length;
@@ -187,7 +197,7 @@ export default function AdminUsersPage() {
     event.preventDefault();
     setFormError("");
     createKey.mutate(
-      { data: { label: label.trim(), kind, max_devices: kind === "admin" && unlimitedDevices ? 0 : maxDevices, features: kind === "admin" ? ["edge", "settings", "history", "admin"] : features } },
+       { data: { label: label.trim(), kind, max_devices: kind === "admin" && unlimitedDevices ? 0 : maxDevices, features: kind === "admin" ? ["edge", "trade-x", "settings", "history", "admin"] : features } },
       {
         onSuccess: (created) => {
            setNewKey({ value: created.access_key, kind: created.kind, label: created.label });
@@ -246,6 +256,35 @@ export default function AdminUsersPage() {
     );
   };
 
+  const handleDelete = (item: AccessKeySummary) => {
+    if (!window.confirm(`Delete ${item.label}? This immediately revokes every session and permanently reserves this label.`)) return;
+    setDeletingKeyIds((current) => new Set(current).add(item.key_id));
+    deleteKey.mutate(
+      { id: item.key_id },
+      {
+        onSuccess: () => {
+          toast({ title: "Access key deleted", description: `${item.label} has been removed and can no longer sign in.` });
+          window.setTimeout(() => {
+            setDeletingKeyIds((current) => {
+              const next = new Set(current);
+              next.delete(item.key_id);
+              return next;
+            });
+            queryClient.invalidateQueries({ queryKey: getListAccessKeysQueryKey() });
+          }, 420);
+        },
+        onError: (error) => {
+          setDeletingKeyIds((current) => {
+            const next = new Set(current);
+            next.delete(item.key_id);
+            return next;
+          });
+          toast({ variant: "destructive", title: "Delete failed", description: errorMessage(error) });
+        },
+      },
+    );
+  };
+
   const copyKey = async () => {
     if (!newKey) return;
     await navigator.clipboard?.writeText(newKey.value);
@@ -298,12 +337,12 @@ export default function AdminUsersPage() {
               <button type="submit" className="primary-button admin-create-submit" disabled={!canCreate}><KeyRound size={16} />{createKey.isPending ? "Generating…" : `Generate ${kind === "admin" ? "admin" : "user"} key`}</button>
             </form>
           </div>
-           <div className="admin-safety-note"><div className="admin-safety-icon"><ShieldCheck size={20} /></div><h3>Built-in safety rules</h3><ul><li>New keys are locked to one device unless you change the limit.</li><li>Administrator keys can allow unlimited devices.</li><li>Pausing can be resumed. Blocking can be undone.</li><li>Banning revokes all sessions permanently and cannot be undone.</li><li>Presence is refreshed every 15 seconds in this panel.</li></ul></div>
+             <div className="admin-safety-note admin-key-features-note"><div className="admin-safety-icon"><KeyRound size={20} /></div><h3>Key features</h3><ul><li>Grant EDGE, Trade X, Settings, and History independently for each user.</li><li>If a feature is not granted, the workspace shows “Restricted — admin access only.”</li><li>Edit access later to unlock a feature without issuing a replacement key.</li><li>Delete permanently revokes the key and reserves its label.</li></ul></div>
         </section>
 
         <section className="panel admin-directory">
           <div className="panel-header"><div><span className="panel-overline">LIVE DIRECTORY</span><h3>Access keys and presence</h3></div><span className="directory-note">{keys.length} records · {onlineCount} online</span></div>
-          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} onStatus={handleStatus} onUpdate={handleUpdate} onReset={handleReset} />)}</div>}
+          {keysQuery.isLoading ? <div className="admin-empty"><RefreshCw className="spin" size={20} /> Loading access keys…</div> : keysQuery.isError ? <div className="admin-empty admin-empty-error">Unable to load the access directory. Sign in again as an administrator.</div> : keys.length === 0 ? <div className="admin-empty">No keys created yet. Generate the first user key above.</div> : <div className="key-directory">{keys.map((item) => <KeyRow key={item.key_id} item={item} deletingKey={deletingKeyIds.has(item.key_id)} onStatus={handleStatus} onUpdate={handleUpdate} onReset={handleReset} onDelete={handleDelete} />)}</div>}
         </section>
       </div>
     </AppShell>

@@ -107,13 +107,17 @@ type MartingaleSettlementWatch = {
 export default function XTraderPage() {
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const queryClient = useQueryClient();
-  const canViewHistory = accessSession.data?.is_admin === true || accessSession.data?.features.includes("history") === true;
-  const tokenStatus = useGetDerivTokenStatus({ query: { retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
+  const isAdmin = accessSession.data?.is_admin === true;
+  const canUseEdge = isAdmin || accessSession.data?.features.includes("edge") === true;
+  const canUseTradeX = isAdmin || accessSession.data?.features.includes("trade-x") === true;
+  const canUseDeriv = canUseEdge || canUseTradeX;
+  const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true;
+  const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
-  const accounts = useGetDerivAccounts({ query: { enabled: connectedToken, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
+  const accounts = useGetDerivAccounts({ query: { enabled: connectedToken && canUseDeriv, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
   const storedPatInvalid = errorMessage(accounts.error).includes("saved Deriv token is no longer readable");
-  const status = useGetDerivStatus({ query: { enabled: connectedToken, retry: false, refetchInterval: 250, queryKey: getGetDerivStatusQueryKey() } });
-  const history = useGetDerivHistory({ query: { enabled: connectedToken && canViewHistory, retry: false, refetchInterval: 500, queryKey: getGetDerivHistoryQueryKey() } });
+  const status = useGetDerivStatus({ query: { enabled: connectedToken && canUseDeriv, retry: false, refetchInterval: 500, queryKey: getGetDerivStatusQueryKey() } });
+  const history = useGetDerivHistory({ query: { enabled: connectedToken && canViewHistory, retry: false, refetchInterval: 250, queryKey: getGetDerivHistoryQueryKey() } });
   const tokenMutation = useTestDerivToken();
   const connectionMutation = useTestDerivConnection();
   const deleteTokenMutation = useDeleteDerivToken();
@@ -420,6 +424,22 @@ export default function XTraderPage() {
     };
   };
 
+  const refreshTradeResults = () => {
+    // The buy acknowledgement and the contract stream update arrive
+    // independently. Refresh immediately, then once more after the stream
+    // has had time to append the contract to recent history.
+    void Promise.all([
+      queryClient.refetchQueries({ queryKey: getGetDerivStatusQueryKey(), type: "active" }),
+      queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: "active" }),
+      queryClient.refetchQueries({ queryKey: getGetDerivAccountsQueryKey(), type: "active" }),
+    ]);
+    window.setTimeout(() => {
+      void queryClient.refetchQueries({ queryKey: getGetDerivStatusQueryKey(), type: "active" });
+      void queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: "active" });
+      void queryClient.refetchQueries({ queryKey: getGetDerivAccountsQueryKey(), type: "active" });
+    }, 180);
+  };
+
   const executeBatch = async () => {
     const config = configRef.current;
     const entryDigit = config.barrier;
@@ -450,7 +470,7 @@ export default function XTraderPage() {
       },
     });
     setSessionTrades((value) => value + 1);
-    await queryClient.invalidateQueries();
+    refreshTradeResults();
   };
 
   const runLoop = async () => {
@@ -542,7 +562,7 @@ export default function XTraderPage() {
     setAnalysisTickCount(0);
     try {
       await symbolMutation.mutateAsync({ data: { symbol: next } });
-      await queryClient.invalidateQueries();
+      refreshTradeResults();
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
     }
@@ -589,7 +609,7 @@ export default function XTraderPage() {
       });
       setTradeXTradesSent((value) => value + count);
       setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
-      await queryClient.invalidateQueries();
+      refreshTradeResults();
       return true;
     } catch (error) {
       setTradeXMessage(errorMessage(error));
@@ -748,7 +768,9 @@ export default function XTraderPage() {
 
       <section className="xt-connect-card">
         <div className="xt-section-title"><Link2 size={17} /><div><b>Deriv API Connection</b><small>Enter a Personal Access Token with trade and read scopes.</small></div></div>
-        {!connectedToken ? (
+         {!canUseDeriv ? (
+           <div className="xt-restricted-message"><ShieldAlert size={17} /><span>Restricted — admin access only. This key has not been granted a trading feature.</span></div>
+         ) : !connectedToken ? (
           <form onSubmit={connectPat} className="xt-pat-form">
             <input type="password" value={pat} onChange={(event) => setPat(event.target.value)} placeholder="Paste your Deriv PAT token" autoComplete="off" />
             <button disabled={!pat.trim() || tokenMutation.isPending}>{tokenMutation.isPending ? <Loader2 className="spin" size={16} /> : <Power size={16} />}Connect</button>
@@ -777,15 +799,17 @@ export default function XTraderPage() {
       <section className="xt-feature-card xt-feature-card-trade-x">
         <div><Activity size={18} /><span><b>Trade X</b><small>Digit Differs distribution and safe-entry automation</small></span></div>
         <div className="xt-feature-actions">
-          <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}>
+          {!canUseTradeX && <span className="xt-feature-locked">RESTRICTED</span>}
+          {canUseTradeX && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}>
             <BookOpen size={14} />Guide
-          </button>
+          </button>}
           <label className="xt-switch">
             <input
               type="checkbox"
               checked={tradeXEnabled}
               onChange={(event) => toggleTradeX(event.target.checked)}
               aria-label="Toggle Trade X"
+              disabled={!canUseTradeX}
             />
             <span />
           </label>
@@ -795,15 +819,17 @@ export default function XTraderPage() {
       <section className="xt-feature-card">
         <div><Bot size={18} /><span><b>EDGE 🏔️</b><small>Over / Under digit automation</small></span></div>
         <div className="xt-feature-actions">
-          <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("edge"); setGuidePage(0); setGuideOpen(true); }}>
+          {!canUseEdge && <span className="xt-feature-locked">RESTRICTED</span>}
+          {canUseEdge && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("edge"); setGuidePage(0); setGuideOpen(true); }}>
             <BookOpen size={14} />Guide
-          </button>
+          </button>}
           <label className="xt-switch">
             <input
               type="checkbox"
               checked={xTraderEnabled}
               onChange={(event) => toggleXTrader(event.target.checked)}
               aria-label="Toggle EDGE"
+              disabled={!canUseEdge}
             />
             <span />
           </label>

@@ -74,6 +74,19 @@ export default function AppPage() {
   const isBuyPending = buyContract.isPending;
   const proposalReady = Boolean(status?.authorized && serverSelected && effectiveSymbol && Number(amount) > 0 && Number(duration) >= 1 && Number(duration) <= 5);
 
+  const refreshTradeResults = () => {
+    void Promise.all([
+      queryClient.refetchQueries({ queryKey: getGetDerivStatusQueryKey(), type: 'active' }),
+      queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: 'active' }),
+      queryClient.refetchQueries({ queryKey: getGetDerivAccountsQueryKey(), type: 'active' }),
+    ]);
+    window.setTimeout(() => {
+      void queryClient.refetchQueries({ queryKey: getGetDerivStatusQueryKey(), type: 'active' });
+      void queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: 'active' });
+      void queryClient.refetchQueries({ queryKey: getGetDerivAccountsQueryKey(), type: 'active' });
+    }, 180);
+  };
+
   useEffect(() => {
     const timer = window.setInterval(() => setCooldownClock(Date.now()), 100);
     return () => window.clearInterval(timer);
@@ -156,9 +169,7 @@ export default function AppPage() {
               current ? { ...current, last_proposal: result.proposal } : current,
             );
           }
-          queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetDerivHistoryQueryKey() });
+           refreshTradeResults();
         },
         onError: (error) => {
           setTestFailed(true);

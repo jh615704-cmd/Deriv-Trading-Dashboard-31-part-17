@@ -242,6 +242,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The access-key label is already reserved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Administrator access key required
           content:
@@ -277,6 +283,44 @@ paths:
                 $ref: "#/components/schemas/AccessKeySummary"
         "400":
           description: Invalid or irreversible access-key update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Access key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      security:
+        - accessSession: []
+      operationId: deleteAccessKey
+      tags: [access]
+      summary: Delete an access key permanently
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Access key deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: The primary administrator key cannot be deleted
           content:
             application/json:
               schema:
@@ -721,7 +765,7 @@ components:
     AccessKeyUpdateInput:
       type: object
       properties:
-        status: { type: string, enum: [active, paused, blocked, banned] }
+        status: { type: string, enum: [active, paused, blocked, banned, deleted] }
         max_devices:
           type: integer
           minimum: 0
@@ -734,7 +778,7 @@ components:
             $ref: "#/components/schemas/AccessFeature"
     AccessFeature:
       type: string
-      enum: [edge, settings, history, admin]
+      enum: [edge, trade-x, settings, history, admin]
     AccessSession:
       type: object
       required: [key_id, key_prefix, label, kind, is_admin, status, max_devices, features, online, last_seen_at]

@@ -70,6 +70,7 @@ export type AccessFeature = typeof AccessFeature[keyof typeof AccessFeature];
 
 export const AccessFeature = {
   edge: 'edge',
+  'trade-x': 'trade-x',
   settings: 'settings',
   history: 'history',
   admin: 'admin',
@@ -100,6 +101,7 @@ export const AccessKeyUpdateInputStatus = {
   paused: 'paused',
   blocked: 'blocked',
   banned: 'banned',
+  deleted: 'deleted',
 } as const;
 
 export interface AccessKeyUpdateInput {
