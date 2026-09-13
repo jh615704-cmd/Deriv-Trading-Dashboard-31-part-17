@@ -778,6 +778,10 @@ html.dark { color-scheme: dark; }.dark body { background: #091419; }.dark .app-f
 .access-gate-orbit { position: absolute; width: 720px; height: 720px; border: 1px solid rgba(53,214,182,.13); border-radius: 50%; box-shadow: 0 0 0 80px rgba(53,214,182,.025), 0 0 0 160px rgba(53,214,182,.018); transform: translate(28%, -35%) rotate(18deg); }
 .access-gate-card { position: relative; width: min(100%, 430px); padding: 38px; border: 1px solid #24434a; border-radius: 15px; background: rgba(16,38,45,.94); box-shadow: 0 25px 70px rgba(0,0,0,.28); }
 .access-gate-loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #8ce0ca; }
+.access-gate-exit { position: fixed; inset: 0; z-index: 40; animation: access-gate-fade-out .48s ease .08s forwards; }
+.access-gate-unlocking { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; color: #8ce0ca; animation: access-gate-card-fade-out .42s ease forwards; }
+.access-gate-unlocking strong { color: #f3fbf9; font-size: 16px; }
+.access-gate-unlocking span { color: #8ba1a2; font-size: 11px; }
 .access-gate-brand { margin-bottom: 46px; color: #f3fbf9; }
 .access-gate-eyebrow { display: flex; align-items: center; gap: 7px; color: #35d6b6; font: 9px var(--app-font-mono); letter-spacing: .13em; }
 .access-gate-card h1 { margin: 14px 0 10px; font-size: 29px; letter-spacing: -.04em; }
@@ -804,3 +808,6 @@ html.dark { color-scheme: dark; }.dark body { background: #091419; }.dark .app-f
 
 .key-edit-panel { display: grid; gap: 8px; min-width: 220px; padding: 9px; border: 1px solid #b9ded6; border-radius: 6px; background: #f4fbf9; }.key-edit-limit { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #6c888a; font: 8px var(--app-font-mono); }.key-edit-limit input { width: 58px; height: 27px; padding: 0 6px; border: 1px solid #cddfdf; border-radius: 4px; background: white; color: var(--ink-deep); font: 10px var(--app-font-mono); }.key-edit-features { display: flex; flex-wrap: wrap; gap: 4px; }.key-edit-feature { display: inline-flex; align-items: center; gap: 4px; padding: 4px 5px; border: 1px solid #d4e3e1; border-radius: 4px; color: #789395; font-size: 8px; cursor: pointer; }.key-edit-feature.selected { border-color: #7ed5c4; background: #e9f9f5; color: #187c6d; }.key-edit-feature input { accent-color: #18a894; }.key-edit-actions { display: flex; gap: 5px; }
 .admin-unlimited-toggle, .key-edit-unlimited { display: flex; align-items: center; gap: 7px; color: #527b7a; font: 9px var(--app-font-mono); }.admin-unlimited-toggle input, .key-edit-unlimited input { accent-color: #18a894; }.key-edit-limit input:disabled, .admin-field input:disabled { cursor: not-allowed; opacity: .55; }
+@keyframes access-gate-fade-out { from { opacity: 1; } to { opacity: 0; visibility: hidden; pointer-events: none; } }
+@keyframes access-gate-card-fade-out { from { transform: translateY(0) scale(1); opacity: 1; } to { transform: translateY(-8px) scale(.985); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .access-gate-exit, .access-gate-unlocking { animation-duration: .01ms; animation-delay: 0ms; } }

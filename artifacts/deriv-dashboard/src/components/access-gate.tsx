@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useLocation } from "wouter";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "wouter";
 import {
   getGetAccessSessionQueryKey,
   useGetAccessSession,
@@ -38,6 +38,8 @@ export function AccessGate({ children }: { children: ReactNode }) {
   const heartbeat = useHeartbeatAccessSession();
   const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState("");
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const unlockTimerRef = useRef<number | null>(null);
   const deviceId = useMemo(() => getDeviceId(), []);
 
   useEffect(() => {
@@ -48,24 +50,19 @@ export function AccessGate({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [accessSession.data, heartbeat]);
 
+  useEffect(() => () => {
+    if (unlockTimerRef.current !== null) {
+      window.clearTimeout(unlockTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (location.startsWith("/admin") && accessSession.data && !accessSession.data.is_admin) {
       setLocation("/app");
     }
   }, [accessSession.data, location, setLocation]);
 
-  useEffect(() => {
-    if (!accessSession.data) return;
-    const leaveApp = () => {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon("/api/access/logout", new Blob([], { type: "application/json" }));
-      }
-    };
-    window.addEventListener("pagehide", leaveApp);
-    return () => window.removeEventListener("pagehide", leaveApp);
-  }, [accessSession.data]);
-
-  if (location === "/sign-in") return <>{children}</>;
+  if (location === "/sign-in" || location.startsWith("/sign-in/")) return <>{children}</>;
   if (accessSession.isLoading) {
     return (
       <div className="access-gate">
@@ -77,16 +74,43 @@ export function AccessGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (accessSession.data) return <>{children}</>;
+  if (accessSession.data) {
+    return (
+      <>
+        {children}
+        {isUnlocking && (
+          <div className="access-gate access-gate-exit" role="status" aria-live="polite">
+            <div className="access-gate-card access-gate-unlocking">
+              <ShieldCheck size={26} />
+              <strong>Access verified</strong>
+              <span>Opening your workspace…</span>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
     try {
-      await login.mutateAsync({ data: { access_key: accessKey.trim(), device_id: deviceId } });
-      await queryClient.invalidateQueries({ queryKey: getGetAccessSessionQueryKey() });
+      const session = await login.mutateAsync({
+        data: { access_key: accessKey.trim(), device_id: deviceId },
+      });
+      // The login response is already the server-verified session. Put it in
+      // the cache immediately instead of waiting for a second request that
+      // can briefly race the cookie update in the browser.
+      queryClient.setQueryData(getGetAccessSessionQueryKey(), session);
       setAccessKey("");
-      setLocation("/app");
+      setIsUnlocking(true);
+      unlockTimerRef.current = window.setTimeout(() => {
+        setLocation("/app");
+        unlockTimerRef.current = window.setTimeout(() => {
+          setIsUnlocking(false);
+          unlockTimerRef.current = null;
+        }, 180);
+      }, 300);
     } catch (loginError) {
       setError(getErrorMessage(loginError));
     }
