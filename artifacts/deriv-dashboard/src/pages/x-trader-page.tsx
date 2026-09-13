@@ -65,11 +65,11 @@ const guidePages = [
   { title: "Martingale after loss", body: "Martingale increases the next stake after a loss by the configured multiplier. It can grow exposure quickly and may exhaust a balance after a short losing run.", points: ["Set a low multiplier and a hard stop if you test it.", "The strategy is not a recovery guarantee.", "Demo testing is strongly recommended before any live use."] },
   { title: "Auto Best Digit", body: "Auto Best Digit ranks the live signals from all supported markets using available tick history, current sample size, and the strongest recent Over or Under streak. It selects a market, direction, and barrier for the next batch.", points: ["The score favors fresh markets with enough observations.", "It selects both Over or Under and the profitable-looking barrier.", "It is a signal-selection aid, not a prediction engine. No strategy guarantees a win rate."] },
   { title: "How the signal score works", body: "The built-in score compares recent consecutive digits above and below each candidate barrier across every subscribed market. Stronger, better-sampled signals rank higher.", points: ["Signals with no recent ticks are ignored.", "The selected market can change when a stronger signal appears.", "Recent streak length is descriptive, not proof of future probability."] },
-  { title: "Immediate Over and Under", body: "Use the Over or Under button below Run EDGE to send one contract immediately using the selected barrier, duration, stake, and strategy.", points: ["The button sends one trade at a time.", "Martingale can multiply the next stake after a loss, but it cannot guarantee recovery.", "The next win resets the amount to the normal stake."] },
-  { title: "Run EDGE", body: "Run EDGE starts the repeating loop using the current direction, barrier, duration, stake, strategy, and batch size. Stop ends the loop after the active request completes.", points: ["Use the immediate Over and Under buttons for a single batch.", "Use Run EDGE only after reviewing the full configuration.", "Turning off EDGE stops the loop and hides its controls."] },
+  { title: "Manual Over and Under", body: "Use the Over or Under direction and trade controls in the execution area to send one contract using the selected barrier, duration, stake, and strategy.", points: ["The trade control sends one contract at a time.", "Martingale can multiply the next stake after a loss, but it cannot guarantee recovery.", "The next win resets the amount to the normal stake."] },
+  { title: "Auto Best Digit", body: "Auto Best Digit starts the repeating loop after selecting the strongest available signal. Stop ends the loop after the active request completes.", points: ["Review the account, market, direction, barrier, duration, and stake first.", "The loop uses the current strategy and risk limits.", "Turning off EDGE stops the loop and hides its controls."] },
   { title: "Take Profit", body: "Take Profit stops the repeating loop after the session reaches the configured positive P/L. It applies to the local session total, not to your entire Deriv account history.", points: ["Choose an amount you can accept as a session target.", "The target is checked as results settle.", "Take Profit does not close a contract early."] },
   { title: "Stop Loss", body: "Stop Loss stops the repeating loop after the session reaches the configured negative P/L. It is a guardrail, not a guarantee that losses cannot exceed the target.", points: ["Use a smaller loss limit while testing.", "Bulk trades can settle after the loop is stopped.", "Review the trade history before starting another session."] },
-  { title: "Live-money protection", body: "Real accounts require an explicit live-funds confirmation before Run EDGE, Auto Best Digit, or an immediate trade can send contracts.", points: ["Read the confirmation carefully.", "The server also enforces its live-trading configuration.", "If you are learning, switch back to a demo account."] },
+  { title: "Live-money protection", body: "Real accounts require an explicit live-funds confirmation before Auto Best Digit or an immediate trade can send contracts.", points: ["Read the confirmation carefully.", "The server also enforces its live-trading configuration.", "If you are learning, switch back to a demo account."] },
   { title: "Reading session results", body: "Session P/L and Trades Sent show only activity since the last Reset. Recent Trades contains the dashboard rows received from the Deriv stream.", points: ["Reset clears only Session P/L and Trades Sent.", "Reset does not change stake, duration, barrier, or strategy.", "Clear Recent Trades removes dashboard rows without deleting Deriv records."] },
   { title: "A safe pre-trade checklist", body: "Before sending anything, confirm the account, market, direction, barrier, duration, stake, strategy, and risk limits.", points: ["Start with a demo account.", "Martingale increases exposure after losses, so keep a reserve.", "Never rely on a claimed guaranteed win rate."] },
   { title: "Let's start trading", body: "You now know how the market selector, Over and Under contracts, Martingale, Auto Best Digit, and risk controls work.", points: ["Start with one small demo trade.", "Watch the settlement and confirm the history updates.", "Keep the guide available whenever you change strategy."] },
@@ -736,7 +736,6 @@ export default function XTraderPage() {
   const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const canRun = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed));
   const canTrade = isConnected && !running && !bulkBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
     && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
@@ -827,19 +826,12 @@ export default function XTraderPage() {
                <div className="xt-analysis-header">
                  <div className="xt-analysis-title"><Activity size={16} /><span><b>LIVE ANALYSIS · {analysisTickCount}T</b><small>{analysisTickCount ? "Live market digits" : "Waiting for the next live tick"}</small></span></div>
                  <div className="xt-analysis-actions">
-                    <button type="button" className="xt-analysis-quick over" onClick={() => { setDirection("DIGITOVER"); selectDuration(2); }} disabled={running} title="Set a two-tick Over contract">2× OVER</button>
-                    <button type="button" className="xt-analysis-quick under" onClick={() => { setDirection("DIGITUNDER"); selectDuration(2); }} disabled={running} title="Set a two-tick Under contract">2× UNDER</button>
                    <button type="button" className="xt-analysis-refresh" onClick={refreshAnalysis} disabled={!isConnected} title="Restart live analysis count"><RefreshCw size={14} /></button>
                  </div>
                </div>
                <div className="xt-analysis-track" aria-label={`Live analysis: ${analysis.overPercent.toFixed(1)} percent over and ${analysis.underPercent.toFixed(1)} percent under`}>
                  <span className="over" style={{ width: `${analysis.overPercent}%` }} />
                  <span className="under" style={{ width: `${analysis.underPercent}%` }} />
-               </div>
-               <div className="xt-analysis-summary">
-                 <span className="over">▲ OVER {barrier} · {analysis.overPercent.toFixed(1)}%</span>
-                 <span>Lean: <b>{analysis.lean}</b> · Conf {analysis.confidence}%</span>
-                 <span className="under">{analysis.underPercent.toFixed(1)}% · UNDER {barrier} ▼</span>
                </div>
                <div className="xt-analysis-chart" aria-label="Live digit distribution">
                  {analysis.counts.map((count, digit) => {
@@ -880,7 +872,7 @@ export default function XTraderPage() {
             </div>
 
             <div className="xt-controls">
-              {!running ? <button className="run" onClick={start} disabled={!canRun}><Play size={18} fill="currentColor" />RUN EDGE</button> : <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
+               {running && <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
               <button className="reset" onClick={reset}><RotateCcw size={18} />RESET</button>
             </div>
              <div className="xt-bulk-controls">

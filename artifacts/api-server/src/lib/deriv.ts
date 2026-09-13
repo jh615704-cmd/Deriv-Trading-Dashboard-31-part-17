@@ -489,9 +489,12 @@ function send(message: Record<string, unknown>) {
   return true;
 }
 
-function sendProposalRequest(input: ProposalInput) {
-  const reqId = ++getState().proposalSequence;
-  const sent = send({
+function sendStakeProposal(input: ProposalInput, reqId: number) {
+  // Deriv owns the payout quote. Every feature must request a stake-based
+  // proposal, buy at the exact returned ask price, and pass the returned
+  // payout through unchanged. Do not apply an app-level payout cap, fee, or
+  // percentage reduction here or in any future feature that uses this path.
+  return send({
     proposal: 1,
     amount: input.amount,
     basis: "stake",
@@ -503,6 +506,11 @@ function sendProposalRequest(input: ProposalInput) {
     ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
     req_id: reqId,
   });
+}
+
+function sendProposalRequest(input: ProposalInput) {
+  const reqId = ++getState().proposalSequence;
+  const sent = sendStakeProposal(input, reqId);
   return sent ? reqId : null;
 }
 
@@ -821,18 +829,7 @@ async function requestFreshProposal(input: ProposalInput) {
             reject(new Error("Deriv did not return a proposal in time"));
           }, proposalTimeoutMs);
           getState().proposalWaiters.set(reqId, { resolve, reject, timer });
-          const sent = send({
-            proposal: 1,
-            amount: input.amount,
-            basis: "stake",
-            contract_type: input.contract_type,
-            currency: defaultCurrency,
-            duration: input.duration,
-            duration_unit: input.duration_unit,
-            underlying_symbol: input.symbol ?? defaultSymbol,
-            ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
-            req_id: reqId,
-          });
+           const sent = sendStakeProposal(input, reqId);
           if (!sent) {
             clearTimeout(timer);
             getState().proposalWaiters.delete(reqId);
