@@ -811,3 +811,379 @@ html.dark { color-scheme: dark; }.dark body { background: #091419; }.dark .app-f
 @keyframes access-gate-fade-out { from { opacity: 1; } to { opacity: 0; visibility: hidden; pointer-events: none; } }
 @keyframes access-gate-card-fade-out { from { transform: translateY(0) scale(1); opacity: 1; } to { transform: translateY(-8px) scale(.985); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .access-gate-exit, .access-gate-unlocking { animation-duration: .01ms; animation-delay: 0ms; } }
+
+/* Responsive workspace pass
+   The app uses the viewport as the source of truth so it adapts naturally
+   to phones, tablets, foldables, and desktop windows without device sniffing. */
+html, body, #root { min-width: 0; }
+body { overflow-x: hidden; }
+
+@media (max-width: 900px) {
+  .xt-app {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+
+  .topbar {
+    gap: 12px;
+  }
+
+  .topbar-actions {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .admin-top-link {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .access-gate {
+    min-height: 100svh;
+    padding:
+      max(16px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+  }
+
+  .access-gate-orbit {
+    width: 540px;
+    height: 540px;
+    transform: translate(34%, -35%);
+  }
+
+  .access-gate-card {
+    width: min(100%, 430px);
+    padding: 30px 22px;
+  }
+
+  .access-gate-card h1 {
+    font-size: clamp(25px, 8vw, 29px);
+  }
+
+  .app-frame {
+    min-height: 100svh;
+  }
+
+  .sidebar {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+
+  .topbar {
+    min-height: 55px;
+    height: auto;
+    padding:
+      9px
+      max(14px, env(safe-area-inset-right))
+      9px
+      max(14px, env(safe-area-inset-left));
+  }
+
+  .crumbs {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .crumbs span:first-child,
+  .crumb-slash {
+    display: none;
+  }
+
+  .topbar-actions {
+    flex: 0 0 auto;
+  }
+
+  .admin-top-link {
+    width: 31px;
+    height: 31px;
+    justify-content: center;
+    padding: 0;
+    border-radius: 7px;
+    font-size: 0;
+  }
+
+  .admin-top-link svg {
+    flex: 0 0 auto;
+  }
+
+  .content-wrap {
+    padding:
+      24px
+      max(14px, env(safe-area-inset-right))
+      max(26px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+  }
+
+  .intro-copy {
+    max-width: 40rem;
+    line-height: 1.55;
+  }
+
+  .signal-cell {
+    min-width: 0;
+    padding: 15px 13px;
+  }
+
+  .signal-cell strong {
+    overflow-wrap: anywhere;
+  }
+
+  .panel-header,
+  .balance-panel,
+  .quote-panel,
+  .proposal-panel,
+  .response-panel {
+    padding: 16px;
+  }
+
+  .balance-amount {
+    font-size: clamp(28px, 9vw, 39px);
+  }
+
+  .balance-details {
+    flex-wrap: wrap;
+    gap: 16px 25px;
+  }
+
+  .proposal-output {
+    min-width: 0;
+  }
+
+  .history-panel {
+    padding: 16px;
+  }
+
+  .xt-app {
+    min-height: 100svh;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(38px, env(safe-area-inset-bottom));
+  }
+
+  .xt-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .xt-brand {
+    min-width: 0;
+  }
+
+  .xt-brand div {
+    min-width: 0;
+  }
+
+  .xt-brand small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .xt-connection {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .xt-connect-card,
+  .xt-feature-card,
+  .xt-cockpit,
+  .xt-history {
+    border-radius: 13px;
+  }
+
+  .xt-feature-card {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .xt-feature-card > div:first-child {
+    min-width: 0;
+  }
+
+  .xt-feature-card > div:first-child span {
+    min-width: 0;
+  }
+
+  .xt-feature-card > div:first-child small {
+    overflow-wrap: anywhere;
+  }
+
+  .xt-feature-actions {
+    flex: 0 0 auto;
+  }
+
+  .xt-cockpit,
+  .xt-history {
+    padding: 13px;
+  }
+
+  .xt-cockpit-head {
+    gap: 10px;
+  }
+
+  .xt-cockpit-head > div {
+    min-width: 0;
+  }
+
+  .xt-cockpit-head > div span {
+    min-width: 0;
+  }
+
+  .xt-cockpit-head small {
+    max-width: none;
+  }
+
+  .xt-analysis-summary {
+    grid-template-columns: 1fr;
+    gap: 5px;
+    line-height: 1.35;
+  }
+
+  .xt-analysis-summary .under {
+    text-align: left;
+  }
+
+  .xt-digits {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .xt-digits button {
+    min-height: 48px;
+    padding: 7px 3px 6px;
+  }
+
+  .xt-digits button small {
+    font-size: 6px;
+  }
+
+  .xt-digit-picker {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .xt-digit-picker button,
+  .xt-ticks button {
+    min-height: 42px;
+  }
+
+  .xt-direction button,
+  .xt-controls button,
+  .xt-bulk-controls button {
+    min-height: 44px;
+  }
+
+  .xt-session {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .xt-session > div {
+    min-width: 0;
+  }
+
+  .xt-session strong {
+    overflow-wrap: anywhere;
+  }
+
+  .xt-guide-backdrop {
+    align-items: safe center;
+    overflow-y: auto;
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+  }
+
+  .xt-guide {
+    max-height: calc(100svh - 24px);
+    overflow-y: auto;
+  }
+
+  .xt-guide-page {
+    min-height: 0;
+    padding: 24px 20px 21px;
+  }
+
+  .xt-guide-page h2 {
+    font-size: clamp(21px, 7vw, 25px);
+  }
+
+  .xt-guide-footer {
+    position: sticky;
+    bottom: 0;
+    background: #061f37;
+  }
+}
+
+@media (max-width: 390px) {
+  .access-gate {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .access-gate-card {
+    padding: 25px 18px;
+  }
+
+  .access-gate-brand {
+    margin-bottom: 28px;
+  }
+
+  .access-gate-footer {
+    gap: 8px;
+    font-size: 8px;
+  }
+
+  .xt-app {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .xt-brand strong {
+    font-size: 16px;
+  }
+
+  .xt-connection {
+    padding-left: 7px;
+    padding-right: 7px;
+    font-size: 6px;
+  }
+
+  .xt-feature-card {
+    padding: 13px;
+  }
+
+  .xt-feature-actions {
+    gap: 7px;
+  }
+
+  .xt-guide-button {
+    width: 32px;
+    padding: 0;
+  }
+
+  .xt-cockpit-head em {
+    max-width: 76px;
+    text-align: right;
+    line-height: 1.3;
+  }
+
+  .xt-session {
+    gap: 4px;
+  }
+
+  .xt-session > div {
+    padding: 8px 6px;
+  }
+
+  .xt-session small {
+    font-size: 7px;
+  }
+}

@@ -860,3 +860,119 @@
   .tx-rank-metrics small { display: none; }
   .tx-tap-trade { width: 100%; padding: 5px 2px; font-size: 5px; }
 }
+
+/* Keep ranking cards and controls usable on touch screens. */
+@media (max-width: 720px) {
+  .tx-header {
+    flex-wrap: wrap;
+  }
+
+  .tx-heading {
+    min-width: 0;
+  }
+
+  .tx-heading > div {
+    min-width: 0;
+  }
+
+  .tx-heading p {
+    overflow-wrap: anywhere;
+  }
+
+  .tx-header-actions {
+    margin-left: auto;
+  }
+
+  .tx-status-line {
+    flex-wrap: wrap;
+    min-height: 39px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    line-height: 1.35;
+  }
+
+  .tx-status-spacer {
+    display: none;
+  }
+
+  .tx-status-line .tx-status-muted:last-child {
+    display: inline;
+  }
+
+  .tx-market-layout,
+  .tx-execution-grid,
+  .tx-smart-controls {
+    gap: 10px;
+  }
+
+  .tx-ranking-list {
+    grid-template-columns: 1fr;
+  }
+
+  .tx-rank-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "select metrics"
+      "bar trade";
+    min-height: 66px;
+  }
+
+  .tx-rank-bar {
+    display: block;
+  }
+
+  .tx-tap-trade {
+    min-height: 32px;
+  }
+
+  .tx-action {
+    min-height: 60px;
+  }
+}
+
+@media (max-width: 390px) {
+  .tx-panel {
+    border-radius: 12px;
+  }
+
+  .tx-header,
+  .tx-body {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  .tx-section-heading {
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .tx-section-heading h3 {
+    font-size: 13px;
+  }
+
+  .tx-section-heading p {
+    line-height: 1.35;
+  }
+
+  .tx-distribution-readout {
+    gap: 9px;
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .tx-distribution-state {
+    margin-left: 0;
+  }
+
+  .tx-rank-row {
+    padding: 8px 7px;
+  }
+
+  .tx-rank-digit {
+    font-size: 19px;
+  }
+
+  .tx-rank-metrics b {
+    font-size: 9px;
+  }
+}
