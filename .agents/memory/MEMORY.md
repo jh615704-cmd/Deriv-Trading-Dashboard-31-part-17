@@ -7,3 +7,4 @@
 - [Access-key recovery](access-key-recovery.md) — admin recovery uses encrypted copies; legacy hashed-only keys must be replaced.
 - [Deriv read concurrency](deriv-read-concurrency.md) — status, accounts, and history reads must not queue behind per-user buy mutations.
 - [Runtime scaling boundary](runtime-scaling-boundary.md) — 900k active Deriv sessions requires horizontal runtime capacity, not a single Node process.
+- [Digit zero response schema](deriv-digit-zero-schema.md) — Deriv streak payloads include digit 0; keep OpenAPI and generated Zod minimums at zero.
