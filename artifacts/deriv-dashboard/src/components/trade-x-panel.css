@@ -261,6 +261,14 @@
   padding: 0 9px;
   cursor: pointer;
 }
+.tx-field-help {
+  display: block;
+  min-height: 12px;
+  color: #829a99;
+  font-family: var(--app-font-mono, "DM Mono", monospace);
+  font-size: 8px;
+  line-height: 1.35;
+}
 .tx-segmented { display: flex; gap: 4px; }
 .tx-segment {
   height: 35px;
@@ -376,6 +384,12 @@
   border-color: var(--tx-teal);
   background: #e5f7f1;
   box-shadow: inset 0 0 0 1px rgba(18, 165, 142, .16);
+}
+.tx-digit-market.tx-digit-selected {
+  border-color: #39c99e;
+  background: #dff8eb;
+  color: #0b624d;
+  box-shadow: inset 0 0 0 2px rgba(57, 201, 158, .2), 0 5px 14px rgba(57, 201, 158, .14);
 }
 .tx-digit-number {
   font-family: var(--app-font-mono, "DM Mono", monospace);
@@ -766,6 +780,14 @@
   background: linear-gradient(180deg, #0b4b68 56%, rgba(160, 40, 58, .48) 100%);
   box-shadow: 0 0 0 2px rgba(25, 193, 239, .2), inset 0 -3px 0 #ff626a, 0 0 16px rgba(0, 181, 224, .18);
 }
+.tx-digit-safe,
+.tx-digit-safe.tx-digit-market,
+.tx-digit-safe.tx-digit-selected {
+  border-color: #3be0a6;
+  background: linear-gradient(180deg, #0b4b68 48%, rgba(31, 144, 103, .7) 100%);
+  color: #f1fff9;
+  box-shadow: 0 0 0 2px rgba(59, 224, 166, .22), inset 0 -3px 0 #3be0a6, 0 0 18px rgba(59, 224, 166, .22);
+}
 .tx-digit-number { color: inherit; font-size: 22px; }
 .tx-digit-percent { color: #68dfd1; }
 .tx-digit-trend { color: #6f9bb3; }
@@ -782,6 +804,10 @@
 .tx-risk-label { padding: 3px 5px; border-radius: 4px; font: 800 7px var(--app-font-mono, monospace); letter-spacing: .05em; }
 .tx-safe-label { color: #70f1d0; background: #145d58; }
 .tx-risk-label { color: #ffb070; background: #6e392c; }
+.tx-signal-detail:has(.tx-safe-label) {
+  border-color: rgba(57, 201, 158, .68);
+  background: linear-gradient(145deg, rgba(24, 88, 77, .92), rgba(28, 57, 53, .92));
+}
 .tx-signal-metrics { display: grid; gap: 7px; margin-top: 12px; color: #a88f9a; font-size: 9px; }
 .tx-signal-metrics span { display: flex; justify-content: space-between; gap: 8px; }
 .tx-signal-metrics b { color: #ebdce4; font-weight: 500; text-align: right; }

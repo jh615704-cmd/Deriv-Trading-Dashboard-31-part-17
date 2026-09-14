@@ -97,6 +97,8 @@ export type DerivStatus = {
     quote: number | null;
     last_digit: number | null;
     sample_count: number;
+    digit_even_percentage: number;
+    digit_odd_percentage: number;
     digit_streaks: Array<{ digit: number; over: number; under: number }>;
   }>;
 };
@@ -355,12 +357,17 @@ function getDigitStreaks() {
 function getMarketSignals() {
   return Array.from(supportedSymbols, (symbol) => {
     const market = getState().marketHistory.get(symbol);
+    const digits = market?.digitHistory ?? [];
+    const evenCount = digits.filter((digit: number) => digit % 2 === 0).length;
+    const sampleCount = digits.length;
     return {
       symbol,
       quote: market?.quote ?? null,
-      last_digit: market?.digitHistory.at(-1) ?? null,
-      sample_count: market?.digitHistory.length ?? 0,
-      digit_streaks: digitStreaksFor(market?.digitHistory ?? []),
+      last_digit: digits.at(-1) ?? null,
+      sample_count: sampleCount,
+      digit_even_percentage: sampleCount ? Number(((evenCount / sampleCount) * 100).toFixed(1)) : 50,
+      digit_odd_percentage: sampleCount ? Number((((sampleCount - evenCount) / sampleCount) * 100).toFixed(1)) : 50,
+      digit_streaks: digitStreaksFor(digits),
     };
   });
 }

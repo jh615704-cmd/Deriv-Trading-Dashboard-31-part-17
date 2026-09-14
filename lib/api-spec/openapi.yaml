@@ -975,7 +975,7 @@ components:
           minimum: 0
     DerivMarketSignal:
       type: object
-      required: [symbol, quote, last_digit, sample_count, digit_streaks]
+      required: [symbol, quote, last_digit, sample_count, digit_even_percentage, digit_odd_percentage, digit_streaks]
       properties:
         symbol:
           type: string
@@ -990,6 +990,14 @@ components:
         sample_count:
           type: integer
           minimum: 0
+        digit_even_percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+        digit_odd_percentage:
+          type: number
+          minimum: 0
+          maximum: 100
         digit_streaks:
           type: array
           items:

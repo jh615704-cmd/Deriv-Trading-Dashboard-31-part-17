@@ -1,0 +1,58 @@
+.df-panel {
+  --df-ink: #e4f5fb;
+  --df-muted: #83aabd;
+  --df-line: rgba(72, 156, 196, .27);
+  --df-bg: #061f37;
+  --df-card: rgba(8, 43, 70, .9);
+  --df-blue: #38b9e8;
+  --df-cyan: #47e4c5;
+  --df-even: #4dd6e8;
+  --df-odd: #b984ff;
+  overflow: hidden;
+  border: 1px solid rgba(72, 156, 196, .34);
+  border-radius: 16px;
+  color: var(--df-ink);
+  background: radial-gradient(circle at 94% 0%, rgba(49, 185, 227, .13), transparent 30%), var(--df-bg);
+  box-shadow: 0 20px 46px rgba(0, 8, 20, .22);
+  font-family: var(--app-font-sans, Manrope, sans-serif);
+}
+.df-panel button,.df-panel input,.df-panel select { font: inherit; }
+.df-panel button:focus-visible,.df-panel input:focus-visible,.df-panel select:focus-visible { outline: 2px solid rgba(71, 228, 197, .75); outline-offset: 2px; }
+.df-panel button:disabled,.df-panel input:disabled,.df-panel select:disabled { cursor: not-allowed; opacity: .48; }
+.df-header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:22px 24px 19px; border-bottom:1px solid var(--df-line); background:rgba(5,31,52,.76); }
+.df-heading { display:flex; align-items:center; gap:13px; }
+.df-mark { width:39px; height:39px; display:grid; place-items:center; border-radius:10px 10px 10px 2px; color:#04233a; background:var(--df-cyan); box-shadow:5px 5px 0 rgba(56,185,232,.13); }
+.df-eyebrow { display:flex; align-items:center; gap:7px; color:var(--df-cyan); font:8px var(--app-font-mono,"DM Mono",monospace); letter-spacing:.14em; }
+.df-live-dot,.df-status-led { width:6px; height:6px; display:inline-block; border-radius:50%; background:#66899a; }
+.df-panel-active .df-live-dot,.df-status-led-live { background:var(--df-cyan); box-shadow:0 0 0 3px rgba(71,228,197,.14); animation:df-pulse 2.3s ease-out infinite; }
+.df-heading h2 { margin:5px 0 2px; color:#f0fbff; font-size:28px; line-height:1; letter-spacing:-.07em; }
+.df-heading p { margin:0; color:var(--df-muted); font-size:10px; }
+.df-header-actions { display:flex; align-items:center; gap:13px; }
+.df-guide-button,.df-reset,.df-recent-head button { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--df-line); border-radius:7px; color:#a5c8d8; background:#082641; cursor:pointer; font-size:9px; }
+.df-guide-button { padding:8px 10px; }
+.df-guide-button:hover,.df-reset:hover,.df-recent-head button:hover { border-color:var(--df-cyan); color:#e4fffa; }
+.df-state { display:flex; align-items:center; gap:6px; color:#7999aa; font:8px var(--app-font-mono,"DM Mono",monospace); letter-spacing:.08em; }
+.df-state i { width:6px; height:6px; display:inline-block; border-radius:50%; background:#7999aa; }
+.df-state-live { color:var(--df-cyan); }.df-state-live i { background:var(--df-cyan); }
+.df-status-line { min-height:32px; display:flex; align-items:center; gap:8px; padding:0 24px; color:#80a9bb; background:#072943; font:8px var(--app-font-mono,"DM Mono",monospace); letter-spacing:.03em; }
+.df-status-divider { width:1px; height:11px; background:var(--df-line); }.df-status-spacer { flex:1; }
+.df-body { display:grid; gap:13px; padding:23px 24px 28px; }
+.df-section,.df-recent { border:1px solid var(--df-line); border-radius:10px; background:var(--df-card); }
+.df-section-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:16px 18px 13px; border-bottom:1px solid rgba(72,156,196,.18); }
+.df-section-head>div { display:flex; align-items:flex-start; gap:10px; }.df-section-head>div>span { color:var(--df-cyan); font:9px var(--app-font-mono,"DM Mono",monospace); line-height:18px; }
+.df-section-head h3 { margin:0 0 3px; color:#edfaff; font-size:14px; letter-spacing:-.03em; }.df-section-head p { margin:0; color:var(--df-muted); font-size:9px; line-height:1.4; }
+.df-section-head>svg { color:#7db4cc; }.df-market-grid { display:grid; grid-template-columns:1.1fr 1.2fr .8fr; gap:12px; padding:17px 18px; }
+.df-field,.df-control { display:grid; gap:7px; min-width:0; }.df-field>span,.df-control>span,.df-quote>span { color:#6f9eb8; font:8px var(--app-font-mono,"DM Mono",monospace); letter-spacing:.11em; }
+.df-field select,.df-control select,.df-control input { width:100%; height:39px; padding:0 10px; border:1px solid #225d80; border-radius:8px; color:#e0f3fa; background:#061f37; outline:0; font-size:10px; }
+.df-segments { display:flex; gap:5px; }.df-segments button,.df-ticks button { min-height:39px; flex:1; border:1px solid #225d80; border-radius:8px; color:#93b4c3; background:#061f37; cursor:pointer; font-size:10px; }.df-segments button.selected,.df-ticks button.selected { border-color:var(--df-cyan); color:#79f2d4; background:#0a4c4b; }
+.df-quote { display:grid; align-content:center; gap:4px; padding:10px 12px; border:1px solid rgba(72,156,196,.2); border-radius:8px; background:rgba(5,29,49,.7); }.df-quote strong { color:#f2fdff; font:18px var(--app-font-mono,"DM Mono",monospace); }.df-quote small { color:#7fa8ba; font-size:8px; }
+.df-estimate { color:#78efd3; font:10px var(--app-font-mono,"DM Mono",monospace); }.df-parity-readout { display:grid; grid-template-columns:70px 1fr 70px; align-items:center; gap:13px; padding:17px 18px 11px; }.df-parity-number small { display:block; color:#78a7ba; font:8px var(--app-font-mono,"DM Mono",monospace); }.df-parity-number strong { display:block; margin-top:4px; font:18px var(--app-font-mono,"DM Mono",monospace); }.df-parity-number.even strong { color:var(--df-even); }.df-parity-number.odd { text-align:right; }.df-parity-number.odd strong { color:var(--df-odd); }
+.df-parity-track { display:flex; overflow:hidden; height:8px; border-radius:99px; background:#0c3954; }.df-parity-track i { display:block; height:100%; }.df-parity-track .even-fill { background:var(--df-even); }.df-parity-track .odd-fill { background:var(--df-odd); }
+.df-parity-buttons { display:grid; grid-template-columns:1fr 1fr; gap:9px; padding:5px 18px 15px; }.df-parity-buttons button { display:grid; gap:4px; padding:12px; border:1px solid #225d80; border-radius:8px; color:#9abacc; background:#061f37; text-align:left; cursor:pointer; }.df-parity-buttons button b { font:12px var(--app-font-mono,"DM Mono",monospace); }.df-parity-buttons button small { font-size:8px; }.df-parity-buttons .even.selected { border-color:var(--df-even); color:#a6f8ff; background:rgba(37,146,165,.22); }.df-parity-buttons .odd.selected { border-color:var(--df-odd); color:#e0c7ff; background:rgba(112,71,170,.22); }
+.df-parity-foot { display:flex; gap:20px; padding:0 18px 16px; color:#719db9; font:8px var(--app-font-mono,"DM Mono",monospace); }.df-parity-foot b { margin-left:4px; color:#c6e2ed; font-weight:500; }
+.df-control-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:17px 18px 19px; }.df-ticks { display:flex; gap:5px; }.df-money { position:relative; }.df-money i { position:absolute; left:11px; top:13px; color:#62d9be; font:8px var(--app-font-mono,"DM Mono",monospace); font-style:normal; }.df-money input { padding-left:28px; }.df-strategy { grid-column:span 2; }.df-strategy small { min-height:11px; color:#79a6b8; font:8px var(--app-font-mono,"DM Mono",monospace); }
+.df-session { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }.df-session>div { padding:13px; border:1px solid var(--df-line); border-radius:9px; background:#082641; }.df-session small { display:block; color:#6f9eb8; font:8px var(--app-font-mono,"DM Mono",monospace); letter-spacing:.09em; }.df-session strong { display:block; margin-top:6px; color:#ebfbff; font:16px var(--app-font-mono,"DM Mono",monospace); }.df-session strong.loss,.df-trade-row strong.loss { color:#ff9b9b; }
+.df-actions { display:flex; gap:9px; }.df-run,.df-stop,.df-reset { min-height:41px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border-radius:8px; cursor:pointer; font-size:10px; font-weight:800; }.df-run,.df-stop { flex:1; border:1px solid var(--df-cyan); color:#032b3b; background:var(--df-cyan); }.df-stop { border-color:#ff9e9e; color:#361922; background:#ff9e9e; }.df-reset { padding:0 13px; }
+.df-recent-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 17px; border-bottom:1px solid rgba(72,156,196,.18); }.df-recent-head h3 { margin:0 0 3px; font-size:13px; }.df-recent-head small { color:#719db9; font-size:8px; }.df-recent-head button { padding:7px 9px; }.df-empty { padding:22px 17px; color:#719db9; font-size:9px; }.df-trade-row { display:grid; grid-template-columns:1.5fr .7fr .8fr .6fr; gap:8px; align-items:center; padding:11px 17px; border-bottom:1px solid rgba(72,156,196,.12); color:#d7ecf4; font-size:10px; }.df-trade-row:last-child { border-bottom:0; }.df-trade-row span:first-child { display:grid; gap:3px; }.df-trade-row span:first-child b { color:#a7f1e2; font:9px var(--app-font-mono,"DM Mono",monospace); }.df-trade-row small { display:block; margin-bottom:3px; color:#719db9; font:7px var(--app-font-mono,"DM Mono",monospace); }.df-trade-row strong { text-align:right; color:#87f0d0; font:11px var(--app-font-mono,"DM Mono",monospace); }
+@keyframes df-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(71,228,197,0); } 45% { box-shadow:0 0 0 4px rgba(71,228,197,.13); } }
+@media (max-width:760px) { .df-header { align-items:flex-start; flex-direction:column; }.df-header-actions { width:100%; justify-content:space-between; }.df-market-grid,.df-control-grid { grid-template-columns:1fr; }.df-strategy { grid-column:auto; }.df-session { grid-template-columns:1fr 1fr; }.df-parity-foot { flex-wrap:wrap; gap:8px 14px; }.df-trade-row { grid-template-columns:1.4fr .7fr .7fr; }.df-trade-row>strong { grid-column:3; }.df-trade-row>span:nth-child(3) { display:none; } }
