@@ -87,7 +87,7 @@ const tradeXGuidePages = [
   { title: "Read the distribution", body: "Each digit shows its observed percentage and current absence streak. The safest differs list ranks digits with the lowest observed frequency first, because a Differs contract wins when the expiry digit is not the selected barrier.", points: ["Tap any oval digit to make it the active selection.", "The top three list follows the same live ranking.", "Refresh restarts the local sample window from the next market tick."] },
   { title: "Tick mapping", body: "Trade X maps the selected duration to the ranked safe-entry position. One tick uses rank 1, two ticks uses rank 2, and so on through five ticks.", points: ["Leave Manual Select off to follow the ranked tick mapping.", "Turn Manual Select on when you want to choose a specific digit.", "The active entry is shown before every action."] },
   { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select confirms the currently tapped digit when Manual Select is on. Smart Auto waits for the configured live percentage before entering.", points: ["Check market, stake, duration, and digit before sending.", "Manual digit taps only select a digit; the separate trade action sends it.", "Smart Auto uses the live percentage, AI ticks, and trade count you choose."] },
-  { title: "Smart Auto Trade", body: "Smart Auto Trade is an optional live-percentage gate. It only sends when the observed differs signal reaches your selected threshold, then waits through a 20-second cooldown before checking again.", points: ["The percentage is a live sample, not a promise of profit.", "The AI tick setting uses the same ranked tick mapping.", "Disable Smart Auto Trade to stop its loop immediately."] },
+  { title: "Smart Auto Trade", body: "Smart Auto Trade is an optional live-percentage gate. It sends as soon as the observed differs signal reaches your selected threshold.", points: ["The percentage is a live sample, not a promise of profit.", "The AI tick setting uses the same ranked tick mapping.", "Disable Smart Auto Trade to stop its loop immediately."] },
   { title: "A careful workflow", body: "Start with a small demo stake, wait for a meaningful sample, and treat every signal as descriptive market context rather than certainty.", points: ["Confirm the selected account is the one you intend to use.", "Use the lowest practical stake while evaluating a market.", "Stop automation before changing markets or strategy assumptions."] },
 ] as const;
 
@@ -211,7 +211,6 @@ export default function XTraderPage() {
   const digitFlipActionLockRef = useRef(false);
   const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
   const edgeAnalysisRef = useRef({ sample: 0, overPercent: 50, underPercent: 50 });
-  const digitFlipSampleRef = useRef(0);
   const liveTickSequenceRef = useRef(0);
   const digitFlipNextStakeRef = useRef(digitFlipStake);
   const digitFlipMartingaleWatchRef = useRef<{ knownIds: Set<string>; processedIds: Set<string> } | null>(null);
@@ -348,8 +347,7 @@ export default function XTraderPage() {
       overPercent: analysis.overPercent,
       underPercent: analysis.underPercent,
     };
-    digitFlipSampleRef.current = status.data?.digit_sample_count ?? 0;
-  }, [analysis, analysisDigits.length, analysisTickCount, status.data?.digit_sample_count, tradeXConfidence]);
+  }, [analysis, analysisDigits.length, analysisTickCount, tradeXConfidence]);
   const rankedDigits = useMemo(
     () => analysisTickCount > 0 ? rankDigitsByDistribution(analysis.counts) : [],
     [analysis.counts, analysisTickCount],
@@ -537,7 +535,6 @@ export default function XTraderPage() {
   const executeBatch = async () => {
     const config = configRef.current;
     const entryDigit = config.barrier;
-    let amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
     // Do not decide the next stake from an older settled result while the
     // immediately preceding contract is still open.
     let latestRows = await getDerivHistory();
@@ -550,6 +547,7 @@ export default function XTraderPage() {
     }
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
+    const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
     armMartingaleWatch(latestRows, amount, 1);
     await bulkBuyMutation.mutateAsync({
       data: {
@@ -576,7 +574,7 @@ export default function XTraderPage() {
           const directionRate = configRef.current.direction === "DIGITOVER"
             ? currentAnalysis.overPercent
             : currentAnalysis.underPercent;
-          if (currentAnalysis.sample < 20 || directionRate < edgeMinWinRate) {
+          if (directionRate < edgeMinWinRate) {
             setConnectionMessage({
               kind: "info",
               text: `Auto Best Digit is waiting for ${edgeMinWinRate}% live win percentage. Current ${configRef.current.direction === "DIGITOVER" ? "Over" : "Under"} signal: ${Math.round(directionRate)}%.`,
@@ -696,10 +694,6 @@ export default function XTraderPage() {
       setTradeXMessage("Confirm live funds before sending a Trade X contract.");
       return false;
     }
-    if (tradeXAnalysisRef.current.tickCount < 30 && count === 1 && !config.manualSelect) {
-      setTradeXMessage("Trade X is collecting its first 30 ticks before automatic ranked entries can trade.");
-      return false;
-    }
     if (currentAccount && config.stake * count > currentAccount.balance) {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
       return false;
@@ -751,8 +745,19 @@ export default function XTraderPage() {
       return false;
     }
     const latestFlip = latestRows.find((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && trade.status !== "open");
-    const amount = digitFlipStakeMode === "martingale" && (latestFlip?.profit ?? 0) < 0
-      ? digitFlipStake * digitFlipMultiplier
+    const watch = digitFlipMartingaleWatchRef.current;
+    if (
+      digitFlipStakeMode === "martingale" &&
+      latestFlip &&
+      watch &&
+      !watch.knownIds.has(latestFlip.contract_id) &&
+      !watch.processedIds.has(latestFlip.contract_id)
+    ) {
+      digitFlipNextStakeRef.current = nextStakeAfterSettlement(latestFlip.profit, digitFlipNextStakeRef.current, digitFlipStake, digitFlipMultiplier);
+      watch.processedIds.add(latestFlip.contract_id);
+    }
+    const amount = digitFlipStakeMode === "martingale"
+      ? digitFlipNextStakeRef.current
       : digitFlipStake;
     if (currentAccount && amount > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The DigitFlip stake is higher than the available balance." });
@@ -782,21 +787,24 @@ export default function XTraderPage() {
     }
   };
 
+  const waitForMarketTicks = async (count: number, isActive: () => boolean) => {
+    const target = liveTickSequenceRef.current + Math.max(1, Math.trunc(count));
+    while (isActive() && liveTickSequenceRef.current < target) {
+      await sleep(50);
+    }
+  };
+
   const runDigitFlipLoop = async () => {
     let marketHeldAt = Date.now();
     while (digitFlipRunningRef.current) {
-      const signalOkay = digitFlipSampleRef.current >= 20;
-      if (!signalOkay) {
-        setConnectionMessage({ kind: "info", text: "DigitFlip is waiting for 20 live ticks before entering." });
-        await sleep(1500);
-        continue;
-      }
       if (Date.now() - marketHeldAt > 120_000 || digitFlipSelectedRate < 42) {
         await chooseDigitFlipMarket();
         marketHeldAt = Date.now();
       }
-      await executeDigitFlip();
-      if (digitFlipRunningRef.current) await sleep(1200);
+      const didTrade = await executeDigitFlip();
+      if (digitFlipRunningRef.current) {
+        await waitForMarketTicks(didTrade ? digitFlipDuration : 1, () => digitFlipRunningRef.current);
+      }
     }
   };
 
@@ -804,6 +812,7 @@ export default function XTraderPage() {
     setDigitFlipEnabled(enabled);
     if (!enabled) {
       digitFlipRunningRef.current = false;
+      digitFlipMartingaleWatchRef.current = null;
       setDigitFlipRunning(false);
       return;
     }
@@ -838,6 +847,11 @@ export default function XTraderPage() {
     setDigitFlipSessionPnl(0);
     setDigitFlipTradeCount(0);
     setDigitFlipCurrentStake(digitFlipStake);
+    digitFlipNextStakeRef.current = digitFlipStake;
+    digitFlipMartingaleWatchRef.current = {
+      knownIds: new Set(digitFlipRows.map((trade) => trade.contract_id)),
+      processedIds: new Set(),
+    };
     digitFlipRunningRef.current = true;
     setDigitFlipRunning(true);
     void runDigitFlipLoop();
@@ -848,6 +862,8 @@ export default function XTraderPage() {
     setDigitFlipTradeCount(0);
     setDigitFlipBaselinePnl(rows.filter((trade) => trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD").reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0));
     setDigitFlipCurrentStake(digitFlipStake);
+    digitFlipNextStakeRef.current = digitFlipStake;
+    digitFlipMartingaleWatchRef.current = null;
   };
 
   const clearDigitFlipHistory = () => {
@@ -860,22 +876,16 @@ export default function XTraderPage() {
 
   const runTradeXSmartLoop = async () => {
     while (tradeXSmartRef.current) {
-      const { tickCount, confidence } = tradeXAnalysisRef.current;
+      const { confidence } = tradeXAnalysisRef.current;
       const config = tradeXConfigRef.current;
-      if (tickCount < 30) {
-        setTradeXMessage("Smart Auto Trade is waiting for 30 live ticks before evaluating the signal.");
-        await sleep(1000);
-        continue;
-      }
       if (confidence < config.smartConfidence) {
         setTradeXMessage(`Smart Auto Trade is waiting for a ${config.smartConfidence}% signal; current sample is ${confidence}%.`);
-        await sleep(3000);
+        await waitForMarketTicks(1, () => tradeXSmartRef.current);
         continue;
       }
-      await executeTradeX(config.smartTradeCount, config.smartAiTicks);
-      if (tradeXSmartRef.current) {
-        setTradeXMessage("Smart Auto Trade entered its 20-second cooldown.");
-        await sleep(20_000);
+      const didTrade = await executeTradeX(config.smartTradeCount, config.smartAiTicks);
+      if (tradeXSmartRef.current && !didTrade) {
+        await waitForMarketTicks(1, () => tradeXSmartRef.current);
       }
     }
   };
@@ -1189,7 +1199,7 @@ export default function XTraderPage() {
               <label><small>STOP LOSS</small><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} disabled={running} /></label>
                <label><small>MIN AUTO WIN PERCENTAGE · {edgeMinWinRate}%</small><input type="range" min="50" max="99" step="1" value={edgeMinWinRate} onChange={(event) => setEdgeMinWinRate(Number(event.target.value))} disabled={running} /></label>
               <label className="xt-auto-row"><span><small>AUTO BEST DIGIT</small><b>Scan markets and trade the strongest signal automatically</b></span><span className="xt-switch"><input type="checkbox" checked={autoSwitch} onChange={(event) => toggleAutoBestDigit(event.target.checked)} disabled={!isConnected} /><span /></span></label>
-               <label className="xt-chosen-digit"><small>CHOSEN DIGIT</small><div className="xt-digit-picker">{Array.from({ length: 9 }, (_, index) => index + 1).map((digit) => <button type="button" key={digit} className={barrier === digit ? "active" : ""} onClick={() => setBarrier(digit)} disabled={running}>{digit}</button>)}</div><b>Trade {direction === "DIGITOVER" ? "Over" : "Under"} the selected digit</b></label>
+               <label className="xt-chosen-digit"><small>CHOSEN DIGIT</small><div className="xt-digit-picker">{Array.from({ length: 10 }, (_, digit) => digit).map((digit) => <button type="button" key={digit} className={barrier === digit ? "active" : ""} onClick={() => setBarrier(digit)} disabled={running}>{digit}</button>)}</div><b>Trade {direction === "DIGITOVER" ? "Over" : "Under"} the selected digit</b></label>
             </div>
 
             {isReal && <label className="xt-live-warning"><ShieldAlert size={18} /><input type="checkbox" checked={liveConfirmed} onChange={(event) => setLiveConfirmed(event.target.checked)} /><span><b>Live funds confirmation</b>I understand EDGE will place real-money contracts.</span></label>}
@@ -1204,12 +1214,6 @@ export default function XTraderPage() {
                {running && <button className="stop" onClick={stop}><Pause size={18} fill="currentColor" />STOP</button>}
               <button className="reset" onClick={reset}><RotateCcw size={18} />RESET</button>
             </div>
-              <div className="xt-live-mirror" aria-label="Mirrored live analysis values">
-                <span><small>OVER</small><b>{analysis.overPercent.toFixed(1)}%</b></span>
-                <span><small>UNDER</small><b>{analysis.underPercent.toFixed(1)}%</b></span>
-                <span><small>SAMPLE</small><b>{analysisDigits.length} ticks</b></span>
-                <span><small>WIN RATE</small><b>{analysis.winRate}%</b></span>
-              </div>
              <div className="xt-bulk-controls">
               <button className="xt-bulk-over" onClick={() => void fireTrade("DIGITOVER")} disabled={!canTrade}>
                  <span><Play size={14} fill="currentColor" />OVER {entryDigit}</span>

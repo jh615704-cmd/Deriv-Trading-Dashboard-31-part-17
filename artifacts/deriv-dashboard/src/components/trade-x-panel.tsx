@@ -387,7 +387,7 @@ export default function TradeXPanel({
             </div>
             <div className="tx-tick-hint">
               <Layers3 size={16} />
-              <span><b>Tick N uses ranked position N.</b> A 1-tick contract uses rank 1; 2 ticks uses rank 2; 3 ticks uses rank 3.</span>
+              <span><b>Ticks map directly to the next market digits.</b> 1 tick means the next digit; 2–5 ticks means the next 2–5 digits.</span>
             </div>
             <div className="tx-selection-line">
               <span>ACTIVE ENTRY</span>
