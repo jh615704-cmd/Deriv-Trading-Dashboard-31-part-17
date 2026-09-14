@@ -280,7 +280,7 @@ export default function TradeXPanel({
               <div>
                 <span className="tx-index">02</span>
                 <div>
-                  <h3>Digit Distribution <span>&amp; Safe Entry</span></h3>
+                  <h3>Digit Distribution <span>&amp; Entry Signal</span></h3>
                   <p>Recent frequency, absence streak, and market-touch confirmation.</p>
                 </div>
               </div>
@@ -331,9 +331,9 @@ export default function TradeXPanel({
                 );
               })}
             </div>
-            <div className="tx-signal-detail">
+             <div className="tx-signal-detail">
               <div className="tx-signal-detail-head">
-                <div><b>DIFFERS {selectedDigit} {safeEntry ? "SAFE" : ""}</b><span className={safeEntry ? "tx-safe-label" : "tx-risk-label"}>{safeEntry ? "SAFE" : "RISKY"}</span></div>
+                <div><b>DIFFERS {selectedDigit}</b><span className={safeEntry ? "tx-safe-label" : "tx-risk-label"}>{safeEntry ? "LOW OBSERVED RATE" : "HIGHER OBSERVED RATE"}</span></div>
                 <strong>{clamp(100 - selectedData.percentage, 0, 100).toFixed(0)}%</strong>
               </div>
               <div className="tx-signal-metrics">
@@ -342,9 +342,9 @@ export default function TradeXPanel({
                 <span>Occurrences <b>{Math.round((selectedData.sampleCount ?? analysisTickCount) * selectedData.percentage / 100)} / {selectedData.sampleCount ?? analysisTickCount}</b></span>
               </div>
                <div className={`tx-signal-progress ${safeEntry ? "tx-signal-progress-safe" : ""}`}><i style={{ width: `${clamp(selectedData.percentage * 10, 2, 100)}%` }} /></div>
-                <p>{safeEntry
-                  ? `Live frequency is below 5%. DIFFERS ${selectedDigit} SAFE.`
-                  : "Risky entry — wait for the selected digit to move below 5% frequency."}</p>
+                 <p>{safeEntry
+                   ? `Observed frequency is below 5%. This is a filter for Digit Differs ${selectedDigit}, not a probability guarantee.`
+                   : "Observed frequency is above 5%. Review the sample before selecting this barrier."}</p>
             </div>
             <div className="tx-distribution-foot">
               <span><i className="tx-key tx-key-ranked" /> ranked differ signal</span>
@@ -358,7 +358,7 @@ export default function TradeXPanel({
               <div>
                 <span className="tx-index">03</span>
                 <div>
-                  <h3>Top 3 safest differs digits</h3>
+                  <h3>Top 3 lowest observed differs digits</h3>
                   <p>Ranked from the current distribution window.</p>
                 </div>
               </div>
@@ -387,10 +387,10 @@ export default function TradeXPanel({
             </div>
             <div className="tx-tick-hint">
               <Layers3 size={16} />
-              <span><b>Ticks map directly to the next market digits.</b> 1 tick means the next digit; 2–5 ticks means the next 2–5 digits.</span>
+               <span><b>Ranked mode chooses a candidate, not a guaranteed outcome.</b> Manual selection sends the exact digit you choose.</span>
             </div>
             <div className="tx-selection-line">
-              <span>ACTIVE ENTRY</span>
+               <span>ACTIVE BARRIER</span>
               <strong>Digit {selectedDigit}</strong>
               <span className="tx-selection-separator">/</span>
               <span>{selectedData.percentage.toFixed(1)}% observed</span>
@@ -484,9 +484,9 @@ export default function TradeXPanel({
           </div>
           <div className={`tx-smart-controls ${smartAutoEnabled ? "tx-smart-controls-enabled" : ""}`}>
             <label className="tx-smart-control tx-confidence-control">
-              <span className="tx-field-label">MIN WIN PERCENTAGE <b>{confidence}%</b></span>
-              <input type="range" min="50" max="100" step="1" value={confidence} onChange={(event) => onSmartConfidenceChange(Number(event.target.value))} disabled={disabled} aria-label="Smart auto minimum win percentage" data-testid="input-smart-confidence" />
-              <span className="tx-range-labels"><span>50%</span><span>high signal gate</span><span>100%</span></span>
+              <span className="tx-field-label">MIN OBSERVED SIGNAL SCORE <b>{confidence}%</b></span>
+              <input type="range" min="50" max="100" step="1" value={confidence} onChange={(event) => onSmartConfidenceChange(Number(event.target.value))} disabled={disabled} aria-label="Smart auto minimum observed signal score" data-testid="input-smart-confidence" />
+              <span className="tx-range-labels"><span>50%</span><span>sample filter</span><span>100%</span></span>
             </label>
             <label className="tx-smart-control">
               <span className="tx-field-label">TRADE COUNT</span>
@@ -508,7 +508,7 @@ export default function TradeXPanel({
             </label>
             <div className="tx-smart-summary">
               <span className={`tx-smart-pulse ${smartAutoEnabled ? "tx-smart-pulse-on" : ""}`} />
-              <span>{smartAutoEnabled ? `Watching for ≥ ${confidence}% live signal` : "Smart automation is standing by"}</span>
+              <span>{smartAutoEnabled ? `Watching for ≥ ${confidence}% observed signal score` : "Smart automation is standing by"}</span>
             </div>
           </div>
         </section>

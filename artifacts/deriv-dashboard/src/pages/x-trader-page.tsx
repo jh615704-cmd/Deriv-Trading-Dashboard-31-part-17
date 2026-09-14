@@ -70,7 +70,7 @@ const guidePages = [
   { title: "Stake and balance", body: "Stake is the amount risked on each contract. The selected stake is used for the next Over or Under trade unless Martingale after loss is enabled.", points: ["Keep a reserve instead of risking the full balance.", "Martingale increases the next stake after a loss and resets after a win.", "A valid balance check cannot prevent market losses."] },
   { title: "Flat stake strategy", body: "Flat staking uses the same stake on every trade. It is the simplest baseline and makes session results easier to compare.", points: ["Use it to measure a signal without changing risk size.", "Set Take Profit and Stop Loss before starting.", "A losing trade does not automatically justify a larger next stake."] },
   { title: "Martingale after loss", body: "Martingale increases the next stake after a loss by the configured multiplier. It can grow exposure quickly and may exhaust a balance after a short losing run.", points: ["Set a low multiplier and a hard stop if you test it.", "The strategy is not a recovery guarantee.", "Demo testing is strongly recommended before any live use."] },
-  { title: "Auto Best Digit", body: "Auto Best Digit ranks the live signals from all supported markets using available tick history, current sample size, and the strongest recent Over or Under streak. It selects a market, direction, and barrier for the next batch.", points: ["The score favors fresh markets with enough observations.", "It selects both Over or Under and the profitable-looking barrier.", "It is a signal-selection aid, not a prediction engine. No strategy guarantees a win rate."] },
+  { title: "Auto Best Digit", body: "Auto Best Digit ranks the live signals from all supported markets using available tick history, current sample size, and the strongest recent Over or Under streak. It selects a market, direction, and barrier for the next batch.", points: ["The score favors fresh markets with enough observations.", "It selects both Over or Under and the strongest observed signal.", "It is a signal-selection aid, not a prediction engine. No strategy guarantees an outcome."] },
   { title: "How the signal score works", body: "The built-in score compares recent consecutive digits above and below each candidate barrier across every subscribed market. Stronger, better-sampled signals rank higher.", points: ["Signals with no recent ticks are ignored.", "The selected market can change when a stronger signal appears.", "Recent streak length is descriptive, not proof of future probability."] },
   { title: "Manual Over and Under", body: "Use the Over or Under direction and trade controls in the execution area to send one contract using the selected barrier, duration, stake, and strategy.", points: ["The trade control sends one contract at a time.", "Martingale can multiply the next stake after a loss, but it cannot guarantee recovery.", "The next win resets the amount to the normal stake."] },
   { title: "Auto Best Digit", body: "Auto Best Digit starts the repeating loop after selecting the strongest available signal. Stop ends the loop after the active request completes.", points: ["Review the account, market, direction, barrier, duration, and stake first.", "The loop uses the current strategy and risk limits.", "Turning off EDGE stops the loop and hides its controls."] },
@@ -78,15 +78,15 @@ const guidePages = [
   { title: "Stop Loss", body: "Stop Loss stops the repeating loop after the session reaches the configured negative P/L. It is a guardrail, not a guarantee that losses cannot exceed the target.", points: ["Use a smaller loss limit while testing.", "Bulk trades can settle after the loop is stopped.", "Review the trade history before starting another session."] },
   { title: "Live-money protection", body: "Real accounts require an explicit live-funds confirmation before Auto Best Digit or an immediate trade can send contracts.", points: ["Read the confirmation carefully.", "The server also enforces its live-trading configuration.", "If you are learning, switch back to a demo account."] },
   { title: "Reading session results", body: "Session P/L and Trades Sent show only activity since the last Reset. Recent Trades contains the dashboard rows received from the Deriv stream.", points: ["Reset clears only Session P/L and Trades Sent.", "Reset does not change stake, duration, barrier, or strategy.", "Clear Recent Trades removes dashboard rows without deleting Deriv records."] },
-  { title: "A safe pre-trade checklist", body: "Before sending anything, confirm the account, market, direction, barrier, duration, stake, strategy, and risk limits.", points: ["Start with a demo account.", "Martingale increases exposure after losses, so keep a reserve.", "Never rely on a claimed guaranteed win rate."] },
+  { title: "A careful pre-trade checklist", body: "Before sending anything, confirm the account, market, direction, barrier, duration, stake, strategy, and risk limits.", points: ["Start with a demo account.", "Martingale increases exposure after losses, so keep a reserve.", "Never rely on a claimed guaranteed outcome."] },
   { title: "Let's start trading", body: "You now know how the market selector, Over and Under contracts, Martingale, Auto Best Digit, and risk controls work.", points: ["Start with one small demo trade.", "Watch the settlement and confirm the history updates.", "Keep the guide available whenever you change strategy."] },
 ] as const;
 
 const tradeXGuidePages = [
   { title: "Welcome to Trade X", body: "Trade X is the Digit Differs workspace. It watches the live digit distribution, ranks the least frequent digits, and lets you decide whether to send one trade or use controlled automation.", points: ["Use a demo account while learning the signal.", "The signal describes observed ticks; it cannot guarantee the next digit.", "The switch pauses every Trade X action without changing EDGE."] },
-  { title: "Read the distribution", body: "Each digit shows its observed percentage and current absence streak. The safest differs list ranks digits with the lowest observed frequency first, because a Differs contract wins when the expiry digit is not the selected barrier.", points: ["Tap any oval digit to make it the active selection.", "The top three list follows the same live ranking.", "Refresh restarts the local sample window from the next market tick."] },
-  { title: "Tick mapping", body: "Trade X maps the selected duration to the ranked safe-entry position. One tick uses rank 1, two ticks uses rank 2, and so on through five ticks.", points: ["Leave Manual Select off to follow the ranked tick mapping.", "Turn Manual Select on when you want to choose a specific digit.", "The active entry is shown before every action."] },
-  { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select confirms the currently tapped digit when Manual Select is on. Smart Auto waits for the configured live percentage before entering.", points: ["Check market, stake, duration, and digit before sending.", "Manual digit taps only select a digit; the separate trade action sends it.", "Smart Auto uses the live percentage, AI ticks, and trade count you choose."] },
+  { title: "Read the distribution", body: "Each digit shows its observed percentage and current absence streak. The differs candidate list ranks digits with the lowest observed frequency first, because a Differs contract wins when the expiry digit is not the selected barrier.", points: ["Tap any oval digit to make it the active selection.", "The top three list follows the same live ranking.", "Refresh restarts the local sample window from the next market tick."] },
+  { title: "Tick mapping", body: "Trade X can map the Smart Auto tick setting to a ranked candidate. One tick uses rank 1, two ticks uses rank 2, and so on through five ticks.", points: ["Ranked mode follows the live candidate order.", "Tap a digit or turn Manual Select on when you want an exact barrier.", "The active entry is shown before every action."] },
+  { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select sends the exact digit you tapped. Smart Auto waits for the configured observed signal score before entering.", points: ["Check market, stake, duration, and digit before sending.", "Manual digit taps switch to exact-digit selection so the request matches the screen.", "Smart Auto uses the live sample, ranked candidate, and trade count you choose."] },
   { title: "Smart Auto Trade", body: "Smart Auto Trade is an optional live-percentage gate. It sends as soon as the observed differs signal reaches your selected threshold.", points: ["The percentage is a live sample, not a promise of profit.", "The AI tick setting uses the same ranked tick mapping.", "Disable Smart Auto Trade to stop its loop immediately."] },
   { title: "A careful workflow", body: "Start with a small demo stake, wait for a meaningful sample, and treat every signal as descriptive market context rather than certainty.", points: ["Confirm the selected account is the one you intend to use.", "Use the lowest practical stake while evaluating a market.", "Stop automation before changing markets or strategy assumptions."] },
 ] as const;
@@ -210,6 +210,7 @@ export default function XTraderPage() {
   const digitFlipRunningRef = useRef(false);
   const digitFlipActionLockRef = useRef(false);
   const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
+  const tradeXDistributionRef = useRef<TradeXDigitDistribution[]>([]);
   const edgeAnalysisRef = useRef({ sample: 0, overPercent: 50, underPercent: 50 });
   const liveTickSequenceRef = useRef(0);
   const digitFlipNextStakeRef = useRef(digitFlipStake);
@@ -268,13 +269,11 @@ export default function XTraderPage() {
     const overPercent = decisiveCount ? (overCount / decisiveCount) * 100 : 50;
     const underPercent = decisiveCount ? (underCount / decisiveCount) * 100 : 50;
     const lean = overPercent >= underPercent ? "OVER" : "UNDER";
-    const winRate = decisiveCount ? Math.round(Math.max(overPercent, underPercent)) : 0;
     return {
       counts,
       overPercent,
       underPercent,
       lean,
-      winRate,
       maxCount: Math.max(1, ...counts),
     };
   }, [analysisDigits, barrier]);
@@ -334,20 +333,20 @@ export default function XTraderPage() {
       : [],
     [analysis.counts, analysisTickCount, tradeXDistribution],
   );
-  const tradeXEntryDigit = tradeXManualSelect
-    ? tradeXSelectedDigit
-    : digitForTick(tradeXDuration, tradeXRankedDigits, tradeXSelectedDigit);
+  const tradeXRankedEntryDigit = digitForTick(tradeXDuration, tradeXRankedDigits, tradeXSelectedDigit);
+  const tradeXEntryDigit = tradeXManualSelect ? tradeXSelectedDigit : tradeXRankedEntryDigit;
   const tradeXConfidence = tradeXDistribution.length
     ? Math.min(99, Math.max(50, Math.round(100 - (tradeXDistribution[tradeXEntryDigit]?.percentage ?? 0))))
     : 50;
   useEffect(() => {
     tradeXAnalysisRef.current = { tickCount: analysisTickCount, confidence: tradeXConfidence };
+    tradeXDistributionRef.current = tradeXDistribution;
     edgeAnalysisRef.current = {
       sample: analysisDigits.length,
       overPercent: analysis.overPercent,
       underPercent: analysis.underPercent,
     };
-  }, [analysis, analysisDigits.length, analysisTickCount, tradeXConfidence]);
+  }, [analysis, analysisDigits.length, analysisTickCount, tradeXConfidence, tradeXDistribution]);
   const rankedDigits = useMemo(
     () => analysisTickCount > 0 ? rankDigitsByDistribution(analysis.counts) : [],
     [analysis.counts, analysisTickCount],
@@ -698,6 +697,11 @@ export default function XTraderPage() {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
       return false;
     }
+    const latestRows = await getDerivHistory();
+    if (latestRows.some((trade) => trade.contract_type === "DIGITDIFF" && trade.status === "open")) {
+      setTradeXMessage("The previous Digit Differs contract is still settling. Trade X will not overlap contracts.");
+      return false;
+    }
     tradeXActionLockRef.current = true;
     try {
       await bulkBuyMutation.mutateAsync({
@@ -721,6 +725,21 @@ export default function XTraderPage() {
       return false;
     } finally {
       tradeXActionLockRef.current = false;
+    }
+  };
+
+  const waitForTradeXSettlements = async (
+    knownIds: ReadonlySet<string>,
+    expectedCount: number,
+    isActive: () => boolean,
+  ) => {
+    for (let attempt = 0; attempt < 120 && isActive(); attempt += 1) {
+      const latestRows = await getDerivHistory();
+      const newRows = latestRows.filter(
+        (trade) => trade.contract_type === "DIGITDIFF" && !knownIds.has(trade.contract_id),
+      );
+      if (newRows.length >= expectedCount && newRows.every((trade) => trade.status !== "open")) return;
+      await sleep(250);
     }
   };
 
@@ -876,15 +895,25 @@ export default function XTraderPage() {
 
   const runTradeXSmartLoop = async () => {
     while (tradeXSmartRef.current) {
-      const { confidence } = tradeXAnalysisRef.current;
       const config = tradeXConfigRef.current;
+      const rankedDigit = digitForTick(config.smartAiTicks, config.rankedDigits, config.selectedDigit);
+      const confidence = tradeXDistributionRef.current.length
+        ? Math.min(99, Math.max(50, Math.round(100 - (tradeXDistributionRef.current[rankedDigit]?.percentage ?? 0))))
+        : tradeXAnalysisRef.current.confidence;
       if (confidence < config.smartConfidence) {
         setTradeXMessage(`Smart Auto Trade is waiting for a ${config.smartConfidence}% signal; current sample is ${confidence}%.`);
         await waitForMarketTicks(1, () => tradeXSmartRef.current);
         continue;
       }
-      const didTrade = await executeTradeX(config.smartTradeCount, config.smartAiTicks);
-      if (tradeXSmartRef.current && !didTrade) {
+      const knownIds = new Set(
+        (await getDerivHistory())
+          .filter((trade) => trade.contract_type === "DIGITDIFF")
+          .map((trade) => trade.contract_id),
+      );
+      const didTrade = await executeTradeX(config.smartTradeCount, config.duration, rankedDigit);
+      if (tradeXSmartRef.current && didTrade) {
+        await waitForTradeXSettlements(knownIds, config.smartTradeCount, () => tradeXSmartRef.current);
+      } else if (tradeXSmartRef.current && !didTrade) {
         await waitForMarketTicks(1, () => tradeXSmartRef.current);
       }
     }
@@ -1061,7 +1090,7 @@ export default function XTraderPage() {
       </section>
 
       <section className="xt-feature-card xt-feature-card-trade-x">
-        <div><Activity size={18} /><span><b>Trade X</b><small>Digit Differs distribution and safe-entry automation</small></span></div>
+        <div><Activity size={18} /><span><b>Trade X</b><small>Digit Differs distribution and ranked-entry automation</small></span></div>
         <div className="xt-feature-actions">
           {!canUseTradeX && <span className="xt-feature-locked">RESTRICTED</span>}
           {canUseTradeX && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("trade-x"); setGuidePage(0); setGuideOpen(true); }}>
@@ -1182,7 +1211,7 @@ export default function XTraderPage() {
                  {analysisDigits.slice(-20).map((digit, index) => <span className={digit === barrier ? "selected" : digit > barrier ? "over" : "under"} key={`${digit}-${index}`}>{digit}</span>)}
                  {!analysisDigits.length && <small>New ticks will appear here after the market connects.</small>}
                </div>
-               <p className="xt-analysis-note">Green marks digits above the selected barrier, red marks digits below it, and yellow marks the selected barrier. Percentages describe this sample; they are not guaranteed win rates.</p>
+                <p className="xt-analysis-note">Green marks digits above the selected barrier, red marks digits below it, and yellow marks the selected barrier. Percentages describe this sample; they are not guaranteed outcomes.</p>
              </section>
 
             <div className="xt-direction">
@@ -1197,7 +1226,7 @@ export default function XTraderPage() {
               <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
               <label><small>TAKE PROFIT</small><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} disabled={running} /></label>
               <label><small>STOP LOSS</small><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} disabled={running} /></label>
-               <label><small>MIN AUTO WIN PERCENTAGE · {edgeMinWinRate}%</small><input type="range" min="50" max="99" step="1" value={edgeMinWinRate} onChange={(event) => setEdgeMinWinRate(Number(event.target.value))} disabled={running} /></label>
+               <label><small>MIN OBSERVED SIDE SHARE · {edgeMinWinRate}%</small><input type="range" min="50" max="99" step="1" value={edgeMinWinRate} onChange={(event) => setEdgeMinWinRate(Number(event.target.value))} disabled={running} /></label>
               <label className="xt-auto-row"><span><small>AUTO BEST DIGIT</small><b>Scan markets and trade the strongest signal automatically</b></span><span className="xt-switch"><input type="checkbox" checked={autoSwitch} onChange={(event) => toggleAutoBestDigit(event.target.checked)} disabled={!isConnected} /><span /></span></label>
                <label className="xt-chosen-digit"><small>CHOSEN DIGIT</small><div className="xt-digit-picker">{Array.from({ length: 10 }, (_, digit) => digit).map((digit) => <button type="button" key={digit} className={barrier === digit ? "active" : ""} onClick={() => setBarrier(digit)} disabled={running}>{digit}</button>)}</div><b>Trade {direction === "DIGITOVER" ? "Over" : "Under"} the selected digit</b></label>
             </div>
@@ -1229,7 +1258,10 @@ export default function XTraderPage() {
 
           {canViewHistory && <section className="xt-history" title="Recent dashboard trade history">
             <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Dashboard rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending || historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
-            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : rows.slice(0, 12).map((trade) => <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : rows.slice(0, 12).map((trade) => {
+              const settled = trade.status !== "open";
+              return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
+            })}
            </section>}
         </>
       )}
@@ -1262,10 +1294,17 @@ export default function XTraderPage() {
             onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
             onTradeTypeChange={() => undefined}
             onStakeChange={(next) => setTradeXStake(Math.max(0.35, Number.isFinite(next) ? next : 0.35))}
-            onSelectedDigitChange={setTradeXSelectedDigit}
+             onSelectedDigitChange={(digit) => {
+               setTradeXSelectedDigit(digit);
+               setTradeXManualSelect(true);
+             }}
             onDurationChange={setTradeXDuration}
             onManualSelectModeChange={setTradeXManualSelect}
-            onTradeSelect={(digit) => void executeTradeX(1, tradeXDuration, digit)}
+             onTradeSelect={(digit) => {
+               setTradeXSelectedDigit(digit);
+               setTradeXManualSelect(true);
+               void executeTradeX(1, tradeXDuration, digit);
+             }}
             onPlaceTrade={() => void executeTradeX(1)}
             onSmartAutoChange={toggleTradeXSmart}
             onSmartConfidenceChange={setTradeXSmartConfidence}
@@ -1285,7 +1324,10 @@ export default function XTraderPage() {
                 <div><small>WINS</small><strong>{tradeXWins}</strong></div>
                 <div><small>LOSSES</small><strong className={tradeXLosses ? "loss" : ""}>{tradeXLosses}</strong></div>
               </div>
-              {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.slice(0, 12).map((trade) => <div className="xt-trade" key={trade.contract_id}><span><b>DIGIT DIFFERS</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+              {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.slice(0, 12).map((trade) => {
+                const settled = trade.status !== "open";
+                return <div className="xt-trade" key={trade.contract_id}><span><b>DIGIT DIFFERS {trade.barrier == null ? "" : trade.barrier}</b><small>{trade.symbol} · {trade.account_type} · expiry decides the result</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
+              })}
             </section>
           )}
         </section>

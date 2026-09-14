@@ -64,6 +64,7 @@ export type DerivHistoryItem = {
   account_id: string;
   account_type: "demo" | "real";
   contract_type: string;
+  barrier: number | null;
   symbol: string;
   buy_price: number;
   payout: number;
@@ -391,6 +392,9 @@ function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistory
     account_id: getState().account.id,
     account_type: getState().account.type,
     contract_type: String((record.contract_type ?? getState().lastProposalContractType) || "unknown"),
+    barrier: record.barrier == null
+      ? (getState().contractInputs.get(contractId)?.barrier ?? null)
+      : Number(record.barrier),
     symbol: String(record.underlying_symbol ?? record.symbol ?? getState().lastProposalSymbol),
     buy_price: Number(record.buy_price ?? record.purchase_price ?? 0),
     payout: Number(record.payout ?? 0),
@@ -920,6 +924,7 @@ export async function buyContract(input: BuyInput) {
   if (input.amount > getState().account.balance) {
     throw new Error("The selected stake exceeds the current account balance");
   }
+  validateContractBarrier(input);
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
     throw new Error(`Buy cooldown active. Wait ${Math.ceil(remainingCooldown / 1000)} second.`);
@@ -972,6 +977,7 @@ export async function bulkBuyContracts(input: {
   if (input.amount * input.count > getState().account.balance) {
     throw new Error("The selected bulk stake exceeds the current account balance");
   }
+  validateContractBarrier(input);
 
   const proposals = await Promise.all(
     Array.from({ length: input.count }, () => requestFreshProposal({
@@ -1007,6 +1013,16 @@ export async function bulkBuyContracts(input: {
       : `${proposals.length} demo buy requests sent.`,
     proposals,
   };
+}
+
+function validateContractBarrier(input: { contract_type: DigitContractType; barrier?: number }) {
+  const requiresBarrier = input.contract_type === "DIGITDIFF"
+    || input.contract_type === "DIGITOVER"
+    || input.contract_type === "DIGITUNDER";
+  const barrier = input.barrier;
+  if (requiresBarrier && (typeof barrier !== "number" || !Number.isInteger(barrier) || barrier < 0 || barrier > 9)) {
+    throw new Error(`A digit barrier from 0 to 9 is required for ${input.contract_type}.`);
+  }
 }
 
 export async function dualBuyContracts(input: {

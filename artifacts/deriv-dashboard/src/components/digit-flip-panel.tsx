@@ -150,7 +150,7 @@ export default function DigitFlipPanel({
         </section>
 
         <section className="df-section df-parity">
-          <div className="df-section-head"><div><span>02</span><div><h3>Parity signal</h3><p>Recent parity percentages fluctuate with the selected market; they are not win guarantees.</p></div></div><strong className="df-estimate">{selectedRate.toFixed(1)}% estimate</strong></div>
+           <div className="df-section-head"><div><span>02</span><div><h3>Parity signal</h3><p>Recent parity percentages describe the selected market sample; they are not outcome guarantees.</p></div></div><strong className="df-estimate">{selectedRate.toFixed(1)}% observed</strong></div>
           <div className="df-parity-readout">
             <div className="df-parity-number even"><small>EVEN</small><strong>{evenPercentage.toFixed(1)}%</strong></div>
             <div className="df-parity-track"><i className="even-fill" style={{ width: `${clamp(evenPercentage, 0, 100)}%` }} /><i className="odd-fill" style={{ width: `${clamp(oddPercentage, 0, 100)}%` }} /></div>
@@ -189,7 +189,10 @@ export default function DigitFlipPanel({
 
         <section className="df-recent">
           <div className="df-recent-head"><div><h3>Recent DigitFlip trades</h3><small>Dashboard rows only · Deriv records are not deleted</small></div><button type="button" onClick={onClearTrades} disabled={!recentTrades.length}><Trash2 size={14} />Clear</button></div>
-          {!recentTrades.length ? <div className="df-empty">Even and Odd trades will appear here after a DigitFlip entry.</div> : recentTrades.slice(0, 10).map((trade) => <div className="df-trade-row" key={trade.contract_id}><span><b>{trade.contract_type === "DIGITEVEN" ? "EVEN" : "ODD"}</b><small>{trade.symbol}</small></span><span><small>STAKE</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.profit < 0 ? "loss" : ""}>{trade.profit >= 0 ? "+" : ""}{trade.profit.toFixed(2)}</strong></div>)}
+           {!recentTrades.length ? <div className="df-empty">Even and Odd trades will appear here after a DigitFlip entry.</div> : recentTrades.slice(0, 10).map((trade) => {
+             const settled = trade.status !== "open";
+             return <div className="df-trade-row" key={trade.contract_id}><span><b>{trade.contract_type === "DIGITEVEN" ? "EVEN" : "ODD"}</b><small>{trade.symbol}</small></span><span><small>STAKE</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
+           })}
         </section>
       </div>
     </section>

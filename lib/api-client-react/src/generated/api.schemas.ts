@@ -249,7 +249,7 @@ export interface DerivContract {
 
 export interface DigitStreak {
   /**
-     * @minimum 1
+     * @minimum 0
      * @maximum 9
      */
   digit: number;
@@ -270,9 +270,15 @@ export interface DerivMarketSignal {
   last_digit: number | null;
   /** @minimum 0 */
   sample_count: number;
-  /** @minimum 0 @maximum 100 */
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
   digit_even_percentage: number;
-  /** @minimum 0 @maximum 100 */
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
   digit_odd_percentage: number;
   digit_streaks: DigitStreak[];
 }
@@ -498,6 +504,12 @@ export interface DerivHistoryItem {
   account_id: string;
   account_type: DerivHistoryItemAccountType;
   contract_type: string;
+  /**
+     * @minimum 0
+     * @maximum 9
+     * @nullable
+     */
+  barrier: number | null;
   symbol: string;
   buy_price: number;
   payout: number;

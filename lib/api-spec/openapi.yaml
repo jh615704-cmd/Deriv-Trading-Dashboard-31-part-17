@@ -1208,7 +1208,7 @@ components:
           type: [integer, "null"]
     DerivHistoryItem:
       type: object
-      required: [contract_id, account_id, account_type, contract_type, symbol, buy_price, payout, profit, status]
+      required: [contract_id, account_id, account_type, contract_type, barrier, symbol, buy_price, payout, profit, status]
       properties:
         contract_id:
           type: string
@@ -1219,6 +1219,10 @@ components:
           enum: [demo, real]
         contract_type:
           type: string
+        barrier:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 9
         symbol:
           type: string
         buy_price:

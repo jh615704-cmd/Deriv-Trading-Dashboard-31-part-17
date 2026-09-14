@@ -8,7 +8,7 @@
 
 export interface DigitStreak {
   /**
-     * @minimum 1
+     * @minimum 0
      * @maximum 9
      */
   digit: number;

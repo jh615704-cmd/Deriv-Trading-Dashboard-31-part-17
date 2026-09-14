@@ -18,5 +18,15 @@ export interface DerivMarketSignal {
   last_digit: number | null;
   /** @minimum 0 */
   sample_count: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  digit_even_percentage: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  digit_odd_percentage: number;
   digit_streaks: DigitStreak[];
 }

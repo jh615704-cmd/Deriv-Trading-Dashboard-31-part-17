@@ -12,6 +12,12 @@ export interface DerivHistoryItem {
   account_id: string;
   account_type: DerivHistoryItemAccountType;
   contract_type: string;
+  /**
+     * @minimum 0
+     * @maximum 9
+     * @nullable
+     */
+  barrier: number | null;
   symbol: string;
   buy_price: number;
   payout: number;
