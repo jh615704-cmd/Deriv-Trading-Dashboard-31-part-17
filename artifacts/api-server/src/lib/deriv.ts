@@ -322,8 +322,7 @@ function upsertHistory(item: DerivHistoryItem) {
 }
 
 function digitStreaksFor(history: number[]) {
-  return Array.from({ length: 9 }, (_, index) => {
-    const digit = index + 1;
+  return Array.from({ length: 10 }, (_, digit) => {
     let over = 0;
     let under = 0;
     for (let cursor = history.length - 1; cursor >= 0 && history[cursor] > digit; cursor -= 1) over += 1;

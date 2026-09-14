@@ -212,6 +212,9 @@ export default function XTraderPage() {
   const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
   const edgeAnalysisRef = useRef({ sample: 0, overPercent: 50, underPercent: 50 });
   const digitFlipSampleRef = useRef(0);
+  const liveTickSequenceRef = useRef(0);
+  const digitFlipNextStakeRef = useRef(digitFlipStake);
+  const digitFlipMartingaleWatchRef = useRef<{ knownIds: Set<string>; processedIds: Set<string> } | null>(null);
   const configRef = useRef({
     direction,
     barrier,
@@ -281,13 +284,29 @@ export default function XTraderPage() {
     const settled = digitFlipRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
     const live = digitFlipRows.find((trade) => trade.status === "open")?.profit ?? 0;
     setDigitFlipSessionPnl(settled - digitFlipBaselinePnl + live);
-    const latest = digitFlipRows.find((trade) => trade.status !== "open");
-    if (digitFlipStakeMode === "martingale" && latest) {
-      setDigitFlipCurrentStake(latest.profit < 0 ? digitFlipStake * digitFlipMultiplier : digitFlipStake);
-    } else if (digitFlipStakeMode === "flat") {
-      setDigitFlipCurrentStake(digitFlipStake);
+    if (digitFlipStakeMode !== "martingale") {
+      digitFlipNextStakeRef.current = digitFlipStake;
+      if (!digitFlipRunning) setDigitFlipCurrentStake(digitFlipStake);
+      return;
     }
-  }, [rows, digitFlipHiddenHistoryIds, digitFlipBaselinePnl, digitFlipMultiplier, digitFlipStake, digitFlipStakeMode]);
+    const watch = digitFlipMartingaleWatchRef.current;
+    if (!watch) {
+      digitFlipNextStakeRef.current = digitFlipStake;
+      if (!digitFlipRunning) setDigitFlipCurrentStake(digitFlipStake);
+      return;
+    }
+    const newlySettled = digitFlipRows
+      .filter((trade) => !watch.knownIds.has(trade.contract_id) && !watch.processedIds.has(trade.contract_id) && trade.status !== "open")
+      .sort((left, right) => (left.buy_time ?? 0) - (right.buy_time ?? 0));
+    if (!newlySettled.length) return;
+    let next = digitFlipNextStakeRef.current;
+    for (const trade of newlySettled) {
+      next = nextStakeAfterSettlement(trade.profit, next, digitFlipStake, digitFlipMultiplier);
+      watch.processedIds.add(trade.contract_id);
+    }
+    digitFlipNextStakeRef.current = next;
+    setDigitFlipCurrentStake(next);
+  }, [rows, digitFlipHiddenHistoryIds, digitFlipBaselinePnl, digitFlipMultiplier, digitFlipRunning, digitFlipStake, digitFlipStakeMode]);
   const tradeXDistribution = useMemo<TradeXDigitDistribution[]>(() => {
     const total = analysisDigits.length;
     return analysis.counts.map((count, digit) => {
@@ -404,6 +423,7 @@ export default function XTraderPage() {
     if (epoch == null || digit == null) return;
     if (analysisEpochRef.current != null && epoch <= analysisEpochRef.current) return;
     analysisEpochRef.current = epoch;
+    liveTickSequenceRef.current += 1;
     setAnalysisDigits((current) => [...current, digit].slice(-100));
     setAnalysisTickCount((current) => Math.min(5000, current + 1));
   }, [status.data?.last_tick?.epoch, status.data?.last_digit]);
