@@ -54,7 +54,7 @@ export type DigitFlipPanelProps = {
   sessionPnl: number;
   tradeCount: number;
   recentTrades: readonly DigitFlipTradeRow[];
-  autoPairEnabled: boolean;
+  assaultEnabled: boolean;
   magicEnabled: boolean;
   clearTradesArmed: boolean;
   historyFading: boolean;
@@ -73,7 +73,7 @@ export type DigitFlipPanelProps = {
   onReset: () => void;
   onClearTrades: () => void;
   onRefreshSample: () => void;
-  onAutoPairChange: (value: boolean) => void;
+  onAssaultChange: (value: boolean) => void;
   onMagicChange: (value: boolean) => void;
   onGuide: () => void;
 };
@@ -103,7 +103,7 @@ export default function DigitFlipPanel({
   sessionPnl,
   tradeCount,
   recentTrades,
-  autoPairEnabled,
+  assaultEnabled,
   magicEnabled,
   clearTradesArmed,
   historyFading,
@@ -122,7 +122,7 @@ export default function DigitFlipPanel({
   onReset,
   onClearTrades,
   onRefreshSample,
-  onAutoPairChange,
+  onAssaultChange,
   onMagicChange,
   onGuide,
 }: DigitFlipPanelProps) {
@@ -182,7 +182,7 @@ export default function DigitFlipPanel({
                {activeSymbols.map((option) => {
                  const signal = signalFor(option.value);
                  const rate = signalRateFor(option.value);
-                 const tone = signal?.sampleCount ? (rate >= 60 ? "positive" : "negative") : "neutral";
+                  const tone = signal?.sampleCount ? (rate >= 80 ? "positive" : "negative") : "neutral";
                  return <button type="button" className={`df-symbol-row ${symbol === option.value ? "selected" : ""}`} key={option.value} onClick={() => onSymbolChange(option.value)} disabled={disabled || marketType === "auto"}><span><b>{option.label}</b><small>{option.value}</small></span><strong className={tone}>{rate.toFixed(1)}%</strong></button>;
                })}
              </div></div>
@@ -204,8 +204,9 @@ export default function DigitFlipPanel({
            <div className="df-parity-foot"><span>LAST DIGIT <b>{lastDigit == null ? "—" : lastDigit}</b></span><span>SAMPLE <b>{sampleCount} ticks</b></span><span>OBSERVED SAMPLE <b>descriptive only</b></span></div>
         </section>
 
-         <section className="df-automation">
-           <label className="df-automation-row"><span><b>AUTO SWITCH BEST PAIR</b><small>Hold a selected pair for up to two minutes and switch only between trades when its observed signal weakens.</small></span><span className="df-switch"><input type="checkbox" checked={autoPairEnabled} onChange={(event) => onAutoPairChange(event.target.checked)} disabled={disabled} /><i /></span></label>
+          <section className="df-automation">
+            <label className="df-automation-row"><span><b>ASSAULT</b><small>After a loss, switch the next trade between Even and Odd. The automatic market scan runs every 10 seconds after settlement.</small></span><span className="df-switch"><input type="checkbox" checked={assaultEnabled} onChange={(event) => onAssaultChange(event.target.checked)} disabled={disabled} /><i /></span></label>
+            {assaultEnabled && <div className="df-assault-status" aria-live="polite"><span className={selectedParity === "DIGITODD" ? "active odd" : "odd"}>ODD{selectedParity === "DIGITODD" && <small>ACTIVE</small>}</span><span className="df-assault-arrow">↔</span><span className={selectedParity === "DIGITEVEN" ? "active even" : "even"}>EVEN{selectedParity === "DIGITEVEN" && <small>ACTIVE</small>}</span></div>}
          </section>
 
         <section className="df-section df-controls">
@@ -217,7 +218,7 @@ export default function DigitFlipPanel({
             <label className="df-control"><span>MULTIPLIER</span><input type="number" min="1" step=".1" value={multiplier} onChange={(event) => onMultiplierChange(Math.max(1, Number(event.target.value) || 1))} disabled={disabled || running || stakeMode === "flat"} /></label>
             <label className="df-control"><span>TAKE PROFIT</span><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => onTakeProfitChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
              <label className="df-control"><span>STOP LOSS</span><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => onStopLossChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
-             <label className="df-control df-magic-control"><span>MAGIC</span><div className="df-magic-switch"><span>{magicEnabled ? "WORKING" : "STANDBY"}</span><span className="df-switch"><input type="checkbox" checked={magicEnabled} onChange={(event) => onMagicChange(event.target.checked)} disabled={disabled || running} /><i /></span></div><small>Run DigitFlip only when the selected observed parity sample reaches 60% or more.</small></label>
+              <label className="df-control df-magic-control"><span>STANDBY</span><div className="df-magic-switch"><span>{magicEnabled ? "WORKING" : "STANDBY"}</span><span className="df-switch"><input type="checkbox" checked={magicEnabled} onChange={(event) => onMagicChange(event.target.checked)} disabled={disabled || running} /><i /></span></div><small>Run DigitFlip only when the selected observed parity sample reaches 80% or more.</small></label>
           </div>
         </section>
 

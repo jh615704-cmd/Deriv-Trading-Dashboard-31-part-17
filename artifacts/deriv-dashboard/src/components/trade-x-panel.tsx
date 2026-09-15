@@ -159,7 +159,7 @@ export default function TradeXPanel({
     : [...digitData].sort((left, right) => left.percentage - right.percentage || right.streak - left.streak).map((item) => item.digit)
   ).slice(0, 3);
   const selectedData = digitData[selectedDigit] ?? digitData[0];
-  const confidence = clamp(smartConfidence, 50, 100);
+  const confidence = clamp(smartConfidence, 80, 100);
   const safeEntry = analysisTickCount > 0 && selectedData.percentage <= 6 && selectedData.streak < 8;
   const currentSymbolLabel = symbols.find((option) => option.value === symbol)?.label ?? symbol;
 
@@ -485,8 +485,8 @@ export default function TradeXPanel({
           <div className={`tx-smart-controls ${smartAutoEnabled ? "tx-smart-controls-enabled" : ""}`}>
             <label className="tx-smart-control tx-confidence-control">
               <span className="tx-field-label">MIN OBSERVED SIGNAL SCORE <b>{confidence}%</b></span>
-              <input type="range" min="50" max="100" step="1" value={confidence} onChange={(event) => onSmartConfidenceChange(Number(event.target.value))} disabled={disabled} aria-label="Smart auto minimum observed signal score" data-testid="input-smart-confidence" />
-              <span className="tx-range-labels"><span>50%</span><span>sample filter</span><span>100%</span></span>
+              <input type="range" min="80" max="100" step="1" value={confidence} onChange={(event) => onSmartConfidenceChange(Number(event.target.value))} disabled={disabled} aria-label="Smart auto minimum observed signal score" data-testid="input-smart-confidence" />
+              <span className="tx-range-labels"><span>80%</span><span>sample filter</span><span>100%</span></span>
             </label>
             <label className="tx-smart-control">
               <span className="tx-field-label">TRADE COUNT</span>

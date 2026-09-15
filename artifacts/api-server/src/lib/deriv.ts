@@ -339,7 +339,7 @@ function recordMarketTick(symbol: string, quote: unknown, epoch: number) {
   const market = runtime.marketHistory.get(symbol) ?? { quote: null, epoch: 0, digitHistory: [] };
   market.quote = Number(quote ?? 0);
   market.epoch = epoch;
-  if (lastDigit) market.digitHistory.push(Number(lastDigit));
+  if (lastDigit !== undefined) market.digitHistory.push(Number(lastDigit));
   market.digitHistory = market.digitHistory.slice(-100);
   runtime.marketHistory.set(symbol, market);
   if (symbol === runtime.selectedSymbol) {
