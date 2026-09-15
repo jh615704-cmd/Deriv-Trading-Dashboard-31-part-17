@@ -9,3 +9,4 @@
 - [Runtime scaling boundary](runtime-scaling-boundary.md) — 900k active Deriv sessions requires horizontal runtime capacity, not a single Node process.
 - [Digit zero response schema](deriv-digit-zero-schema.md) — Deriv streak payloads include digit 0; keep OpenAPI and generated Zod minimums at zero.
 - [Trade contract selection](trade-contract-selection.md) — Digit Differs uses the selected barrier only at expiry; keep manual, ranked, and open-settlement states explicit.
+- [DigitFlip scanner isolation](digitflip-scanner-isolation.md) — parity samples and visible history must remain separate from EDGE and Trade X.

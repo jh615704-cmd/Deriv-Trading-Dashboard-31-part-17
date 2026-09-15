@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetAccessSessionQueryKey,
   useGetAccessSession,
-  useClearDerivHistory,
   useDeleteDerivToken,
   useGetDerivAccounts,
   useGetDerivHistory,
@@ -44,6 +43,7 @@ import TradeXPanel, {
 } from "../components/trade-x-panel";
 import DigitFlipPanel, {
   type DigitFlipDuration,
+  type DigitFlipMarketSignal,
   type DigitFlipMarketType,
   type DigitFlipParity,
   type DigitFlipStakeMode,
@@ -140,7 +140,6 @@ export default function XTraderPage() {
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
   const digitFlipBuyMutation = useBuyDerivContract();
-  const clearMutation = useClearDerivHistory();
 
   const [pat, setPat] = useState("");
   const [symbol, setSymbol] = useState("R_75");
@@ -166,7 +165,7 @@ export default function XTraderPage() {
   const [tradeXSmartTradeCount, setTradeXSmartTradeCount] = useState<TradeXTradeCount>(1);
   const [tradeXSmartAiTicks, setTradeXSmartAiTicks] = useState<TradeXDuration>(1);
   const [digitFlipEnabled, setDigitFlipEnabled] = useState(false);
-  const [digitFlipMarketType, setDigitFlipMarketType] = useState<DigitFlipMarketType>("volatility");
+  const [digitFlipMarketType, setDigitFlipMarketType] = useState<DigitFlipMarketType>("auto");
   const [digitFlipSymbol, setDigitFlipSymbol] = useState("R_75");
   const [digitFlipParity, setDigitFlipParity] = useState<DigitFlipParity>("DIGITEVEN");
   const [digitFlipDuration, setDigitFlipDuration] = useState<DigitFlipDuration>(1);
@@ -176,10 +175,16 @@ export default function XTraderPage() {
   const [digitFlipTakeProfit, setDigitFlipTakeProfit] = useState(10);
   const [digitFlipStopLoss, setDigitFlipStopLoss] = useState(10);
   const [digitFlipRunning, setDigitFlipRunning] = useState(false);
+  const [digitFlipAutoPair, setDigitFlipAutoPair] = useState(false);
+  const [digitFlipMagic, setDigitFlipMagic] = useState(false);
   const [digitFlipCurrentStake, setDigitFlipCurrentStake] = useState(.5);
   const [digitFlipSessionPnl, setDigitFlipSessionPnl] = useState(0);
   const [digitFlipTradeCount, setDigitFlipTradeCount] = useState(0);
   const [digitFlipBaselinePnl, setDigitFlipBaselinePnl] = useState(0);
+  const [digitFlipSampleCount, setDigitFlipSampleCount] = useState(0);
+  const [digitFlipEvenCount, setDigitFlipEvenCount] = useState(0);
+  const [digitFlipClearArmed, setDigitFlipClearArmed] = useState(false);
+  const [edgeHiddenHistoryIds, setEdgeHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipHiddenHistoryIds, setDigitFlipHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [edgeMinWinRate, setEdgeMinWinRate] = useState(80);
   const [tradeXTradesSent, setTradeXTradesSent] = useState(0);
@@ -209,6 +214,22 @@ export default function XTraderPage() {
   const tradeXActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
   const digitFlipActionLockRef = useRef(false);
+  const digitFlipAutoPairRef = useRef(false);
+  const digitFlipMagicRef = useRef(false);
+  const digitFlipMarketHeldAtRef = useRef(Date.now());
+  const digitFlipMarketSignalsRef = useRef<DigitFlipMarketSignal[]>([]);
+  const digitFlipRatesRef = useRef({ even: 50, odd: 50 });
+  const tradeXLastDigitRef = useRef<number | null>(null);
+  const tradeXAnalysisDigitsRef = useRef<number[]>([]);
+  const digitFlipConfigRef = useRef({
+    marketType: digitFlipMarketType,
+    symbol: digitFlipSymbol,
+    parity: digitFlipParity,
+    duration: digitFlipDuration,
+    stake: digitFlipStake,
+    stakeMode: digitFlipStakeMode,
+    multiplier: digitFlipMultiplier,
+  });
   const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
   const tradeXDistributionRef = useRef<TradeXDigitDistribution[]>([]);
   const edgeAnalysisRef = useRef({ sample: 0, overPercent: 50, underPercent: 50 });
@@ -242,15 +263,16 @@ export default function XTraderPage() {
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const rows = history.data ?? [];
+  const edgeRows = rows.filter((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && !edgeHiddenHistoryIds.has(trade.contract_id));
   const tradeXRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF" && !tradeXHiddenHistoryIds.has(trade.contract_id));
   const digitFlipRows = rows.filter((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && !digitFlipHiddenHistoryIds.has(trade.contract_id));
   const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
   const tradeXLosses = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit < 0).length;
-  const settledPnl = rows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
+  const settledPnl = edgeRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const liveContract = status.data?.last_contract;
   const liveContractRow = liveContract
-    ? rows.find((trade) => trade.contract_id === liveContract.contract_id)
+    ? edgeRows.find((trade) => trade.contract_id === liveContract.contract_id)
     : undefined;
   const liveUnsettledPnl = liveContract && (!liveContractRow || liveContractRow.status === "open")
     ? liveContract.profit
@@ -258,9 +280,17 @@ export default function XTraderPage() {
   const fastSessionPnl = settledPnl - baselinePnl + liveUnsettledPnl;
   const streaks = status.data?.digit_streaks ?? [];
   const lastDigit = status.data?.last_digit;
-  const evenPercentage = status.data?.digit_even_percentage ?? 50;
-  const oddPercentage = status.data?.digit_odd_percentage ?? 50;
-  const digitFlipSelectedRate = digitFlipParity === "DIGITEVEN" ? evenPercentage : oddPercentage;
+  const digitFlipEvenPercentage = digitFlipSampleCount ? (digitFlipEvenCount / digitFlipSampleCount) * 100 : 50;
+  const digitFlipOddPercentage = digitFlipSampleCount ? 100 - digitFlipEvenPercentage : 50;
+  const digitFlipMarketSignals = useMemo<DigitFlipMarketSignal[]>(
+    () => (status.data?.market_signals ?? []).map((signal) => ({
+      symbol: signal.symbol,
+      evenPercentage: signal.digit_even_percentage,
+      oddPercentage: signal.digit_odd_percentage,
+      sampleCount: signal.sample_count,
+    })),
+    [status.data?.market_signals],
+  );
   const analysis = useMemo(() => {
     const counts = Array.from({ length: 10 }, (_, digit) => analysisDigits.filter((value) => value === digit).length);
     const overCount = analysisDigits.filter((digit) => digit > barrier).length;
@@ -341,12 +371,14 @@ export default function XTraderPage() {
   useEffect(() => {
     tradeXAnalysisRef.current = { tickCount: analysisTickCount, confidence: tradeXConfidence };
     tradeXDistributionRef.current = tradeXDistribution;
+    tradeXLastDigitRef.current = lastDigit ?? null;
+    tradeXAnalysisDigitsRef.current = analysisDigits;
     edgeAnalysisRef.current = {
       sample: analysisDigits.length,
       overPercent: analysis.overPercent,
       underPercent: analysis.underPercent,
     };
-  }, [analysis, analysisDigits.length, analysisTickCount, tradeXConfidence, tradeXDistribution]);
+  }, [analysis, analysisDigits, analysisTickCount, lastDigit, tradeXConfidence, tradeXDistribution]);
   const rankedDigits = useMemo(
     () => analysisTickCount > 0 ? rankDigitsByDistribution(analysis.counts) : [],
     [analysis.counts, analysisTickCount],
@@ -396,7 +428,7 @@ export default function XTraderPage() {
   useEffect(() => {
     const watch = martingaleWatchRef.current;
     if (!watch || strategy !== "martingale") return;
-    const newlySettled = rows
+    const newlySettled = edgeRows
       .filter((trade) => !watch.knownIds.has(trade.contract_id) && !watch.processedIds.has(trade.contract_id) && trade.status !== "open")
       .sort((left, right) => (left.buy_time ?? 0) - (right.buy_time ?? 0));
     if (!newlySettled.length) return;
@@ -412,7 +444,7 @@ export default function XTraderPage() {
     if (watch.processedIds.size >= watch.expectedSettlements) {
       martingaleWatchRef.current = null;
     }
-  }, [rows, strategy, martingale, stake]);
+  }, [edgeRows, strategy, martingale, stake]);
 
   useEffect(() => {
     const epoch = status.data?.last_tick?.epoch;
@@ -422,8 +454,28 @@ export default function XTraderPage() {
     analysisEpochRef.current = epoch;
     liveTickSequenceRef.current += 1;
     setAnalysisDigits((current) => [...current, digit].slice(-100));
-    setAnalysisTickCount((current) => Math.min(5000, current + 1));
-  }, [status.data?.last_tick?.epoch, status.data?.last_digit]);
+    setAnalysisTickCount((current) => current + 1);
+    if (digitFlipEnabled) {
+      setDigitFlipSampleCount((current) => current + 1);
+      if (digit % 2 === 0) setDigitFlipEvenCount((current) => current + 1);
+    }
+  }, [digitFlipEnabled, status.data?.last_tick?.epoch, status.data?.last_digit]);
+
+  useEffect(() => {
+    digitFlipAutoPairRef.current = digitFlipAutoPair;
+    digitFlipMagicRef.current = digitFlipMagic;
+    digitFlipMarketSignalsRef.current = digitFlipMarketSignals;
+    digitFlipRatesRef.current = { even: digitFlipEvenPercentage, odd: digitFlipOddPercentage };
+    digitFlipConfigRef.current = {
+      marketType: digitFlipMarketType,
+      symbol: digitFlipSymbol,
+      parity: digitFlipParity,
+      duration: digitFlipDuration,
+      stake: digitFlipStake,
+      stakeMode: digitFlipStakeMode,
+      multiplier: digitFlipMultiplier,
+    };
+  }, [digitFlipAutoPair, digitFlipMagic, digitFlipMarketSignals, digitFlipEvenPercentage, digitFlipOddPercentage, digitFlipMarketType, digitFlipSymbol, digitFlipParity, digitFlipDuration, digitFlipStake, digitFlipStakeMode, digitFlipMultiplier]);
 
   useEffect(() => {
     const pnl = fastSessionPnl;
@@ -663,11 +715,22 @@ export default function XTraderPage() {
     if (runningRef.current) stop();
   };
 
+  const resetDigitFlipScanner = () => {
+    setDigitFlipSampleCount(0);
+    setDigitFlipEvenCount(0);
+    setDigitFlipBaselinePnl(
+      rows
+        .filter((trade) => trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD")
+        .reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0),
+    );
+  };
+
   const selectMarket = async (next: string) => {
     setSymbol(next);
     analysisEpochRef.current = null;
     setAnalysisDigits([]);
     setAnalysisTickCount(0);
+    if (digitFlipEnabled) resetDigitFlipScanner();
     try {
       await symbolMutation.mutateAsync({ data: { symbol: next } });
       refreshTradeResults();
@@ -695,6 +758,21 @@ export default function XTraderPage() {
     }
     if (currentAccount && config.stake * count > currentAccount.balance) {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
+      return false;
+    }
+    const selectedSignal = tradeXDistributionRef.current[entryDigit];
+    if (
+      tradeXSmartRef.current
+      && (!selectedSignal || selectedSignal.percentage > 6 || selectedSignal.streak >= 8)
+    ) {
+      setTradeXMessage(`Trade X is waiting for an observed filter: digit ${entryDigit} must be below 6% frequency with fewer than 8 absent ticks.`);
+      return false;
+    }
+    const recentDigits = tradeXAnalysisDigitsRef.current.slice(-8);
+    const transitions = recentDigits.slice(1).filter((digit, index) => digit !== recentDigits[index]).length;
+    if (recentDigits.length >= 6 && transitions >= 5 && tradeXLastDigitRef.current === entryDigit) {
+      setTradeXMessage(`Trade X delayed because the selected digit just appeared during an aggressive sequence. Waiting for a fresh sample.`);
+      await waitForMarketTicks(Math.max(1, durationOverride), () => isConnected);
       return false;
     }
     const latestRows = await getDerivHistory();
@@ -743,20 +821,45 @@ export default function XTraderPage() {
     }
   };
 
-  const chooseDigitFlipMarket = async () => {
-    const signals = status.data?.market_signals ?? [];
-    const best = [...signals]
-      .filter((signal) => signal.sample_count > 0)
-     .sort((left, right) => right.sample_count - left.sample_count)[0];
-    const next = best?.symbol ?? status.data?.symbol ?? digitFlipSymbol;
-    setDigitFlipSymbol(next);
-    if (next !== status.data?.symbol) await selectMarket(next);
+  const chooseDigitFlipSetup = async (requireThreshold = false) => {
+    const currentRows = await getDerivHistory();
+    if (currentRows.some((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && trade.status === "open")) {
+      return false;
+    }
+    const config = digitFlipConfigRef.current;
+    const signals = digitFlipMarketSignalsRef.current
+      .filter((signal) => signal.sampleCount > 0)
+      .filter((signal) => config.marketType === "auto" || tradeXSymbols.find((option) => option.value === signal.symbol)?.marketType === config.marketType)
+      .map((signal) => ({
+        signal,
+        parity: signal.evenPercentage >= signal.oddPercentage ? "DIGITEVEN" as const : "DIGITODD" as const,
+        rate: Math.max(signal.evenPercentage, signal.oddPercentage),
+      }))
+      .filter((candidate) => !requireThreshold || candidate.rate >= 60)
+      .sort((left, right) => right.rate - left.rate || right.signal.sampleCount - left.signal.sampleCount);
+    const best = signals[0];
+    if (!best) return false;
+    if (best.signal.symbol !== config.symbol) {
+      setDigitFlipSymbol(best.signal.symbol);
+      await selectMarket(best.signal.symbol);
+    }
+    if (digitFlipMagicRef.current || config.marketType === "auto") setDigitFlipParity(best.parity);
+    digitFlipMarketHeldAtRef.current = Date.now();
+    return true;
   };
+
+  const chooseDigitFlipMarket = async () => chooseDigitFlipSetup(false);
 
   const executeDigitFlip = async () => {
     if (digitFlipActionLockRef.current || !isConnected) return false;
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a DigitFlip trade." });
+      return false;
+    }
+    const config = digitFlipConfigRef.current;
+    const selectedRate = config.parity === "DIGITEVEN" ? digitFlipRatesRef.current.even : digitFlipRatesRef.current.odd;
+    if (digitFlipMagicRef.current && selectedRate < 60) {
+      setConnectionMessage({ kind: "info", text: `Magic is waiting for a 60% observed parity signal. Current ${selectedRate.toFixed(1)}%.` });
       return false;
     }
     const latestRows = await getDerivHistory();
@@ -766,18 +869,18 @@ export default function XTraderPage() {
     const latestFlip = latestRows.find((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && trade.status !== "open");
     const watch = digitFlipMartingaleWatchRef.current;
     if (
-      digitFlipStakeMode === "martingale" &&
+      config.stakeMode === "martingale" &&
       latestFlip &&
       watch &&
       !watch.knownIds.has(latestFlip.contract_id) &&
       !watch.processedIds.has(latestFlip.contract_id)
     ) {
-      digitFlipNextStakeRef.current = nextStakeAfterSettlement(latestFlip.profit, digitFlipNextStakeRef.current, digitFlipStake, digitFlipMultiplier);
+      digitFlipNextStakeRef.current = nextStakeAfterSettlement(latestFlip.profit, digitFlipNextStakeRef.current, config.stake, config.multiplier);
       watch.processedIds.add(latestFlip.contract_id);
     }
-    const amount = digitFlipStakeMode === "martingale"
+    const amount = config.stakeMode === "martingale"
       ? digitFlipNextStakeRef.current
-      : digitFlipStake;
+      : config.stake;
     if (currentAccount && amount > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The DigitFlip stake is higher than the available balance." });
       return false;
@@ -788,10 +891,10 @@ export default function XTraderPage() {
       await digitFlipBuyMutation.mutateAsync({
         data: {
           amount,
-          duration: digitFlipDuration,
+          duration: config.duration,
           duration_unit: "t",
-          contract_type: digitFlipParity,
-          symbol: digitFlipSymbol,
+          contract_type: config.parity,
+          symbol: config.symbol,
           confirm_live_trade: true,
         },
       });
@@ -814,11 +917,22 @@ export default function XTraderPage() {
   };
 
   const runDigitFlipLoop = async () => {
-    let marketHeldAt = Date.now();
+    let marketHeldAt = digitFlipMarketHeldAtRef.current;
     while (digitFlipRunningRef.current) {
-      if (Date.now() - marketHeldAt > 120_000 || digitFlipSelectedRate < 42) {
-        await chooseDigitFlipMarket();
-        marketHeldAt = Date.now();
+      const currentRate = digitFlipConfigRef.current.parity === "DIGITEVEN"
+        ? digitFlipRatesRef.current.even
+        : digitFlipRatesRef.current.odd;
+      if (digitFlipMagicRef.current) {
+        const selected = await chooseDigitFlipSetup(true);
+        if (!selected) {
+          setConnectionMessage({ kind: "info", text: "Magic is waiting for a pair with a 60% observed parity signal." });
+          await waitForMarketTicks(1, () => digitFlipRunningRef.current);
+          continue;
+        }
+        marketHeldAt = digitFlipMarketHeldAtRef.current;
+      } else if (digitFlipAutoPairRef.current && (currentRate < 60 || Date.now() - marketHeldAt >= 120_000)) {
+        const selected = await chooseDigitFlipSetup(false);
+        if (selected) marketHeldAt = digitFlipMarketHeldAtRef.current;
       }
       const didTrade = await executeDigitFlip();
       if (digitFlipRunningRef.current) {
@@ -843,6 +957,20 @@ export default function XTraderPage() {
     setAutoSwitch(false);
     setTradeXSmartAuto(false);
     void chooseDigitFlipMarket();
+  };
+
+  const toggleDigitFlipAutoPair = (enabled: boolean) => {
+    digitFlipAutoPairRef.current = enabled;
+    setDigitFlipAutoPair(enabled);
+    if (enabled && digitFlipRunning) void chooseDigitFlipSetup(false);
+  };
+
+  const toggleDigitFlipMagic = (enabled: boolean) => {
+    digitFlipMagicRef.current = enabled;
+    setDigitFlipMagic(enabled);
+    if (enabled) {
+      setConnectionMessage({ kind: "info", text: "Magic is working as an observed-signal gate; it does not guarantee a win." });
+    }
   };
 
   const toggleDigitFlipRun = () => {
@@ -881,16 +1009,31 @@ export default function XTraderPage() {
     setDigitFlipTradeCount(0);
     setDigitFlipBaselinePnl(rows.filter((trade) => trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD").reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0));
     setDigitFlipCurrentStake(digitFlipStake);
+    resetDigitFlipScanner();
     digitFlipNextStakeRef.current = digitFlipStake;
     digitFlipMartingaleWatchRef.current = null;
   };
 
-  const clearDigitFlipHistory = () => {
+  const refreshDigitFlipSample = () => {
+    resetDigitFlipScanner();
+    setConnectionMessage({ kind: "info", text: "DigitFlip parity scanner reset. Waiting for fresh ticks." });
+  };
+
+  const clearDigitFlipHistory = async () => {
+    if (!digitFlipClearArmed) {
+      setDigitFlipClearArmed(true);
+      window.setTimeout(() => setDigitFlipClearArmed(false), 2_500);
+      return;
+    }
+    setDigitFlipClearArmed(false);
+    setHistoryFading(true);
+    await sleep(260);
     setDigitFlipHiddenHistoryIds((current) => {
       const next = new Set(current);
       digitFlipRows.forEach((trade) => next.add(trade.contract_id));
       return next;
     });
+    setHistoryFading(false);
   };
 
   const runTradeXSmartLoop = async () => {
@@ -1010,26 +1153,29 @@ export default function XTraderPage() {
     setClearHistoryArmed(false);
     setHistoryFading(true);
     await sleep(260);
-    try {
-      await clearMutation.mutateAsync();
-      await queryClient.invalidateQueries();
-    } finally {
-      setHistoryFading(false);
-    }
+    setEdgeHiddenHistoryIds((current) => {
+      const next = new Set(current);
+      edgeRows.forEach((trade) => next.add(trade.contract_id));
+      return next;
+    });
+    setHistoryFading(false);
   };
 
-  const clearTradeXHistory = () => {
+  const clearTradeXHistory = async () => {
     if (!tradeXHistoryClearArmed) {
       setTradeXHistoryClearArmed(true);
       window.setTimeout(() => setTradeXHistoryClearArmed(false), 2_500);
       return;
     }
     setTradeXHistoryClearArmed(false);
+    setHistoryFading(true);
+    await sleep(260);
     setTradeXHiddenHistoryIds((current) => {
       const next = new Set(current);
       tradeXRows.forEach((trade) => next.add(trade.contract_id));
       return next;
     });
+    setHistoryFading(false);
   };
 
   const accountOptions = accounts.data ?? [];
@@ -1135,11 +1281,12 @@ export default function XTraderPage() {
           marketType={digitFlipMarketType}
           symbol={digitFlipSymbol}
           symbols={tradeXSymbols}
+           marketSignals={digitFlipMarketSignals}
           quote={status.data?.last_tick?.quote}
           lastDigit={lastDigit}
-          evenPercentage={evenPercentage}
-          oddPercentage={oddPercentage}
-          sampleCount={status.data?.digit_sample_count ?? 0}
+           evenPercentage={digitFlipEvenPercentage}
+           oddPercentage={digitFlipOddPercentage}
+           sampleCount={digitFlipSampleCount}
           selectedParity={digitFlipParity}
           duration={digitFlipDuration}
           stake={digitFlipStake}
@@ -1152,15 +1299,23 @@ export default function XTraderPage() {
           sessionPnl={digitFlipSessionPnl}
           tradeCount={digitFlipTradeCount}
           recentTrades={digitFlipRows}
+           autoPairEnabled={digitFlipAutoPair}
+           magicEnabled={digitFlipMagic}
+           clearTradesArmed={digitFlipClearArmed}
+           historyFading={historyFading}
           isPlacingTrade={digitFlipBuyMutation.isPending}
           disabled={!isConnected}
           onMarketTypeChange={(next) => {
             setDigitFlipMarketType(next);
-            const nextSymbol = tradeXSymbols.find((option) => option.marketType === next)?.value;
-            if (nextSymbol) {
-              setDigitFlipSymbol(nextSymbol);
-              void selectMarket(nextSymbol);
-            }
+             if (next === "auto") {
+               window.setTimeout(() => void chooseDigitFlipSetup(false), 0);
+             } else {
+               const nextSymbol = tradeXSymbols.find((option) => option.marketType === next)?.value;
+               if (nextSymbol) {
+                 setDigitFlipSymbol(nextSymbol);
+                 void selectMarket(nextSymbol);
+               }
+             }
           }}
           onSymbolChange={(next) => { setDigitFlipSymbol(next); void selectMarket(next); }}
           onParityChange={setDigitFlipParity}
@@ -1173,6 +1328,9 @@ export default function XTraderPage() {
           onRunStop={toggleDigitFlipRun}
           onReset={resetDigitFlip}
           onClearTrades={clearDigitFlipHistory}
+           onRefreshSample={refreshDigitFlipSample}
+           onAutoPairChange={toggleDigitFlipAutoPair}
+           onMagicChange={toggleDigitFlipMagic}
           onGuide={() => { setGuideMode("digit-flip"); setGuidePage(0); setGuideOpen(true); }}
         />
       )}
@@ -1257,8 +1415,8 @@ export default function XTraderPage() {
           </section>
 
           {canViewHistory && <section className="xt-history" title="Recent dashboard trade history">
-            <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent Trades</b><small>Dashboard rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={clearMutation.isPending || historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
-            {!rows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : rows.slice(0, 12).map((trade) => {
+            <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent EDGE Trades</b><small>EDGE rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
+             {!edgeRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : edgeRows.slice(0, 12).map((trade) => {
               const settled = trade.status !== "open";
               return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
             })}
@@ -1326,7 +1484,7 @@ export default function XTraderPage() {
               </div>
               {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.slice(0, 12).map((trade) => {
                 const settled = trade.status !== "open";
-                return <div className="xt-trade" key={trade.contract_id}><span><b>DIGIT DIFFERS {trade.barrier == null ? "" : trade.barrier}</b><small>{trade.symbol} · {trade.account_type} · expiry decides the result</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
+                return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>DIGIT DIFFERS {trade.barrier == null ? "" : trade.barrier}</b><small>{trade.symbol} · {trade.account_type} · expiry decides the result</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
               })}
             </section>
           )}

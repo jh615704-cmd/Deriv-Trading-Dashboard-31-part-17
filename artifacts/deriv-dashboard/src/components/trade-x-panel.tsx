@@ -160,7 +160,7 @@ export default function TradeXPanel({
   ).slice(0, 3);
   const selectedData = digitData[selectedDigit] ?? digitData[0];
   const confidence = clamp(smartConfidence, 50, 100);
-  const safeEntry = analysisTickCount >= 20 && selectedData.percentage <= 5;
+  const safeEntry = analysisTickCount > 0 && selectedData.percentage <= 6 && selectedData.streak < 8;
   const currentSymbolLabel = symbols.find((option) => option.value === symbol)?.label ?? symbol;
 
   const selectMarketType = (nextMarketType: TradeXMarketType) => {
@@ -301,7 +301,7 @@ export default function TradeXPanel({
               <div className="tx-readout-divider" />
               <div>
                 <span className="tx-micro-label">SELECTED DIGIT</span>
-                <strong data-testid="text-trade-x-selected-digit">{selectedDigit}<small>{safeEntry ? "ranked entry" : "manual entry"}</small></strong>
+                <strong data-testid="text-trade-x-selected-digit">{selectedDigit}<small>{safeEntry ? "filter ready" : manualSelectMode ? "manual entry" : "ranked entry"}</small></strong>
               </div>
                <div className="tx-distribution-state"><Activity size={14} />LIVE TICKS</div>
             </div>
@@ -343,8 +343,8 @@ export default function TradeXPanel({
               </div>
                <div className={`tx-signal-progress ${safeEntry ? "tx-signal-progress-safe" : ""}`}><i style={{ width: `${clamp(selectedData.percentage * 10, 2, 100)}%` }} /></div>
                  <p>{safeEntry
-                   ? `Observed frequency is below 5%. This is a filter for Digit Differs ${selectedDigit}, not a probability guarantee.`
-                   : "Observed frequency is above 5%. Review the sample before selecting this barrier."}</p>
+                   ? `Observed frequency is below 6% and absence is below 8 ticks. This is a filter for Digit Differs ${selectedDigit}, not a probability guarantee.`
+                   : "The selected digit does not meet the observed <6% / <8-tick filter yet."}</p>
             </div>
             <div className="tx-distribution-foot">
               <span><i className="tx-key tx-key-ranked" /> ranked differ signal</span>
