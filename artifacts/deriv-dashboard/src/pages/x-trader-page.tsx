@@ -51,6 +51,7 @@ import DigitFlipPanel, {
   type DigitFlipParity,
   type DigitFlipStakeMode,
 } from "../components/digit-flip-panel";
+import EdgeReferencePanel from "../components/edge-reference-panel";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -157,9 +158,9 @@ export default function XTraderPage() {
   const [symbol, setSymbol] = useState("R_75");
   const [direction, setDirection] = useState<"DIGITOVER" | "DIGITUNDER">("DIGITOVER");
   const [barrier, setBarrier] = useState(5);
-  const [duration, setDuration] = useState(1);
+  const [duration, setDuration] = useState(5);
   const [stake, setStake] = useState(1);
-  const [strategy, setStrategy] = useState<"flat" | "martingale">("flat");
+  const [strategy, setStrategy] = useState<"flat" | "martingale">("martingale");
   const [martingale, setMartingale] = useState(2);
   const [takeProfit, setTakeProfit] = useState(10);
   const [stopLoss, setStopLoss] = useState(10);
@@ -1433,7 +1434,7 @@ export default function XTraderPage() {
   const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guideMode === "digit-flip" ? digitFlipGuidePages : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const canTrade = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
+  const canTrade = isConnected && !running && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
     && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
   return (
@@ -1586,8 +1587,59 @@ export default function XTraderPage() {
       )}
 
       {xTraderEnabled && (
+        <EdgeReferencePanel
+          isConnected={isConnected}
+          running={running}
+          isReal={isReal}
+          liveConfirmed={liveConfirmed}
+          onLiveConfirm={setLiveConfirmed}
+          symbol={symbol}
+          markets={markets}
+          onSymbolChange={(next) => void selectMarket(next)}
+          currentAccount={currentAccount}
+          direction={direction}
+          onDirectionChange={setDirection}
+          barrier={barrier}
+          onBarrierChange={setBarrier}
+          duration={duration}
+          onDurationChange={selectDuration}
+          stake={stake}
+          onStakeChange={setStake}
+          strategy={strategy}
+          onStrategyChange={setStrategy}
+          martingale={martingale}
+          onMartingaleChange={setMartingale}
+          takeProfit={takeProfit}
+          onTakeProfitChange={setTakeProfit}
+          stopLoss={stopLoss}
+          onStopLossChange={setStopLoss}
+          autoSwitch={autoSwitch}
+          onAutoSwitchChange={toggleAutoBestDigit}
+          edgePercentageMode={edgePercentageMode}
+          onPercentageModeChange={toggleEdgePercentageMode}
+          edgeRecommendation={edgeRecommendation}
+          marketSignals={(status.data?.market_signals ?? []) as MarketSignal[]}
+          analysis={analysis}
+          lastDigit={lastDigit}
+          quote={status.data?.last_tick?.quote}
+          nextStake={nextStake}
+          sessionPnl={sessionPnl}
+          sessionTrades={sessionTrades}
+          canTrade={canTrade}
+          onStart={start}
+          onStop={stop}
+          onReset={reset}
+          canViewHistory={canViewHistory}
+          recentTrades={edgeRows}
+          historyFading={historyFading}
+          clearTradesArmed={clearHistoryArmed}
+          onClearHistory={clearHistory}
+        />
+      )}
+
+      {xTraderEnabled && (
         <>
-          <section className="xt-cockpit">
+          <section className="xt-cockpit edge-legacy-hidden">
             <div className="xt-cockpit-head">
               <div><Activity size={18} /><span><b>EDGE Cockpit</b><small>Live tick analysis · historical streaks do not guarantee outcomes</small></span></div>
               <em className={running ? "running" : ""}><i />{activityText}</em>
@@ -1673,7 +1725,7 @@ export default function XTraderPage() {
             {strategy === "martingale" && <p className="xt-streak-note">Next stake after settlement: <b>{nextStake.toFixed(2)} {currentAccount?.currency ?? "USD"}</b>. Every loss multiplies the next stake; any profit resets it to normal.</p>}
           </section>
 
-          {canViewHistory && <section className="xt-history" title="Recent dashboard trade history">
+          {canViewHistory && <section className="xt-history edge-legacy-hidden" title="Recent dashboard trade history">
             <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent EDGE Trades</b><small>EDGE rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
              {!edgeRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : edgeRows.slice(0, 12).map((trade) => {
               const settled = trade.status !== "open";
