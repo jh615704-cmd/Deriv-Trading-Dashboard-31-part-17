@@ -161,8 +161,9 @@
 .edge-ref-digit-card { padding: 16px; }
 .edge-ref-field-label { display: block; color: #d1b64c; }
 .edge-ref-digit-picker { display: grid; grid-template-columns: repeat(9, 1fr); gap: 7px; margin-top: 10px; }
-.edge-ref-digit-picker button { min-height: 37px; border: 1px solid #584b2b; border-radius: 9px; color: #f7db6b; background: #2d2d2f; cursor: pointer; font-weight: 800; }
-.edge-ref-digit-picker button.active { border-color: #2de0cb; color: #f7ffff; background: #18b9ab; box-shadow: 0 0 13px rgba(37, 224, 203, .3); }
+.edge-ref-digit-picker button { min-height: 37px; border: 1px solid #584b2b; border-radius: 9px; color: #f7db6b; background: #2d2d2f; cursor: pointer; font-weight: 800; transition: border-color .18s ease, background-color .18s ease, color .18s ease, box-shadow .18s ease; }
+.edge-ref-digit-picker button:hover:not(:disabled),
+.edge-ref-digit-picker button.active { border-color: #ff7782; color: #fff; background: #c83d4d; box-shadow: 0 0 13px rgba(232, 67, 83, .42); }
 .edge-ref-digit-picker button:focus-visible { box-shadow: 0 0 0 2px #7ebeff, 0 0 14px rgba(126, 190, 255, .8); }
 
 .edge-ref-preset { padding: 16px; }
