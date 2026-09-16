@@ -795,6 +795,8 @@
 .tx-trend-down { color: #ff8d8a; }
 .tx-absence-dot { color: #f2c443; }
 .tx-market-digit { display: none; }
+.tx-market-touch { position: absolute; top: 5px; right: 6px; min-height: 10px; color: transparent; font: 800 6px var(--app-font-mono,monospace); letter-spacing: .04em; }
+.tx-market-touch.is-live { padding: 2px 3px; border: 1px solid #ff626a; border-radius: 4px; background: #6d293b; color: #ffd6d1; box-shadow: 0 0 7px rgba(255,78,91,.35); }
 .tx-signal-detail { margin: 0 16px 14px; padding: 13px; border: 1px solid rgba(126, 80, 98, .55); border-radius: 10px; background: rgba(59, 39, 53, .8); }
 .tx-signal-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .tx-signal-detail-head > div { display: flex; align-items: center; gap: 7px; }

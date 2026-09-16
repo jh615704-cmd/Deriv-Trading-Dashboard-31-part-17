@@ -368,6 +368,15 @@ function getMarketSignals() {
       digit_even_percentage: sampleCount ? Number(((evenCount / sampleCount) * 100).toFixed(1)) : 50,
       digit_odd_percentage: sampleCount ? Number((((sampleCount - evenCount) / sampleCount) * 100).toFixed(1)) : 50,
       digit_streaks: digitStreaksFor(digits),
+      digit_outcomes: Array.from({ length: 10 }, (_, digit) => {
+        const overCount = digits.filter((value: number) => value > digit).length;
+        const underCount = digits.filter((value: number) => value < digit).length;
+        return {
+          digit,
+          over_percentage: sampleCount ? Number(((overCount / sampleCount) * 100).toFixed(1)) : 50,
+          under_percentage: sampleCount ? Number(((underCount / sampleCount) * 100).toFixed(1)) : 50,
+        };
+      }),
     };
   });
 }

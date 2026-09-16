@@ -9,6 +9,7 @@ import {
   useGetDerivStatus,
   useGetDerivTokenStatus,
   useBulkBuyDerivContracts,
+  useDualBuyDerivContracts,
   useBuyDerivContract,
   getDerivHistory,
   useSelectDerivAccount,
@@ -27,11 +28,13 @@ import {
 } from "lucide-react";
 import {
   chooseBestDigitSignal,
+  chooseBestEdgeSignal,
   digitForTick,
   nextStakeAfterSettlement,
   rankDigitsForDiffers,
   rankDigitsByDistribution,
   sessionStopReason,
+  type BestEdgeSignal,
   type MarketSignal,
 } from "../lib/trading-sequence";
 import TradeXPanel, {
@@ -108,6 +111,7 @@ const tradeXSymbols: readonly TradeXSymbolOption[] = markets.map(([value, label]
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const DIGIT_FLIP_SIGNAL_FLOOR = 80;
 const DIGIT_FLIP_MARKET_SCAN_INTERVAL_MS = 10_000;
+const EDGE_PERCENTAGE_SCAN_FLOOR = 90;
 const errorMessage = (error: unknown) => {
   if (!error || typeof error !== "object") return "Request failed";
   const candidate = error as { data?: { error?: string }; message?: string };
@@ -146,6 +150,7 @@ export default function XTraderPage() {
   const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
+  const dualBuyMutation = useDualBuyDerivContracts();
   const digitFlipBuyMutation = useBuyDerivContract();
 
   const [pat, setPat] = useState("");
@@ -159,6 +164,8 @@ export default function XTraderPage() {
   const [takeProfit, setTakeProfit] = useState(10);
   const [stopLoss, setStopLoss] = useState(10);
   const [autoSwitch, setAutoSwitch] = useState(false);
+  const [edgePercentageMode, setEdgePercentageMode] = useState(false);
+  const [edgeRecommendation, setEdgeRecommendation] = useState<BestEdgeSignal | null>(null);
   const [xTraderEnabled, setXTraderEnabled] = useState(false);
   const [tradeXEnabled, setTradeXEnabled] = useState(false);
   const [tradeXMarketType, setTradeXMarketType] = useState<TradeXMarketType>("volatility");
@@ -192,7 +199,7 @@ export default function XTraderPage() {
   const [digitFlipClearArmed, setDigitFlipClearArmed] = useState(false);
   const [edgeHiddenHistoryIds, setEdgeHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipHiddenHistoryIds, setDigitFlipHiddenHistoryIds] = useState<Set<string>>(new Set());
-  const [edgeMinWinRate, setEdgeMinWinRate] = useState(80);
+  const [edgeMinWinRate, setEdgeMinWinRate] = useState(90);
   const [tradeXTradesSent, setTradeXTradesSent] = useState(0);
   const [tradeXMessage, setTradeXMessage] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -212,6 +219,7 @@ export default function XTraderPage() {
   const [nextStake, setNextStake] = useState(stake);
   const runningRef = useRef(false);
   const autoSwitchRef = useRef(autoSwitch);
+  const edgePercentageModeRef = useRef(edgePercentageMode);
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const analysisEpochRef = useRef<number | null>(null);
@@ -256,7 +264,7 @@ export default function XTraderPage() {
     stake,
     strategy,
     martingale,
-    symbol,
+     symbol,
     liveConfirmed,
     rankedDigits: [] as number[],
   });
@@ -464,6 +472,10 @@ export default function XTraderPage() {
   }, [autoSwitch]);
 
   useEffect(() => {
+    edgePercentageModeRef.current = edgePercentageMode;
+  }, [edgePercentageMode]);
+
+  useEffect(() => {
     nextStakeRef.current = stake;
     setNextStake(stake);
   }, [stake, strategy]);
@@ -597,6 +609,36 @@ export default function XTraderPage() {
     configRef.current = { ...configRef.current, direction: best.direction, barrier: best.digit, symbol: best.symbol };
   };
 
+  const applyPercentageRecommendation = async () => {
+    const signals = (status.data?.market_signals ?? []) as MarketSignal[];
+    const recommendation = chooseBestEdgeSignal(signals, EDGE_PERCENTAGE_SCAN_FLOOR);
+    setEdgeRecommendation(recommendation);
+    if (!recommendation) {
+      setConnectionMessage({
+        kind: "info",
+        text: `Percentage scan is waiting for a cross-market observed outcome at or above ${EDGE_PERCENTAGE_SCAN_FLOOR}%.`,
+      });
+      return null;
+    }
+    if (recommendation.symbol !== configRef.current.symbol) {
+      await selectMarket(recommendation.symbol);
+    }
+    const nextDirection = recommendation.direction === "DIGITUNDER" ? "DIGITUNDER" : "DIGITOVER";
+    setDirection(nextDirection);
+    setBarrier(recommendation.digit);
+    configRef.current = {
+      ...configRef.current,
+      direction: nextDirection,
+      barrier: recommendation.digit,
+      symbol: recommendation.symbol,
+    };
+    setConnectionMessage({
+      kind: "info",
+      text: `Percentage scan recommends ${recommendation.direction === "DUAL" ? "Dual" : nextDirection === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol} at ${recommendation.score.toFixed(1)}% observed ${recommendation.direction === "DUAL" ? "coverage" : "share"}. This is evidence, not a guaranteed outcome.`,
+    });
+    return recommendation;
+  };
+
   const armMartingaleWatch = (latestRows: typeof rows, amount: number, expectedSettlements: number) => {
     if (configRef.current.strategy !== "martingale") {
       martingaleWatchRef.current = null;
@@ -659,11 +701,48 @@ export default function XTraderPage() {
     refreshTradeResults();
   };
 
+  const executeDualBatch = async () => {
+    const config = configRef.current;
+    let latestRows = await getDerivHistory();
+    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
+      await sleep(500);
+      latestRows = await getDerivHistory();
+    }
+    if (latestRows.some((trade) => trade.status === "open")) {
+      throw new Error("The previous contract is still settling. EDGE stopped without sending another trade.");
+    }
+    queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+    if (!runningRef.current) return;
+    const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
+    armMartingaleWatch(latestRows, amount, 2);
+    await dualBuyMutation.mutateAsync({
+      data: {
+        amount,
+        duration: config.duration,
+        duration_unit: "t",
+        barrier: config.barrier,
+        symbol: config.symbol,
+        confirm_live_trade: true,
+      },
+    });
+    setSessionTrades((value) => value + 2);
+    refreshTradeResults();
+  };
+
   const runLoop = async () => {
     while (runningRef.current) {
       try {
-        if (autoSwitchRef.current) await chooseBestDigit();
-        if (autoSwitchRef.current) {
+        if (edgePercentageModeRef.current) {
+          const recommendation = await applyPercentageRecommendation();
+          if (!recommendation) {
+            await sleep(1500);
+            continue;
+          }
+          if (recommendation.direction === "DUAL") await executeDualBatch();
+          else await executeBatch();
+        } else {
+          if (autoSwitchRef.current) await chooseBestDigit();
+          if (autoSwitchRef.current) {
           const currentAnalysis = edgeAnalysisRef.current;
           const directionRate = configRef.current.direction === "DIGITOVER"
             ? currentAnalysis.overPercent
@@ -676,8 +755,9 @@ export default function XTraderPage() {
             await sleep(1500);
             continue;
           }
+          }
+          await executeBatch();
         }
-        await executeBatch();
         // executeBatch waits for the active contract to settle. Do not add a
         // duration-based cooldown after settlement; Deriv's tick duration is
         // the source of truth for how long the contract runs.
@@ -766,6 +846,26 @@ export default function XTraderPage() {
     autoSwitchRef.current = false;
     setAutoSwitch(false);
     if (runningRef.current) stop();
+  };
+
+  const toggleEdgePercentageMode = (enabled: boolean) => {
+    if (enabled) {
+      if (!isConnected) {
+        setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling Percentage Scan." });
+        return;
+      }
+      if (isReal && !liveConfirmed) {
+        setConnectionMessage({ kind: "error", text: "Confirm live funds before enabling Percentage Scan." });
+        return;
+      }
+      edgePercentageModeRef.current = true;
+      setEdgePercentageMode(true);
+      void applyPercentageRecommendation();
+      return;
+    }
+    edgePercentageModeRef.current = false;
+    setEdgePercentageMode(false);
+    setEdgeRecommendation(null);
   };
 
   const resetDigitFlipScanner = () => {
@@ -1208,18 +1308,25 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
       return;
     }
+    if (edgePercentageModeRef.current) {
+      const recommendation = await applyPercentageRecommendation();
+      if (!recommendation) return;
+      if (recommendation.direction === "DUAL" || recommendation.direction !== contractType) {
+        setConnectionMessage({
+          kind: "info",
+          text: `Percentage Scan recommends ${recommendation.direction === "DUAL" ? "Dual" : recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol}; no ${contractType === "DIGITOVER" ? "Over" : "Under"} trade was sent.`,
+        });
+        return;
+      }
+    }
     const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-    const entryDigit = barrier;
+    const entryDigit = configRef.current.barrier;
     if (currentAccount && amount > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
       return;
     }
     try {
       const latestRows = await getDerivHistory();
-      if (latestRows.some((trade) => trade.status === "open")) {
-        setConnectionMessage({ kind: "info", text: "The previous contract is still settling. Wait before sending another trade." });
-        return;
-      }
       queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
       armMartingaleWatch(latestRows, amount, 1);
       await bulkBuyMutation.mutateAsync({
@@ -1229,7 +1336,7 @@ export default function XTraderPage() {
           duration_unit: "t",
           contract_type: contractType,
            barrier: entryDigit,
-          symbol,
+          symbol: configRef.current.symbol,
           count: 1,
           confirm_live_trade: true,
         },
@@ -1243,6 +1350,50 @@ export default function XTraderPage() {
     }
   };
 
+  const fireDualTrade = async () => {
+    if (!isConnected) return;
+    if (isReal && !liveConfirmed) {
+      setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
+      return;
+    }
+    if (edgePercentageModeRef.current) {
+      const recommendation = await applyPercentageRecommendation();
+      if (!recommendation) return;
+      if (recommendation.direction !== "DUAL") {
+        setConnectionMessage({
+          kind: "info",
+          text: `Percentage Scan recommends ${recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol}; Dual was not sent.`,
+        });
+        return;
+      }
+    }
+    const amount = strategy === "martingale" ? nextStakeRef.current : stake;
+    const entryDigit = configRef.current.barrier;
+    if (currentAccount && amount * 2 > currentAccount.balance) {
+      setConnectionMessage({ kind: "error", text: "The dual stake is higher than the available balance." });
+      return;
+    }
+    try {
+      const latestRows = await getDerivHistory();
+      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+      armMartingaleWatch(latestRows, amount, 2);
+      await dualBuyMutation.mutateAsync({
+        data: {
+          amount,
+          duration,
+          duration_unit: "t",
+          barrier: entryDigit,
+          symbol: configRef.current.symbol,
+          confirm_live_trade: true,
+        },
+      });
+      setSessionTrades((value) => value + 2);
+      await queryClient.invalidateQueries();
+    } catch (error) {
+      martingaleWatchRef.current = null;
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    }
+  };
   const clearHistory = async () => {
     if (!clearHistoryArmed) {
       setClearHistoryArmed(true);
@@ -1282,7 +1433,7 @@ export default function XTraderPage() {
   const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guideMode === "digit-flip" ? digitFlipGuidePages : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const canTrade = isConnected && !running && !bulkBuyMutation.isPending && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
+  const canTrade = isConnected && !running && (!isReal || (status.data?.live_trading_enabled && liveConfirmed))
     && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
   return (
@@ -1483,8 +1634,13 @@ export default function XTraderPage() {
               <label><small>MARTINGALE MULTIPLIER</small><input type="number" min="1" max="10" step=".1" value={martingale} onChange={(event) => setMartingale(Number(event.target.value))} disabled={running || strategy === "flat"} /></label>
               <label><small>TAKE PROFIT</small><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => setTakeProfit(Number(event.target.value))} disabled={running} /></label>
               <label><small>STOP LOSS</small><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => setStopLoss(Number(event.target.value))} disabled={running} /></label>
-                <label><small>MIN OBSERVED SIDE SHARE · {edgeMinWinRate}%</small><input type="range" min="80" max="99" step="1" value={edgeMinWinRate} onChange={(event) => setEdgeMinWinRate(Number(event.target.value))} disabled={running} /></label>
+                 <label><small>MIN OBSERVED SIDE SHARE · {edgeMinWinRate}%</small><input type="range" min="90" max="99" step="1" value={edgeMinWinRate} onChange={(event) => setEdgeMinWinRate(Number(event.target.value))} disabled={running} /></label>
               <label className="xt-auto-row"><span><small>AUTO BEST DIGIT</small><b>Scan markets and trade the strongest signal automatically</b></span><span className="xt-switch"><input type="checkbox" checked={autoSwitch} onChange={(event) => toggleAutoBestDigit(event.target.checked)} disabled={!isConnected} /><span /></span></label>
+               <label className="xt-auto-row"><span><small>PERCENTAGE SCAN · {EDGE_PERCENTAGE_SCAN_FLOOR}% FLOOR</small><b>Scan every market and gate Over, Under, or Dual by observed outcomes</b></span><span className="xt-switch"><input type="checkbox" checked={edgePercentageMode} onChange={(event) => toggleEdgePercentageMode(event.target.checked)} disabled={!isConnected} /><span /></span></label>
+               {edgePercentageMode && <div className={`xt-percentage-recommendation ${edgeRecommendation ? "ready" : "waiting"}`}>
+                 <span><small>LIVE RECOMMENDATION</small><b>{edgeRecommendation ? `${edgeRecommendation.direction === "DUAL" ? "DUAL" : edgeRecommendation.direction === "DIGITOVER" ? "OVER" : "UNDER"} ${edgeRecommendation.digit} · ${edgeRecommendation.symbol}` : "WAITING FOR ENOUGH OBSERVED OUTCOMES"}</b></span>
+                 <strong>{edgeRecommendation ? `${edgeRecommendation.score.toFixed(1)}% observed` : "No trade sent"}</strong>
+               </div>}
                <label className="xt-chosen-digit"><small>CHOSEN DIGIT</small><div className="xt-digit-picker">{Array.from({ length: 10 }, (_, digit) => digit).map((digit) => <button type="button" key={digit} className={barrier === digit ? "active" : ""} onClick={() => setBarrier(digit)} disabled={running}>{digit}</button>)}</div><b>Trade {direction === "DIGITOVER" ? "Over" : "Under"} the selected digit</b></label>
             </div>
 
@@ -1505,6 +1661,10 @@ export default function XTraderPage() {
                  <span><Play size={14} fill="currentColor" />OVER {entryDigit}</span>
                 <small>Send one trade</small>
               </button>
+               <button className="xt-bulk-dual" onClick={() => void fireDualTrade()} disabled={!canTrade}>
+                  <span><Play size={14} fill="currentColor" />DUAL {entryDigit}</span>
+                 <small>Send Over + Under</small>
+               </button>
               <button className="xt-bulk-under" onClick={() => void fireTrade("DIGITUNDER")} disabled={!canTrade}>
                  <span><Play size={14} fill="currentColor" />UNDER {entryDigit}</span>
                 <small>Send one trade</small>

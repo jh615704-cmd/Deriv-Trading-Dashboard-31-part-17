@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   chooseBestDigitSignal,
+  chooseBestEdgeSignal,
   digitForTick,
   findNewlySettledTrade,
   rankDigitsForDiffers,
@@ -109,6 +110,49 @@ describe("Auto Best Digit selection", () => {
         streak: 5,
         sampleCount: 4,
       },
+    );
+  });
+});
+
+describe("Percentage evidence selection", () => {
+  it("recommends Dual from combined observed coverage", () => {
+    assert.deepEqual(
+      chooseBestEdgeSignal(
+        [{
+          symbol: "R_75",
+          quote: 75.5,
+          sample_count: 20,
+          digit_streaks: [],
+          digit_outcomes: [
+            { digit: 5, over_percentage: 48, under_percentage: 47 },
+            { digit: 1, over_percentage: 95, under_percentage: 5 },
+          ],
+        }],
+        90,
+      ),
+      {
+        symbol: "R_75",
+        direction: "DUAL",
+        digit: 5,
+        score: 95,
+        sampleCount: 20,
+      },
+    );
+  });
+
+  it("does not recommend when no observed outcome reaches the floor", () => {
+    assert.equal(
+      chooseBestEdgeSignal(
+        [{
+          symbol: "R_75",
+          quote: 75.5,
+          sample_count: 20,
+          digit_streaks: [],
+          digit_outcomes: [{ digit: 5, over_percentage: 44, under_percentage: 44 }],
+        }],
+        90,
+      ),
+      null,
     );
   });
 });

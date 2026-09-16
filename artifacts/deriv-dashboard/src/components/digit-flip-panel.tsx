@@ -1,6 +1,6 @@
+import { useMemo, useState } from "react";
 import {
-  Activity,
-  BookOpen,
+  ChevronDown,
   CircleStop,
   Play,
   RefreshCw,
@@ -80,6 +80,34 @@ export type DigitFlipPanelProps = {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+function PremiumPill() {
+  return <span className="df-premium">PREMIUM</span>;
+}
+
+function Switch({
+  checked,
+  onChange,
+  disabled,
+  label,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled: boolean;
+  label: string;
+}) {
+  return (
+    <label className="df-toggle" aria-label={label}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        disabled={disabled}
+      />
+      <i />
+    </label>
+  );
+}
+
 export default function DigitFlipPanel({
   enabled,
   marketType,
@@ -126,122 +154,277 @@ export default function DigitFlipPanel({
   onMagicChange,
   onGuide,
 }: DigitFlipPanelProps) {
+  const [marketPickerOpen, setMarketPickerOpen] = useState(false);
+  const [preset, setPreset] = useState("custom");
+
+  const marketLabel = symbols.find((option) => option.value === symbol)?.label ?? symbol;
   const activeSymbols = marketType === "auto"
     ? symbols
     : symbols.filter((option) => option.marketType === marketType);
-  const selectedRate = selectedParity === "DIGITEVEN" ? evenPercentage : oddPercentage;
-  const marketLabel = marketType === "auto"
-    ? "Auto"
-    : symbols.find((option) => option.value === symbol)?.label ?? symbol;
-  const parityLabel = selectedParity === "DIGITEVEN" ? "EVEN" : "ODD";
-  const signalFor = (marketSymbol: string) => marketSignals.find((signal) => signal.symbol === marketSymbol);
-  const signalRateFor = (marketSymbol: string) => {
-    const signal = signalFor(marketSymbol);
-    return selectedParity === "DIGITEVEN" ? signal?.evenPercentage ?? 50 : signal?.oddPercentage ?? 50;
+
+  const rankedSignals = useMemo(() => {
+    const bySymbol = new Map(marketSignals.map((signal) => [signal.symbol, signal]));
+    return activeSymbols
+      .map((option) => ({ option, signal: bySymbol.get(option.value) }))
+      .sort((left, right) => {
+        const leftRate = Math.max(left.signal?.evenPercentage ?? 0, left.signal?.oddPercentage ?? 0);
+        const rightRate = Math.max(right.signal?.evenPercentage ?? 0, right.signal?.oddPercentage ?? 0);
+        return rightRate - leftRate;
+      })
+      .slice(0, 4);
+  }, [activeSymbols, marketSignals]);
+
+  const bestSignal = useMemo(() => {
+    if (!marketSignals.length) return undefined;
+    return marketSignals.reduce((best, candidate) => {
+      const bestRate = Math.max(best.evenPercentage, best.oddPercentage);
+      const candidateRate = Math.max(candidate.evenPercentage, candidate.oddPercentage);
+      return candidateRate > bestRate ? candidate : best;
+    });
+  }, [marketSignals]);
+
+  const bestParity: DigitFlipParity = bestSignal && bestSignal.oddPercentage > bestSignal.evenPercentage
+    ? "DIGITODD"
+    : "DIGITEVEN";
+  const bestRate = bestSignal
+    ? Math.max(bestSignal.evenPercentage, bestSignal.oddPercentage)
+    : Math.max(evenPercentage, oddPercentage);
+  const bestLabel = symbols.find((option) => option.value === bestSignal?.symbol)?.label
+    ?? marketLabel
+    ?? "Volatility 100 Index";
+  const selectedLabel = selectedParity === "DIGITEVEN" ? "Even" : "Odd";
+  const lastParity = lastDigit == null ? null : lastDigit % 2 === 0 ? "Even" : "Odd";
+  const currentQuote = quote == null ? "—" : quote.toFixed(2);
+  const runText = lastParity ? `Run: ${lastParity.toLowerCase()} · latest tick: ${lastDigit}` : "Waiting for live digit sample";
+
+  const selectPreset = (value: string) => {
+    setPreset(value);
+    if (value === "quick") {
+      onStakeChange(0.5);
+      onDurationChange(1);
+      onStakeModeChange("flat");
+    } else if (value === "steady") {
+      onStakeChange(1);
+      onDurationChange(3);
+      onStakeModeChange("flat");
+    } else if (value === "recovery") {
+      onStakeChange(0.5);
+      onDurationChange(1);
+      onStakeModeChange("martingale");
+    }
+  };
+
+  const renderMarketRate = (signal?: DigitFlipMarketSignal) => {
+    if (!signal) return "—";
+    const rate = selectedParity === "DIGITEVEN" ? signal.evenPercentage : signal.oddPercentage;
+    return `${rate.toFixed(1)}%`;
   };
 
   return (
     <section className={`df-panel ${enabled ? "df-panel-active" : ""} ${disabled ? "df-panel-disabled" : ""}`} data-testid="digit-flip-panel">
-      <header className="df-header">
-        <div className="df-heading">
-          <div className="df-mark" aria-hidden="true"><Zap size={17} /></div>
+      <section className="df-card df-scanner">
+        <div className="df-card-heading">
+          <div className="df-title">
+            <span className="df-spark" aria-hidden="true"><Zap size={14} fill="currentColor" /></span>
+            <b>Parity Scanner</b>
+            <PremiumPill />
+          </div>
+          <span className="df-live"><i /> LIVE</span>
+        </div>
+        <div className="df-rule" />
+        <div className="df-best-signal">
+          <div className={`df-best-parity ${bestParity === "DIGITODD" ? "odd" : "even"}`}>
+            {bestParity === "DIGITODD" ? "Odd" : "Even"} <span>{bestParity === "DIGITODD" ? "o" : "•"}</span>
+          </div>
+          <div className="df-best-copy">
+            <span>BEST PARITY TO TRADE NOW</span>
+            <p><strong>{bestRate.toFixed(1)}% score</strong><em>·</em> payout 185% <em>·</em> {bestLabel}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className={`df-card df-market-card ${marketPickerOpen ? "open" : ""}`}>
+        <button
+          type="button"
+          className="df-market-trigger"
+          onClick={() => setMarketPickerOpen((value) => !value)}
+          aria-expanded={marketPickerOpen}
+          disabled={disabled}
+        >
+          <span className="df-market-icon" aria-hidden="true">▥</span>
+          <span className="df-market-copy">
+            <small>Market {marketType === "auto" ? "(auto-selected)" : "(manual)"}</small>
+            <b>{marketLabel || "Volatility 100 Index"}</b>
+          </span>
+          <ChevronDown size={18} className="df-market-chevron" />
+        </button>
+        <p className="df-market-note">
+          {marketPickerOpen ? "Choose a market or let the scanner pick the strongest pair." : "Choose Even or Odd — the best-performing pair is picked automatically."}
+        </p>
+        {marketPickerOpen && (
+          <div className="df-market-menu">
+            <button
+              type="button"
+              className={`df-market-option df-market-smart ${marketType === "auto" ? "selected" : ""}`}
+              onClick={() => {
+                onMarketTypeChange("auto");
+                setMarketPickerOpen(false);
+              }}
+              disabled={disabled}
+            >
+              <span>ϟ Auto-select best (smart)</span>
+              <b>✓</b>
+            </button>
+            {rankedSignals.map(({ option, signal }, index) => {
+              const rate = selectedParity === "DIGITEVEN" ? signal?.evenPercentage ?? 50 : signal?.oddPercentage ?? 50;
+              return (
+                <button
+                  type="button"
+                  className={`df-market-option ${marketType !== "auto" && symbol === option.value ? "selected" : ""}`}
+                  key={option.value}
+                  onClick={() => {
+                    onMarketTypeChange(option.marketType);
+                    onSymbolChange(option.value);
+                    setMarketPickerOpen(false);
+                  }}
+                  disabled={disabled}
+                >
+                  <span>
+                    <b>{option.label}</b>
+                    {index === 0 && <small>BEST</small>}
+                    <em>recent {rate.toFixed(0)}% · payout 185% · 200 ticks</em>
+                  </span>
+                  <strong>{renderMarketRate(signal)}</strong>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="df-card df-toggle-card">
+        <div className="df-toggle-copy">
+          <div className="df-title"><span className="df-spark" aria-hidden="true"><Zap size={14} fill="currentColor" /></span><b>Flip Switch</b><PremiumPill /></div>
+          {assaultEnabled && <p className="df-running-note"><i /> Reading live digits &amp; trading the leading parity…</p>}
+        </div>
+        <Switch checked={assaultEnabled} onChange={onAssaultChange} disabled={disabled} label="Flip Switch" />
+      </section>
+
+      <section className={`df-card df-toggle-card df-pair-card ${magicEnabled ? "active" : ""}`}>
+        <div className="df-toggle-copy">
+          <div className="df-title"><span className="df-spark" aria-hidden="true"><Zap size={14} fill="currentColor" /></span><b>Auto Switch Best Pair</b><PremiumPill /></div>
+          <p>ON: hop to the best-paying pair between trades. OFF: lock one pair to target — the Ramping way.</p>
+          {magicEnabled && <p className="df-running-note"><i /> Hunting the best pair between trades — never mid-trade…</p>}
+        </div>
+        <Switch checked={magicEnabled} onChange={onMagicChange} disabled={disabled} label="Auto Switch Best Pair" />
+      </section>
+
+      <section className="df-card df-quote-card">
+        <div className="df-quote-value">{currentQuote} <small>{lastDigit == null ? "" : lastDigit}</small></div>
+        <div className="df-quote-last">Last digit: <b className={lastParity === "Odd" ? "odd" : "even"}>{lastParity ?? "Waiting"} {lastParity ? (lastParity === "Odd" ? "o" : "•") : ""}</b></div>
+        <div className="df-quote-run">{runText}</div>
+      </section>
+
+      <section className="df-card df-parity-toggle">
+        <button
+          type="button"
+          className={selectedParity === "DIGITEVEN" ? "selected even" : "even"}
+          onClick={() => onParityChange("DIGITEVEN")}
+          disabled={disabled}
+        >
+          Even <span>•</span>
+        </button>
+        <button
+          type="button"
+          className={selectedParity === "DIGITODD" ? "selected odd" : "odd"}
+          onClick={() => onParityChange("DIGITODD")}
+          disabled={disabled}
+        >
+          Odd <span>o</span>
+        </button>
+      </section>
+
+      <section className="df-card df-parity-card">
+        <div className="df-section-label">Live parity — recent digits</div>
+        <div className="df-parity-track" role="img" aria-label={`${evenPercentage.toFixed(0)} percent Even and ${oddPercentage.toFixed(0)} percent Odd`}>
+          <i className="even" style={{ width: `${clamp(evenPercentage, 0, 100)}%` }} />
+          <i className="odd" style={{ width: `${clamp(oddPercentage, 0, 100)}%` }} />
+        </div>
+        <div className="df-parity-labels">
+          <span>• Even <b>{evenPercentage.toFixed(0)}%</b></span>
+          <span>o Odd <b>{oddPercentage.toFixed(0)}%</b></span>
+        </div>
+      </section>
+
+      <section className="df-card df-preset-card">
+        <div className="df-section-label">Preset</div>
+        <label className="df-preset-select">
+          <select value={preset} onChange={(event) => selectPreset(event.target.value)} disabled={disabled || running}>
+            <option value="custom">Select a Preset</option>
+            <option value="quick">Quick demo · 0.50 / 1 tick</option>
+            <option value="steady">Steady · 1.00 / 3 ticks</option>
+            <option value="recovery">Recovery · martingale</option>
+          </select>
+          <ChevronDown size={15} />
+        </label>
+        <p>Each preset is re-sized to your balance when applied. It sets the stake, ladder and stops — not the odds of a trade.</p>
+      </section>
+
+      <section className={`df-card df-repeat-card ${magicEnabled ? "active" : ""}`}>
+        <div>
+          <div className="df-title"><b>Auto-Repeat 10-Min Sessions</b><PremiumPill /></div>
+          <p>Run a guarded session using the selected parity and market rules.</p>
+        </div>
+        <Switch checked={magicEnabled} onChange={onMagicChange} disabled={disabled} label="Auto-Repeat 10-Min Sessions" />
+      </section>
+
+      <section className="df-card df-advanced-card">
+        <div className="df-advanced-head">
           <div>
-            <div className="df-eyebrow"><span className="df-live-dot" /> EVEN / ODD LIVE SIGNAL</div>
-            <h2>DigitFlip</h2>
-            <p>Parity trading with visible sample evidence.</p>
+            <div className="df-section-label">Trade setup</div>
+            <h3>Stake and session limits</h3>
           </div>
+          <button type="button" className="df-refresh" onClick={onRefreshSample} disabled={disabled}><RefreshCw size={13} /> Refresh</button>
         </div>
-        <div className="df-header-actions">
-          <button type="button" className="df-guide-button" onClick={onGuide} disabled={disabled}><BookOpen size={14} />Guide</button>
-          <span className={`df-state ${running ? "df-state-live" : ""}`}><i />{running ? "RUNNING" : "STANDBY"}</span>
+        <div className="df-setup-grid">
+          <label><span>STAKE</span><input type="number" min=".5" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.5, Number(event.target.value) || .5))} disabled={disabled || running} /></label>
+          <label><span>DURATION</span><select value={duration} onChange={(event) => onDurationChange(Number(event.target.value) as DigitFlipDuration)} disabled={disabled || running}>{[1, 2, 3, 4, 5].map((tick) => <option value={tick} key={tick}>{tick} tick{tick > 1 ? "s" : ""}</option>)}</select></label>
+          <label><span>STAKE MODE</span><select value={stakeMode} onChange={(event) => onStakeModeChange(event.target.value as DigitFlipStakeMode)} disabled={disabled || running}><option value="flat">Flat stake</option><option value="martingale">Martingale</option></select></label>
+          <label><span>MULTIPLIER</span><input type="number" min="1" step=".1" value={multiplier} onChange={(event) => onMultiplierChange(Math.max(1, Number(event.target.value) || 1))} disabled={disabled || running || stakeMode === "flat"} /></label>
+          <label><span>TAKE PROFIT</span><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => onTakeProfitChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
+          <label><span>STOP LOSS</span><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => onStopLossChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
         </div>
-      </header>
+        <div className="df-session-strip">
+          <span><small>STAKE</small><b>{currentStake.toFixed(2)}</b></span>
+          <span><small>SESSION P/L</small><b className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</b></span>
+          <span><small>TRADES</small><b>{tradeCount}</b></span>
+        </div>
+        <div className="df-action-row">
+          <button type="button" className={running ? "df-stop" : "df-run"} onClick={onRunStop} disabled={disabled || isPlacingTrade}>{running ? <><CircleStop size={16} /> Stop DigitFlip</> : <><Play size={16} fill="currentColor" /> Run DigitFlip</>}</button>
+          <button type="button" className="df-reset" onClick={onReset} disabled={disabled}><RotateCcw size={15} /> Reset</button>
+          <button type="button" className="df-guide" onClick={onGuide} disabled={disabled}>Guide</button>
+        </div>
+      </section>
 
-      <div className="df-status-line">
-        <span className={`df-status-led ${enabled ? "df-status-led-live" : ""}`} />
-        <span>{enabled ? "DigitFlip ready" : "DigitFlip paused"}</span>
-        <span className="df-status-divider" />
-        <span>{marketLabel}</span>
-        <span className="df-status-spacer" />
-        <span>{sampleCount} ticks sampled</span>
-      </div>
-
-      <div className="df-body">
-        <section className="df-section df-market">
-           <div className="df-section-head"><div><span>01</span><div><h3>Market and quote</h3><p>Auto observes Volatility and Jump pairs and selects the strongest observed parity sample.</p></div></div><Activity size={17} /></div>
-          <div className="df-market-grid">
-            <div className="df-field">
-               <span>MARKET MODE</span>
-              <div className="df-segments">
-                 <button type="button" className={marketType === "auto" ? "selected" : ""} onClick={() => onMarketTypeChange("auto")} disabled={disabled}>Auto</button>
-                <button type="button" className={marketType === "volatility" ? "selected" : ""} onClick={() => onMarketTypeChange("volatility")} disabled={disabled}>Volatility</button>
-                <button type="button" className={marketType === "jumps" ? "selected" : ""} onClick={() => onMarketTypeChange("jumps")} disabled={disabled}>Jumps</button>
-              </div>
+      <section className="df-card df-recent">
+        <div className="df-recent-heading">
+          <div><div className="df-section-label">Activity</div><h3>Recent DigitFlip trades</h3></div>
+          <button type="button" onClick={onClearTrades} disabled={!recentTrades.length}><Trash2 size={13} />{clearTradesArmed ? "Tap again" : "Clear"}</button>
+        </div>
+        {!recentTrades.length ? (
+          <p className="df-empty">Even and Odd trades will appear here after a DigitFlip entry.</p>
+        ) : recentTrades.slice(0, 10).map((trade) => {
+          const settled = trade.status !== "open";
+          return (
+            <div className={`df-trade-row ${historyFading ? "fading" : ""}`} key={trade.contract_id}>
+              <span><b>{trade.contract_type === "DIGITEVEN" ? "EVEN" : "ODD"}</b><small>{trade.symbol}</small></span>
+              <span><small>STAKE</small>{trade.buy_price.toFixed(2)}</span>
+              <span><small>STATUS</small>{trade.status}</span>
+              <strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong>
             </div>
-             <div className="df-field df-market-options"><span>{marketType === "auto" ? "AUTO CANDIDATES" : "MARKETS"} <small>OBSERVED {parityLabel}</small></span><div className="df-symbol-list">
-               {activeSymbols.map((option) => {
-                 const signal = signalFor(option.value);
-                 const rate = signalRateFor(option.value);
-                  const tone = signal?.sampleCount ? (rate >= 80 ? "positive" : "negative") : "neutral";
-                 return <button type="button" className={`df-symbol-row ${symbol === option.value ? "selected" : ""}`} key={option.value} onClick={() => onSymbolChange(option.value)} disabled={disabled || marketType === "auto"}><span><b>{option.label}</b><small>{option.value}</small></span><strong className={tone}>{rate.toFixed(1)}%</strong></button>;
-               })}
-             </div></div>
-            <div className="df-quote"><span>LIVE QUOTE</span><strong>{quote == null ? "—" : quote.toFixed(4)}</strong><small>{lastDigit == null ? "Waiting for last digit" : `Last digit ${lastDigit}`}</small></div>
-          </div>
-        </section>
-
-        <section className="df-section df-parity">
-            <div className="df-section-head"><div><span>02</span><div><h3>Parity scanner</h3><p>Percentages are observed samples and fluctuate with the selected market.</p></div></div><div className="df-parity-head-actions"><strong className="df-estimate">{selectedRate.toFixed(1)}%</strong><button type="button" className="df-refresh-button" onClick={onRefreshSample} disabled={disabled}><RefreshCw size={13} />Refresh</button></div></div>
-          <div className="df-parity-readout">
-            <div className="df-parity-number even"><small>EVEN</small><strong>{evenPercentage.toFixed(1)}%</strong></div>
-            <div className="df-parity-track"><i className="even-fill" style={{ width: `${clamp(evenPercentage, 0, 100)}%` }} /><i className="odd-fill" style={{ width: `${clamp(oddPercentage, 0, 100)}%` }} /></div>
-            <div className="df-parity-number odd"><small>ODD</small><strong>{oddPercentage.toFixed(1)}%</strong></div>
-          </div>
-          <div className="df-parity-buttons">
-            <button type="button" className={selectedParity === "DIGITEVEN" ? "even selected" : "even"} onClick={() => onParityChange("DIGITEVEN")} disabled={disabled}><b>EVEN</b><small>0 · 2 · 4 · 6 · 8</small></button>
-            <button type="button" className={selectedParity === "DIGITODD" ? "odd selected" : "odd"} onClick={() => onParityChange("DIGITODD")} disabled={disabled}><b>ODD</b><small>1 · 3 · 5 · 7 · 9</small></button>
-          </div>
-           <div className="df-parity-foot"><span>LAST DIGIT <b>{lastDigit == null ? "—" : lastDigit}</b></span><span>SAMPLE <b>{sampleCount} ticks</b></span><span>OBSERVED SAMPLE <b>descriptive only</b></span></div>
-        </section>
-
-          <section className="df-automation">
-            <label className="df-automation-row"><span><b>ASSAULT</b><small>After a loss, switch the next trade between Even and Odd. The automatic market scan runs every 10 seconds after settlement.</small></span><span className="df-switch"><input type="checkbox" checked={assaultEnabled} onChange={(event) => onAssaultChange(event.target.checked)} disabled={disabled} /><i /></span></label>
-            {assaultEnabled && <div className="df-assault-status" aria-live="polite"><span className={selectedParity === "DIGITODD" ? "active odd" : "odd"}>ODD{selectedParity === "DIGITODD" && <small>ACTIVE</small>}</span><span className="df-assault-arrow">↔</span><span className={selectedParity === "DIGITEVEN" ? "active even" : "even"}>EVEN{selectedParity === "DIGITEVEN" && <small>ACTIVE</small>}</span></div>}
-         </section>
-
-        <section className="df-section df-controls">
-          <div className="df-section-head"><div><span>03</span><div><h3>Trade controls</h3><p>Choose the stake mode and limits before Run.</p></div></div></div>
-          <div className="df-control-grid">
-            <div className="df-control"><span>DURATION / TICKS</span><div className="df-ticks">{([1, 2, 3, 4, 5] as const).map((tick) => <button type="button" className={duration === tick ? "selected" : ""} key={tick} onClick={() => onDurationChange(tick)} disabled={disabled || running}>{tick}</button>)}</div></div>
-            <label className="df-control"><span>INITIAL STAKE</span><div className="df-money"><i>$</i><input type="number" min=".5" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.5, Number(event.target.value) || .5))} disabled={disabled || running} /></div></label>
-            <label className="df-control"><span>STAKE MODE</span><select value={stakeMode} onChange={(event) => onStakeModeChange(event.target.value as DigitFlipStakeMode)} disabled={disabled || running}><option value="flat">Flat stake</option><option value="martingale">Martingale after loss</option></select></label>
-            <label className="df-control"><span>MULTIPLIER</span><input type="number" min="1" step=".1" value={multiplier} onChange={(event) => onMultiplierChange(Math.max(1, Number(event.target.value) || 1))} disabled={disabled || running || stakeMode === "flat"} /></label>
-            <label className="df-control"><span>TAKE PROFIT</span><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => onTakeProfitChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
-             <label className="df-control"><span>STOP LOSS</span><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => onStopLossChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
-              <label className="df-control df-magic-control"><span>STANDBY</span><div className="df-magic-switch"><span>{magicEnabled ? "WORKING" : "STANDBY"}</span><span className="df-switch"><input type="checkbox" checked={magicEnabled} onChange={(event) => onMagicChange(event.target.checked)} disabled={disabled || running} /><i /></span></div><small>Run DigitFlip only when the selected observed parity sample reaches 80% or more.</small></label>
-          </div>
-        </section>
-
-        <section className="df-session">
-          <div><small>CURRENT STAKE</small><strong>{currentStake.toFixed(2)}</strong></div>
-          <div><small>SESSION P/L</small><strong className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</strong></div>
-          <div><small>TRADE COUNT</small><strong>{tradeCount}</strong></div>
-          <div><small>ENTRY</small><strong>{parityLabel} · {duration}T</strong></div>
-        </section>
-
-        <div className="df-actions">
-          <button type="button" className={running ? "df-stop" : "df-run"} onClick={onRunStop} disabled={disabled || isPlacingTrade}>{running ? <><CircleStop size={17} />Stop</> : <><Play size={17} fill="currentColor" />Run DigitFlip</>}</button>
-          <button type="button" className="df-reset" onClick={onReset} disabled={disabled}><RotateCcw size={16} />Reset session</button>
-        </div>
-
-        <section className="df-recent">
-           <div className="df-recent-head"><div><h3>Recent DigitFlip trades</h3><small>DigitFlip rows only · Deriv records are not deleted</small></div><button type="button" onClick={onClearTrades} disabled={!recentTrades.length}><Trash2 size={14} />{clearTradesArmed ? "Tap again" : "Clear"}</button></div>
-           {!recentTrades.length ? <div className="df-empty">Even and Odd trades will appear here after a DigitFlip entry.</div> : recentTrades.slice(0, 10).map((trade) => {
-             const settled = trade.status !== "open";
-              return <div className={`df-trade-row ${historyFading ? "df-trade-row-fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type === "DIGITEVEN" ? "EVEN" : "ODD"}</b><small>{trade.symbol}</small></span><span><small>STAKE</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
-           })}
-        </section>
-      </div>
+          );
+        })}
+      </section>
     </section>
   );
 }

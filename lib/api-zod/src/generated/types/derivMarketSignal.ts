@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DigitOutcome } from './digitOutcome';
 import type { DigitStreak } from './digitStreak';
 
 export interface DerivMarketSignal {
@@ -29,4 +30,5 @@ export interface DerivMarketSignal {
      */
   digit_odd_percentage: number;
   digit_streaks: DigitStreak[];
+  digit_outcomes: DigitOutcome[];
 }

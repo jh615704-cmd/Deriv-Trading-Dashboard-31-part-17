@@ -975,7 +975,7 @@ components:
           minimum: 0
     DerivMarketSignal:
       type: object
-      required: [symbol, quote, last_digit, sample_count, digit_even_percentage, digit_odd_percentage, digit_streaks]
+      required: [symbol, quote, last_digit, sample_count, digit_even_percentage, digit_odd_percentage, digit_streaks, digit_outcomes]
       properties:
         symbol:
           type: string
@@ -1002,6 +1002,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DigitStreak"
+        digit_outcomes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DigitOutcome"
+    DigitOutcome:
+      type: object
+      required: [digit, over_percentage, under_percentage]
+      properties:
+        digit:
+          type: integer
+          minimum: 0
+          maximum: 9
+        over_percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+        under_percentage:
+          type: number
+          minimum: 0
+          maximum: 100
     DerivConnectionTest:
       type: object
       required: [ok, message, accounts, status]

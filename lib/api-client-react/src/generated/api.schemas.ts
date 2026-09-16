@@ -259,6 +259,24 @@ export interface DigitStreak {
   under: number;
 }
 
+export interface DigitOutcome {
+  /**
+     * @minimum 0
+     * @maximum 9
+     */
+  digit: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  over_percentage: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  under_percentage: number;
+}
+
 export interface DerivMarketSignal {
   symbol: string;
   quote: number | null;
@@ -281,6 +299,7 @@ export interface DerivMarketSignal {
      */
   digit_odd_percentage: number;
   digit_streaks: DigitStreak[];
+  digit_outcomes: DigitOutcome[];
 }
 
 export interface DerivStatus {

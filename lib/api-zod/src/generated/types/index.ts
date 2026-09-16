@@ -54,6 +54,7 @@ export * from './derivTick';
 export * from './derivTokenInput';
 export * from './derivTokenStatus';
 export * from './derivTokenTestResponse';
+export * from './digitOutcome';
 export * from './digitStreak';
 export * from './errorResponse';
 export * from './healthStatus';

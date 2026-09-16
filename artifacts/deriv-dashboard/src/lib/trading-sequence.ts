@@ -11,6 +11,21 @@ export type MarketSignal = {
   quote: number | null;
   sample_count: number;
   digit_streaks: DigitStreak[];
+  digit_outcomes?: DigitOutcome[];
+};
+
+export type DigitOutcome = {
+  digit: number;
+  over_percentage: number;
+  under_percentage: number;
+};
+
+export type BestEdgeSignal = {
+  symbol: string;
+  direction: "DIGITOVER" | "DIGITUNDER" | "DUAL";
+  digit: number;
+  score: number;
+  sampleCount: number;
 };
 
 export type BestDigitSignal = {
@@ -118,6 +133,33 @@ export function chooseBestDigitSignal(
 
   if (!fallback) return null;
   return candidatesFromSignal(fallback).sort((left, right) => right.streak - left.streak)[0] ?? null;
+}
+
+export function chooseBestEdgeSignal(
+  signals: MarketSignal[],
+  minimumScore: number,
+): BestEdgeSignal | null {
+  const candidates = signals.flatMap((signal) => {
+    if (signal.sample_count < 5 || signal.quote == null || !signal.digit_outcomes?.length) return [];
+    return signal.digit_outcomes.flatMap((outcome) => {
+      const over = Number(outcome.over_percentage);
+      const under = Number(outcome.under_percentage);
+      if (!Number.isFinite(over) || !Number.isFinite(under)) return [];
+      const dualCoverage = Math.min(100, over + under);
+      const direction = dualCoverage >= minimumScore && over >= 10 && under >= 10
+        ? "DUAL" as const
+        : over >= under
+          ? "DIGITOVER" as const
+          : "DIGITUNDER" as const;
+      const score = direction === "DUAL" ? dualCoverage : Math.max(over, under);
+      return score >= minimumScore
+        ? [{ symbol: signal.symbol, direction, digit: outcome.digit, score, sampleCount: signal.sample_count }]
+        : [];
+    });
+  });
+  return candidates.sort(
+    (left, right) => right.score - left.score || right.sampleCount - left.sampleCount || left.digit - right.digit,
+  )[0] ?? null;
 }
 
 export type StopReason = "take-profit" | "stop-loss";

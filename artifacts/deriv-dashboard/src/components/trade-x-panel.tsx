@@ -309,7 +309,8 @@ export default function TradeXPanel({
               {digitData.map((item) => {
                 const isSelected = selectedDigit === item.digit;
                 const isRanked = ranking.includes(item.digit);
-                const isMarketDigit = lastDigit === item.digit;
+                const normalizedLastDigit = lastDigit == null ? null : Number(lastDigit);
+                const isMarketDigit = normalizedLastDigit === item.digit;
                 return (
                   <button
                     type="button"
@@ -318,9 +319,10 @@ export default function TradeXPanel({
                     onClick={() => onSelectedDigitChange(item.digit)}
                     disabled={disabled}
                     aria-pressed={isSelected}
-                    aria-label={`Digit ${item.digit}, ${item.percentage.toFixed(1)} percent frequency, ${item.streak} tick streak`}
+                    aria-label={`Digit ${item.digit}, ${item.percentage.toFixed(1)} percent frequency, ${item.streak} tick streak${isMarketDigit ? ", current market digit" : ""}`}
                     data-testid={`button-trade-x-digit-${item.digit}`}
                   >
+                    <span className={`tx-market-touch ${isMarketDigit ? "is-live" : ""}`}>{isMarketDigit ? `LIVE ${item.digit}` : "\u00a0"}</span>
                     <span className="tx-digit-number">{item.digit}</span>
                     <span className="tx-digit-percent">{item.percentage.toFixed(1)}%</span>
                     <span className={`tx-digit-trend tx-trend-${item.momentum ?? "flat"}`}>

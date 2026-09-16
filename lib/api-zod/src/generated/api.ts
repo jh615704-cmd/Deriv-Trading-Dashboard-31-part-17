@@ -350,6 +350,15 @@ export const getDerivStatusResponseMarketSignalsItemDigitStreaksItemOverMin = 0;
 
 export const getDerivStatusResponseMarketSignalsItemDigitStreaksItemUnderMin = 0;
 
+export const getDerivStatusResponseMarketSignalsItemDigitOutcomesItemDigitMin = 0;
+export const getDerivStatusResponseMarketSignalsItemDigitOutcomesItemDigitMax = 9;
+
+export const getDerivStatusResponseMarketSignalsItemDigitOutcomesItemOverPercentageMin = 0;
+export const getDerivStatusResponseMarketSignalsItemDigitOutcomesItemOverPercentageMax = 100;
+
+export const getDerivStatusResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMin = 0;
+export const getDerivStatusResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMax = 100;
+
 
 
 export const GetDerivStatusResponse = zod.object({
@@ -418,6 +427,11 @@ export const GetDerivStatusResponse = zod.object({
   "digit": zod.number().int().min(getDerivStatusResponseMarketSignalsItemDigitStreaksItemDigitMin).max(getDerivStatusResponseMarketSignalsItemDigitStreaksItemDigitMax),
   "over": zod.number().int().min(getDerivStatusResponseMarketSignalsItemDigitStreaksItemOverMin),
   "under": zod.number().int().min(getDerivStatusResponseMarketSignalsItemDigitStreaksItemUnderMin)
+})),
+  "digit_outcomes": zod.array(zod.object({
+  "digit": zod.number().int().min(getDerivStatusResponseMarketSignalsItemDigitOutcomesItemDigitMin).max(getDerivStatusResponseMarketSignalsItemDigitOutcomesItemDigitMax),
+  "over_percentage": zod.number().min(getDerivStatusResponseMarketSignalsItemDigitOutcomesItemOverPercentageMin).max(getDerivStatusResponseMarketSignalsItemDigitOutcomesItemOverPercentageMax),
+  "under_percentage": zod.number().min(getDerivStatusResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMin).max(getDerivStatusResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMax)
 }))
 }))
 })
@@ -458,6 +472,15 @@ export const testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemD
 export const testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemOverMin = 0;
 
 export const testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemUnderMin = 0;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemDigitMin = 0;
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemDigitMax = 9;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemOverPercentageMin = 0;
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemOverPercentageMax = 100;
+
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemUnderPercentageMin = 0;
+export const testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemUnderPercentageMax = 100;
 
 
 
@@ -537,6 +560,11 @@ export const TestDerivConnectionResponse = zod.object({
   "digit": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemDigitMin).max(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemDigitMax),
   "over": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemOverMin),
   "under": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemDigitStreaksItemUnderMin)
+})),
+  "digit_outcomes": zod.array(zod.object({
+  "digit": zod.number().int().min(testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemDigitMin).max(testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemDigitMax),
+  "over_percentage": zod.number().min(testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemOverPercentageMin).max(testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemOverPercentageMax),
+  "under_percentage": zod.number().min(testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemUnderPercentageMin).max(testDerivConnectionResponseStatusMarketSignalsItemDigitOutcomesItemUnderPercentageMax)
 }))
 }))
 })
@@ -613,6 +641,15 @@ export const selectDerivAccountResponseMarketSignalsItemDigitStreaksItemOverMin 
 
 export const selectDerivAccountResponseMarketSignalsItemDigitStreaksItemUnderMin = 0;
 
+export const selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemDigitMin = 0;
+export const selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemDigitMax = 9;
+
+export const selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemOverPercentageMin = 0;
+export const selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemOverPercentageMax = 100;
+
+export const selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMin = 0;
+export const selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMax = 100;
+
 
 
 export const SelectDerivAccountResponse = zod.object({
@@ -681,6 +718,11 @@ export const SelectDerivAccountResponse = zod.object({
   "digit": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemDigitMin).max(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemDigitMax),
   "over": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemOverMin),
   "under": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemDigitStreaksItemUnderMin)
+})),
+  "digit_outcomes": zod.array(zod.object({
+  "digit": zod.number().int().min(selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemDigitMin).max(selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemDigitMax),
+  "over_percentage": zod.number().min(selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemOverPercentageMin).max(selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemOverPercentageMax),
+  "under_percentage": zod.number().min(selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMin).max(selectDerivAccountResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMax)
 }))
 }))
 })
@@ -728,6 +770,15 @@ export const selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemDigitMax 
 export const selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemOverMin = 0;
 
 export const selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemUnderMin = 0;
+
+export const selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemDigitMin = 0;
+export const selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemDigitMax = 9;
+
+export const selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemOverPercentageMin = 0;
+export const selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemOverPercentageMax = 100;
+
+export const selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMin = 0;
+export const selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMax = 100;
 
 
 
@@ -797,6 +848,11 @@ export const SelectDerivSymbolResponse = zod.object({
   "digit": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemDigitMin).max(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemDigitMax),
   "over": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemOverMin),
   "under": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemDigitStreaksItemUnderMin)
+})),
+  "digit_outcomes": zod.array(zod.object({
+  "digit": zod.number().int().min(selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemDigitMin).max(selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemDigitMax),
+  "over_percentage": zod.number().min(selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemOverPercentageMin).max(selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemOverPercentageMax),
+  "under_percentage": zod.number().min(selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMin).max(selectDerivSymbolResponseMarketSignalsItemDigitOutcomesItemUnderPercentageMax)
 }))
 }))
 })
