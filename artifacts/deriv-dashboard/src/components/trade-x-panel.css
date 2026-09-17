@@ -1005,8 +1005,7 @@
   }
 }
 
-/* Trade X mobile cockpit surface. This visual language is intentionally
-   isolated here so EDGE and DigitFlip keep their own controls and surfaces. */
+/*
 .tx-panel {
   --tx-mobile-bg: #080c18;
   --tx-mobile-panel: #11172c;
@@ -1659,3 +1658,4 @@
     right: 10px;
   }
 }
+*/
