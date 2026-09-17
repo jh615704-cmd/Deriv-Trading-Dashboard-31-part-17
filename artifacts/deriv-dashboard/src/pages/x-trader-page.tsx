@@ -128,6 +128,33 @@ const errorMessage = (error: unknown) => {
   return candidate.data?.error ?? candidate.message ?? "Request failed";
 };
 
+function chooseBestOverThreeSignal(signals: MarketSignal[], excludeSymbol?: string): BestEdgeSignal | null {
+  const candidates = signals
+    .filter((signal) => signal.sample_count >= 5 && signal.quote != null && signal.symbol !== excludeSymbol)
+    .map((signal) => {
+      const outcome = signal.digit_outcomes?.find((item) => item.digit === 3);
+      return outcome ? { signal, score: Number(outcome.over_percentage) } : null;
+    })
+    .filter((candidate): candidate is { signal: MarketSignal; score: number } => candidate !== null && Number.isFinite(candidate.score))
+    .sort((left, right) => right.score - left.score || right.signal.sample_count - left.signal.sample_count);
+  const best = candidates[0];
+  return best ? { symbol: best.signal.symbol, direction: "DIGITOVER", digit: 3, score: best.score, sampleCount: best.signal.sample_count } : null;
+}
+
+function chooseBestAnalyzerSignal(signals: MarketSignal[], excludeSymbol?: string): BestEdgeSignal | null {
+  const available = signals.filter((signal) => signal.symbol !== excludeSymbol);
+  const candidates = available.flatMap((signal) => (signal.digit_outcomes ?? []).flatMap((outcome) => {
+    const over = Number(outcome.over_percentage);
+    const under = Number(outcome.under_percentage);
+    if (!Number.isFinite(over) || !Number.isFinite(under)) return [];
+    return [
+      { symbol: signal.symbol, direction: "DIGITOVER" as const, digit: outcome.digit, score: over, sampleCount: signal.sample_count },
+      { symbol: signal.symbol, direction: "DIGITUNDER" as const, digit: outcome.digit, score: under, sampleCount: signal.sample_count },
+    ];
+  })).filter((candidate) => candidate.sampleCount >= 5 && candidate.score >= 0);
+  return candidates.sort((left, right) => right.score - left.score || right.sampleCount - left.sampleCount)[0] ?? null;
+}
+
 type MartingaleSettlementWatch = {
   knownIds: Set<string>;
   processedIds: Set<string>;
@@ -145,8 +172,9 @@ export default function XTraderPage() {
   const queryClient = useQueryClient();
   const isAdmin = accessSession.data?.is_admin === true;
   const canUseEdge = isAdmin || accessSession.data?.features.includes("edge") === true;
+  const canUseDigitFlip = isAdmin || accessSession.data?.features.includes("digit-flip") === true || canUseEdge;
   const canUseTradeX = isAdmin || accessSession.data?.features.includes("trade-x") === true;
-  const canUseDeriv = canUseEdge || canUseTradeX;
+  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX;
   const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true;
   const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
@@ -176,6 +204,13 @@ export default function XTraderPage() {
   const [autoSwitch, setAutoSwitch] = useState(false);
   const [edgePercentageMode, setEdgePercentageMode] = useState(false);
   const [edgeRecommendation, setEdgeRecommendation] = useState<BestEdgeSignal | null>(null);
+  const [edgeOverThreeSniper, setEdgeOverThreeSniper] = useState(false);
+  const [edgeBestPairAnalyzer, setEdgeBestPairAnalyzer] = useState(false);
+  const [edgeScannerMessage, setEdgeScannerMessage] = useState<string | null>(null);
+  const [edgeRiskBalance, setEdgeRiskBalance] = useState("");
+  const [edgeAccountBalance, setEdgeAccountBalance] = useState("");
+  const [edgeOutcomeMultiplier, setEdgeOutcomeMultiplier] = useState("");
+  const [edgeOutcomeSynced, setEdgeOutcomeSynced] = useState(false);
   const [xTraderEnabled, setXTraderEnabled] = useState(false);
   const [tradeXEnabled, setTradeXEnabled] = useState(false);
   const [tradeXMarketType, setTradeXMarketType] = useState<TradeXMarketType>("volatility");
@@ -234,6 +269,10 @@ export default function XTraderPage() {
   const runningRef = useRef(false);
   const autoSwitchRef = useRef(autoSwitch);
   const edgePercentageModeRef = useRef(edgePercentageMode);
+  const edgeOverThreeSniperRef = useRef(edgeOverThreeSniper);
+  const edgeBestPairAnalyzerRef = useRef(edgeBestPairAnalyzer);
+  const edgeLossStreakRef = useRef(0);
+  const edgeProcessedSettlementIdsRef = useRef(new Set<string>());
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const analysisEpochRef = useRef<number | null>(null);
@@ -491,6 +530,11 @@ export default function XTraderPage() {
   }, [edgePercentageMode]);
 
   useEffect(() => {
+    edgeOverThreeSniperRef.current = edgeOverThreeSniper;
+    edgeBestPairAnalyzerRef.current = edgeBestPairAnalyzer;
+  }, [edgeBestPairAnalyzer, edgeOverThreeSniper]);
+
+  useEffect(() => {
     nextStakeRef.current = stake;
     setNextStake(stake);
   }, [stake, strategy]);
@@ -654,6 +698,34 @@ export default function XTraderPage() {
     return recommendation;
   };
 
+  const selectEdgeAutomation = async (excludeSymbol?: string) => {
+    const signals = (status.data?.market_signals ?? []) as MarketSignal[];
+    const recommendation = edgeOverThreeSniperRef.current
+      ? chooseBestOverThreeSignal(signals, excludeSymbol)
+      : chooseBestAnalyzerSignal(signals, excludeSymbol);
+    if (!recommendation) {
+      setEdgeScannerMessage("Hunting all Volatility and Jump pairs for enough observed ticks…");
+      return null;
+    }
+    if (recommendation.symbol !== configRef.current.symbol) await selectMarket(recommendation.symbol);
+    const nextDirection = recommendation.direction === "DIGITUNDER" ? "DIGITUNDER" : "DIGITOVER";
+    setDirection(nextDirection);
+    setBarrier(recommendation.digit);
+    configRef.current = {
+      ...configRef.current,
+      direction: nextDirection,
+      barrier: recommendation.digit,
+      symbol: recommendation.symbol,
+    };
+    setEdgeRecommendation(recommendation);
+    setEdgeScannerMessage(
+      edgeOverThreeSniperRef.current
+        ? `Hunting all Volatility and Jump pairs for the best observed Over 3 · ${recommendation.symbol}`
+        : `Hunting all Volatility and Jump pairs for the best observed ${recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} · ${recommendation.symbol}`,
+    );
+    return recommendation;
+  };
+
   const armMartingaleWatch = (latestRows: typeof rows, amount: number, expectedSettlements: number) => {
     if (configRef.current.strategy !== "martingale") {
       martingaleWatchRef.current = null;
@@ -696,9 +768,19 @@ export default function XTraderPage() {
     if (latestRows.some((trade) => trade.status === "open")) {
       throw new Error("The previous contract is still settling. EDGE stopped without sending another trade.");
     }
+    for (const trade of latestRows.filter((item) => (item.contract_type === "DIGITOVER" || item.contract_type === "DIGITUNDER") && item.status !== "open")) {
+      if (edgeProcessedSettlementIdsRef.current.has(trade.contract_id)) continue;
+      edgeProcessedSettlementIdsRef.current.add(trade.contract_id);
+      edgeLossStreakRef.current = trade.profit < 0 ? edgeLossStreakRef.current + 1 : 0;
+    }
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
     const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
+    const riskBalance = Number(edgeRiskBalance);
+    const declaredAccountBalance = Number(edgeAccountBalance);
+    if (!Number.isFinite(riskBalance) || riskBalance <= 0 || !Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0 || amount > riskBalance || amount > declaredAccountBalance) {
+      throw new Error("EDGE is paused until the expected-outcome balances are valid and the next stake fits the risk balance.");
+    }
     armMartingaleWatch(latestRows, amount, 1);
     await bulkBuyMutation.mutateAsync({
       data: {
@@ -747,7 +829,28 @@ export default function XTraderPage() {
   const runLoop = async () => {
     while (runningRef.current) {
       try {
-        if (edgePercentageModeRef.current) {
+        if (edgeBestPairAnalyzerRef.current && edgeLossStreakRef.current >= 4) {
+          setEdgeScannerMessage("Paused after 4 losses — switching to another best pair and Over/Under digit.");
+          setConnectionMessage({
+            kind: "info",
+            text: "Best Pair Analyzer paused trading after 4 consecutive losses and is selecting a different market and digit.",
+          });
+          const switched = await selectEdgeAutomation(configRef.current.symbol);
+          if (!switched) {
+            await sleep(1500);
+            continue;
+          }
+          edgeLossStreakRef.current = 0;
+          await sleep(1500);
+          continue;
+        }
+        if (edgeOverThreeSniperRef.current || edgeBestPairAnalyzerRef.current) {
+          const recommendation = await selectEdgeAutomation();
+          if (!recommendation) {
+            await sleep(1500);
+            continue;
+          }
+        } else if (edgePercentageModeRef.current) {
           const recommendation = await applyPercentageRecommendation();
           if (!recommendation) {
             await sleep(1500);
@@ -791,12 +894,30 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live-funds trading before starting." });
       return;
     }
+    const riskBalance = Number(edgeRiskBalance);
+    const declaredAccountBalance = Number(edgeAccountBalance);
+    const outcomeMultiplier = Number(edgeOutcomeMultiplier);
+    if (!Number.isFinite(riskBalance) || riskBalance <= 0 || !Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0 || !Number.isFinite(outcomeMultiplier) || outcomeMultiplier < 1) {
+      setConnectionMessage({ kind: "error", text: "Enter a positive risk balance, account balance, and multiple before starting EDGE." });
+      return;
+    }
+    if (!edgeOutcomeSynced) {
+      setConnectionMessage({ kind: "error", text: "Select Sync balances in Expected outcome before starting EDGE." });
+      return;
+    }
+    if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
+      setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount.currency ?? "USD"} balance.` });
+      return;
+    }
+    if (edgeOutcomeSynced) setTakeProfit(Math.max(0.01, Number((riskBalance * outcomeMultiplier).toFixed(2))));
     try {
       const latestRows = await getDerivHistory();
       const latestEdgeIds = latestRows
         .filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER")
         .map((trade) => trade.contract_id);
       edgeSessionKnownIdsRef.current = new Set(latestEdgeIds);
+      edgeProcessedSettlementIdsRef.current = new Set(latestEdgeIds);
+      edgeLossStreakRef.current = 0;
       queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -835,6 +956,8 @@ export default function XTraderPage() {
     nextStakeRef.current = stake;
     setNextStake(stake);
     martingaleWatchRef.current = null;
+    edgeLossStreakRef.current = 0;
+    setEdgeScannerMessage(null);
   };
 
   const refreshAnalysis = () => {
@@ -1505,8 +1628,17 @@ export default function XTraderPage() {
   const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guideMode === "digit-flip" ? digitFlipGuidePages : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const canTrade = isConnected && !running && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
-    && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
+  const edgeRiskReady = edgeOutcomeSynced
+    && Number.isFinite(Number(edgeRiskBalance))
+    && Number(edgeRiskBalance) > 0
+    && Number.isFinite(Number(edgeAccountBalance))
+    && Number(edgeAccountBalance) > 0
+    && Number.isFinite(Number(edgeOutcomeMultiplier))
+    && Number(edgeOutcomeMultiplier) >= 1;
+  const canTrade = isConnected && !running && edgeRiskReady
+    && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
+    && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= Number(edgeRiskBalance)
+    && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
   return (
     <main className="xt-app">
@@ -1548,10 +1680,10 @@ export default function XTraderPage() {
       <section className="xt-feature-card xt-feature-card-digit-flip">
         <div><Zap size={18} /><span><b>DigitFlip</b><small>Even / Odd parity trading with live estimates</small></span></div>
         <div className="xt-feature-actions">
-          {!canUseEdge && <span className="xt-feature-locked">RESTRICTED</span>}
-          {canUseEdge && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("digit-flip"); setGuidePage(0); setGuideOpen(true); }}><BookOpen size={14} />Guide</button>}
+          {!canUseDigitFlip && <span className="xt-feature-locked">RESTRICTED</span>}
+          {canUseDigitFlip && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("digit-flip"); setGuidePage(0); setGuideOpen(true); }}><BookOpen size={14} />Guide</button>}
           <label className="xt-switch">
-            <input type="checkbox" checked={digitFlipEnabled} onChange={(event) => toggleDigitFlip(event.target.checked)} aria-label="Toggle DigitFlip" disabled={!canUseEdge} />
+            <input type="checkbox" checked={digitFlipEnabled} onChange={(event) => toggleDigitFlip(event.target.checked)} aria-label="Toggle DigitFlip" disabled={!canUseDigitFlip} />
             <span />
           </label>
         </div>
@@ -1700,10 +1832,45 @@ export default function XTraderPage() {
           nextStake={nextStake}
           sessionPnl={sessionPnl}
           sessionTrades={sessionTrades}
+          overThreeSniper={edgeOverThreeSniper}
+          bestPairAnalyzer={edgeBestPairAnalyzer}
+          scannerMessage={edgeScannerMessage}
+          riskBalance={edgeRiskBalance}
+          accountBalance={edgeAccountBalance}
+          outcomeMultiplier={edgeOutcomeMultiplier}
+          outcomeSynced={edgeOutcomeSynced}
           canTrade={canTrade}
           onStart={start}
           onStop={stop}
           onReset={reset}
+          onOverThreeSniperChange={(enabled) => {
+            setEdgeOverThreeSniper(enabled);
+            edgeOverThreeSniperRef.current = enabled;
+            if (enabled) {
+              setEdgeBestPairAnalyzer(false);
+              edgeBestPairAnalyzerRef.current = false;
+              setEdgeScannerMessage("Hunting all Volatility and Jump pairs for the best observed Over 3 signal…");
+              void selectEdgeAutomation();
+            } else if (!edgeBestPairAnalyzerRef.current) {
+              setEdgeScannerMessage(null);
+            }
+          }}
+          onBestPairAnalyzerChange={(enabled) => {
+            setEdgeBestPairAnalyzer(enabled);
+            edgeBestPairAnalyzerRef.current = enabled;
+            if (enabled) {
+              setEdgeOverThreeSniper(false);
+              edgeOverThreeSniperRef.current = false;
+              setEdgeScannerMessage("Hunting all Volatility and Jump pairs for the best observed Over or Under digit…");
+              void selectEdgeAutomation();
+            } else if (!edgeOverThreeSniperRef.current) {
+              setEdgeScannerMessage(null);
+            }
+          }}
+          onRiskBalanceChange={setEdgeRiskBalance}
+          onAccountBalanceChange={setEdgeAccountBalance}
+          onOutcomeMultiplierChange={setEdgeOutcomeMultiplier}
+          onOutcomeSyncedChange={setEdgeOutcomeSynced}
           canViewHistory={canViewHistory}
           recentTrades={edgeRows}
           historyFading={historyFading}

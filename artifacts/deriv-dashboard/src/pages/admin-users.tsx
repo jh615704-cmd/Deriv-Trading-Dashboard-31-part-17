@@ -34,6 +34,7 @@ import {
 
 const featureOptions: Array<{ value: AccessFeature; label: string; description: string }> = [
   { value: "edge", label: "EDGE trading", description: "PAT connection, live telemetry, and trades" },
+  { value: "digit-flip", label: "DigitFlip", description: "Even / Odd parity trading and automation" },
   { value: "trade-x", label: "Trade X", description: "Digit Differs trading and automation" },
   { value: "settings", label: "Settings", description: "View and manage the Deriv connection" },
   { value: "history", label: "History", description: "Read recent trading activity" },
@@ -170,7 +171,7 @@ function KeyRow({
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const keysQuery = useListAccessKeys({ query: { refetchInterval: 15_000, queryKey: getListAccessKeysQueryKey() } });
+  const keysQuery = useListAccessKeys({ query: { refetchInterval: 5_000, queryKey: getListAccessKeysQueryKey() } });
   const createKey = useCreateAccessKey();
   const resetKey = useResetAccessKey();
   const deleteKey = useDeleteAccessKey();
@@ -188,6 +189,12 @@ export default function AdminUsersPage() {
   const userCount = keys.filter((key) => key.kind === "user").length;
   const activeCount = keys.filter((key) => key.status === "active").length;
   const canCreate = Boolean(label.trim()) && features.length > 0 && !createKey.isPending;
+
+  const refreshEverything = async () => {
+    await queryClient.invalidateQueries();
+    await keysQuery.refetch();
+    toast({ title: "Admin data refreshed", description: "Presence, access keys, and feature access are up to date." });
+  };
 
   const toggleFeature = (feature: AccessFeature) => {
     setFeatures((current) => current.includes(feature) ? current.filter((item) => item !== feature) : [...current, feature]);
@@ -306,7 +313,7 @@ export default function AdminUsersPage() {
             <h1>Access <em>control.</em></h1>
             <p>Provision keys, set device limits, grant features, and control who can enter the trading workspace.</p>
           </div>
-          <button type="button" className="refresh-control" onClick={() => void keysQuery.refetch()} disabled={keysQuery.isFetching}><RefreshCw size={14} className={keysQuery.isFetching ? "spin" : ""} /> Refresh presence</button>
+           <button type="button" className="refresh-control" onClick={() => void refreshEverything()} disabled={keysQuery.isFetching}><RefreshCw size={14} className={keysQuery.isFetching ? "spin" : ""} /> Refresh everything</button>
         </section>
 
         <section className="admin-stat-grid">

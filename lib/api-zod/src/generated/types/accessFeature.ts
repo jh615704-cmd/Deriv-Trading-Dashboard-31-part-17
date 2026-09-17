@@ -11,6 +11,7 @@ export type AccessFeature = typeof AccessFeature[keyof typeof AccessFeature];
 
 export const AccessFeature = {
   edge: 'edge',
+  'digit-flip': 'digit-flip',
   'trade-x': 'trade-x',
   settings: 'settings',
   history: 'history',

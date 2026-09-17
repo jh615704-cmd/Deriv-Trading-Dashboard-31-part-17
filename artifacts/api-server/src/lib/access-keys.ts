@@ -5,7 +5,7 @@ import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 export const ACCESS_COOKIE_NAME = "jdy_access";
 // This is a SHA-256 fingerprint, never the raw administrator credential.
 export const PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
-export const ACCESS_FEATURES = ["edge", "trade-x", "settings", "history", "admin"] as const;
+export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
 export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned" | "deleted";
 

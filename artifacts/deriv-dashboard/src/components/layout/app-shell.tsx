@@ -35,8 +35,9 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const isAdmin = accessSession.data?.is_admin === true;
   const features = accessSession.data?.features ?? [];
   const canUseEdge = isAdmin || features.includes("edge");
+  const canUseDigitFlip = isAdmin || features.includes("digit-flip") || canUseEdge;
   const canUseTradeX = isAdmin || features.includes("trade-x");
-  const canUseTrading = canUseEdge || canUseTradeX;
+  const canUseTrading = canUseEdge || canUseDigitFlip || canUseTradeX;
   const canUseSettings = isAdmin || features.includes("settings");
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
