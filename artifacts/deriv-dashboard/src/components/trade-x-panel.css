@@ -401,8 +401,8 @@
   margin-top: 6px;
   color: var(--tx-teal-dark);
   font-family: var(--app-font-mono, "DM Mono", monospace);
-  font-size: 9px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 800;
 }
 .tx-digit-trend {
   display: flex;
@@ -672,7 +672,7 @@
   .tx-market-layout { grid-template-columns: 1fr; }
   .tx-field-market { grid-column: auto; }
   .tx-digit { min-height: 62px; }
-  .tx-digit-percent { font-size: 8px; }
+  .tx-digit-percent { font-size: 10px; }
   .tx-distribution-foot { display: grid; grid-template-columns: 1fr 1fr; }
   .tx-foot-note { margin-left: 0; grid-column: 1 / -1; }
   .tx-smart-controls { grid-template-columns: 1fr; }
@@ -770,15 +770,15 @@
 .tx-digit-market {
   position: relative;
   overflow: hidden;
-  border-color: #ff626a;
-  background: linear-gradient(180deg, #061f37 56%, rgba(160, 40, 58, .42) 100%);
-  box-shadow: inset 0 -3px 0 #ff626a, 0 0 12px rgba(255, 78, 91, .24);
+  border-color: #72d7ff;
+  background: linear-gradient(180deg, #061f37 42%, rgba(56, 177, 235, .32) 100%);
+  box-shadow: inset 0 -3px 0 #72d7ff, 0 0 14px rgba(86, 202, 255, .28);
 }
 .tx-digit-market > * { position: relative; z-index: 1; }
 .tx-digit-selected.tx-digit-market {
-  border-color: #20c7ee;
-  background: linear-gradient(180deg, #0b4b68 56%, rgba(160, 40, 58, .48) 100%);
-  box-shadow: 0 0 0 2px rgba(25, 193, 239, .2), inset 0 -3px 0 #ff626a, 0 0 16px rgba(0, 181, 224, .18);
+  border-color: #9be6ff;
+  background: linear-gradient(180deg, #0b4b68 42%, rgba(56, 177, 235, .4) 100%);
+  box-shadow: 0 0 0 2px rgba(115, 217, 255, .28), inset 0 -3px 0 #9be6ff, 0 0 18px rgba(0, 181, 224, .24);
 }
 .tx-digit-safe,
 .tx-digit-safe.tx-digit-market,
@@ -796,7 +796,7 @@
 .tx-absence-dot { color: #f2c443; }
 .tx-market-digit { display: none; }
 .tx-market-touch { position: absolute; top: 5px; right: 6px; min-height: 10px; color: transparent; font: 800 6px var(--app-font-mono,monospace); letter-spacing: .04em; }
-.tx-market-touch.is-live { padding: 2px 3px; border: 1px solid #ff626a; border-radius: 4px; background: #6d293b; color: #ffd6d1; box-shadow: 0 0 7px rgba(255,78,91,.35); }
+.tx-market-touch.is-live { padding: 2px 3px; border: 1px solid #72d7ff; border-radius: 4px; background: #124f70; color: #c8f3ff; box-shadow: 0 0 8px rgba(86,202,255,.45); }
 .tx-signal-detail { margin: 0 16px 14px; padding: 13px; border: 1px solid rgba(126, 80, 98, .55); border-radius: 10px; background: rgba(59, 39, 53, .8); }
 .tx-signal-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .tx-signal-detail-head > div { display: flex; align-items: center; gap: 7px; }

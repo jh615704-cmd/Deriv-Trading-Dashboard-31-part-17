@@ -160,7 +160,10 @@ export default function TradeXPanel({
   ).slice(0, 3);
   const selectedData = digitData[selectedDigit] ?? digitData[0];
   const confidence = clamp(smartConfidence, 80, 100);
-  const safeEntry = analysisTickCount > 0 && selectedData.percentage <= 6 && selectedData.streak < 8;
+  const safeEntry = analysisTickCount > 0
+    && selectedData.percentage < 7
+    && selectedData.streak >= 1
+    && (lastDigit == null || lastDigit !== selectedDigit);
   const currentSymbolLabel = symbols.find((option) => option.value === symbol)?.label ?? symbol;
 
   const selectMarketType = (nextMarketType: TradeXMarketType) => {
@@ -325,10 +328,6 @@ export default function TradeXPanel({
                     <span className={`tx-market-touch ${isMarketDigit ? "is-live" : ""}`}>{isMarketDigit ? `LIVE ${item.digit}` : "\u00a0"}</span>
                     <span className="tx-digit-number">{item.digit}</span>
                     <span className="tx-digit-percent">{item.percentage.toFixed(1)}%</span>
-                    <span className={`tx-digit-trend tx-trend-${item.momentum ?? "flat"}`}>
-                      <span className="tx-absence-dot">•</span>
-                      {item.streak}x absent
-                    </span>
                   </button>
                 );
               })}
@@ -345,8 +344,8 @@ export default function TradeXPanel({
               </div>
                <div className={`tx-signal-progress ${safeEntry ? "tx-signal-progress-safe" : ""}`}><i style={{ width: `${clamp(selectedData.percentage * 10, 2, 100)}%` }} /></div>
                  <p>{safeEntry
-                   ? `Observed frequency is below 6% and absence is below 8 ticks. This is a filter for Digit Differs ${selectedDigit}, not a probability guarantee.`
-                   : "The selected digit does not meet the observed <6% / <8-tick filter yet."}</p>
+                    ? `Observed frequency is below 7%, and the current market digit has moved away from ${selectedDigit}. This is a filter for Digit Differs ${selectedDigit}, not a probability guarantee.`
+                    : "The selected digit does not meet the observed <7% and market-away filter yet."}</p>
             </div>
             <div className="tx-distribution-foot">
               <span><i className="tx-key tx-key-ranked" /> ranked differ signal</span>

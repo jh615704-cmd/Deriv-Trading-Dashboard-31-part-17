@@ -47,10 +47,6 @@ type EdgeReferencePanelProps = {
   onTakeProfitChange: (value: number) => void;
   stopLoss: number;
   onStopLossChange: (value: number) => void;
-  autoSwitch: boolean;
-  onAutoSwitchChange: (value: boolean) => void;
-  edgePercentageMode: boolean;
-  onPercentageModeChange: (value: boolean) => void;
   edgeRecommendation?: BestEdgeSignal | null;
   marketSignals: readonly MarketSignal[];
   analysis: { overPercent: number; underPercent: number };
@@ -124,10 +120,6 @@ export default function EdgeReferencePanel({
   onTakeProfitChange,
   stopLoss,
   onStopLossChange,
-  autoSwitch,
-  onAutoSwitchChange,
-  edgePercentageMode,
-  onPercentageModeChange,
   edgeRecommendation,
   marketSignals,
   analysis,
@@ -151,7 +143,6 @@ export default function EdgeReferencePanel({
   const [maxStake, setMaxStake] = useState("No limit");
   const [autoRepeat, setAutoRepeat] = useState(false);
   const [overThreeSniper, setOverThreeSniper] = useState(false);
-  const [overTwoAfterNine, setOverTwoAfterNine] = useState(false);
   const [bestPairAnalyzer, setBestPairAnalyzer] = useState(false);
 
   const bestSignal = useMemo(
@@ -224,10 +215,7 @@ export default function EdgeReferencePanel({
       </section>
 
       <div className="edge-ref-feature-list">
-        <label className="edge-ref-feature"><span><i>✦</i> Pair Rotation</span><EdgeToggle checked={autoSwitch} onChange={onAutoSwitchChange} disabled={!isConnected} label="Pair Rotation" /></label>
-        <label className="edge-ref-feature"><span><i>✦</i> Barrier Rotation</span><EdgeToggle checked={edgePercentageMode} onChange={onPercentageModeChange} disabled={!isConnected} label="Barrier Rotation" /></label>
         <label className="edge-ref-feature"><span><i>✦</i> Over 3 Sniper</span><EdgeToggle checked={overThreeSniper} onChange={setOverThreeSniper} disabled={running} label="Over 3 Sniper" /></label>
-        <label className="edge-ref-feature"><span><i>✦</i> Over 2 After 9</span><EdgeToggle checked={overTwoAfterNine} onChange={setOverTwoAfterNine} disabled={running} label="Over 2 After 9" /></label>
         <label className="edge-ref-feature"><span><i>✦</i> Best Pair Analyzer</span><EdgeToggle checked={bestPairAnalyzer} onChange={setBestPairAnalyzer} disabled={running} label="Best Pair Analyzer" /></label>
       </div>
 
@@ -239,8 +227,11 @@ export default function EdgeReferencePanel({
       </div>
 
       <section className="edge-ref-card edge-ref-digit-card">
-        <span className="edge-ref-field-label">Last digit prediction</span>
-        <div className="edge-ref-digit-picker">{Array.from({ length: 9 }, (_, index) => index + 1).map((digit) => <button type="button" key={digit} className={barrier === digit ? "active" : ""} onClick={() => onBarrierChange(digit)} disabled={running}>{digit}</button>)}</div>
+        <span className="edge-ref-field-label">Last digit prediction · live market highlight</span>
+        <div className="edge-ref-digit-picker">{Array.from({ length: 10 }, (_, digit) => {
+          const isMarketDigit = lastDigit === digit;
+          return <button type="button" key={digit} className={`${barrier === digit ? "active " : ""}${isMarketDigit ? "market" : ""}`} onClick={() => onBarrierChange(digit)} disabled={running} aria-label={`Barrier digit ${digit}${isMarketDigit ? ", current market digit" : ""}`} title={isMarketDigit ? "Current market digit" : undefined}>{digit}</button>;
+        })}</div>
       </section>
 
       <section className={`edge-ref-card edge-ref-preset ${presetOpen ? "open" : ""}`}>

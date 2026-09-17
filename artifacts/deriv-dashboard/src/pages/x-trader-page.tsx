@@ -113,6 +113,15 @@ const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 const DIGIT_FLIP_SIGNAL_FLOOR = 80;
 const DIGIT_FLIP_MARKET_SCAN_INTERVAL_MS = 10_000;
 const EDGE_PERCENTAGE_SCAN_FLOOR = 90;
+// The trading calendar is deliberately internal. "all-days" keeps the
+// strategy available on both weekdays and weekends without adding another
+// user-facing switch that could be mistaken for a market prediction.
+const TRADING_CALENDAR_MODE = "all-days" as const;
+const isTradingCalendarOpen = (date = new Date()) => (
+  TRADING_CALENDAR_MODE === "all-days"
+  || (TRADING_CALENDAR_MODE === "weekdays" && date.getDay() > 0 && date.getDay() < 6)
+  || (TRADING_CALENDAR_MODE === "weekends" && (date.getDay() === 0 || date.getDay() === 6))
+);
 const errorMessage = (error: unknown) => {
   if (!error || typeof error !== "object") return "Request failed";
   const candidate = error as { data?: { error?: string }; message?: string };
@@ -197,6 +206,10 @@ export default function XTraderPage() {
   const [digitFlipTradeCount, setDigitFlipTradeCount] = useState(0);
   const [digitFlipSampleCount, setDigitFlipSampleCount] = useState(0);
   const [digitFlipEvenCount, setDigitFlipEvenCount] = useState(0);
+  const [digitFlipRiskBalance, setDigitFlipRiskBalance] = useState("");
+  const [digitFlipAccountBalance, setDigitFlipAccountBalance] = useState("");
+  const [digitFlipOutcomeMultiplier, setDigitFlipOutcomeMultiplier] = useState("1");
+  const [digitFlipOutcomeSynced, setDigitFlipOutcomeSynced] = useState(false);
   const [digitFlipClearArmed, setDigitFlipClearArmed] = useState(false);
   const [edgeHiddenHistoryIds, setEdgeHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipHiddenHistoryIds, setDigitFlipHiddenHistoryIds] = useState<Set<string>>(new Set());
@@ -231,6 +244,7 @@ export default function XTraderPage() {
   const digitFlipAssaultRef = useRef(false);
   const digitFlipMagicRef = useRef(false);
   const digitFlipNextMarketScanAtRef = useRef(0);
+  const digitFlipAutoSelectionKeyRef = useRef("");
   const digitFlipMarketSignalsRef = useRef<DigitFlipMarketSignal[]>([]);
   const digitFlipRatesRef = useRef({ even: 50, odd: 50 });
   const tradeXLastDigitRef = useRef<number | null>(null);
@@ -905,23 +919,32 @@ export default function XTraderPage() {
       setTradeXMessage("Confirm live funds before sending a Trade X contract.");
       return false;
     }
+    if (!isTradingCalendarOpen()) {
+      setTradeXMessage("Trade X is outside its configured trading calendar.");
+      return false;
+    }
     if (currentAccount && config.stake * count > currentAccount.balance) {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
       return false;
     }
     const selectedSignal = tradeXDistributionRef.current[entryDigit];
     const selectedConfidence = selectedSignal ? 100 - selectedSignal.percentage : 0;
+    const selectedDigitIsAwayFromMarket = tradeXLastDigitRef.current == null || tradeXLastDigitRef.current !== entryDigit;
+    const observedEntryReady = Boolean(
+      selectedSignal
+      && selectedSignal.percentage < 7
+      && selectedSignal.streak >= 1
+      && selectedDigitIsAwayFromMarket,
+    );
     if (
       tradeXSmartRef.current
-      && (!selectedSignal || selectedConfidence < config.smartConfidence || selectedSignal.streak >= 8)
+      && (!observedEntryReady || selectedConfidence < config.smartConfidence)
     ) {
-      setTradeXMessage(`Trade X is waiting for an observed ${config.smartConfidence}% signal with fewer than 8 absent ticks.`);
+      setTradeXMessage(`Trade X is waiting for a sub-7% observed digit signal after the market moves away from digit ${entryDigit}.`);
       return false;
     }
-    const recentDigits = tradeXAnalysisDigitsRef.current.slice(-8);
-    const transitions = recentDigits.slice(1).filter((digit, index) => digit !== recentDigits[index]).length;
-    if (recentDigits.length >= 6 && transitions >= 5 && tradeXLastDigitRef.current === entryDigit) {
-      setTradeXMessage(`Trade X delayed because the selected digit just appeared during an aggressive sequence. Waiting for a fresh sample.`);
+    if (tradeXLastDigitRef.current === entryDigit) {
+      setTradeXMessage(`Trade X delayed because digit ${entryDigit} is the current market digit. Waiting for it to move away.`);
       await waitForMarketTicks(Math.max(1, durationOverride), () => isConnected);
       return false;
     }
@@ -985,23 +1008,40 @@ export default function XTraderPage() {
         parity: signal.evenPercentage >= signal.oddPercentage ? "DIGITEVEN" as const : "DIGITODD" as const,
         rate: Math.max(signal.evenPercentage, signal.oddPercentage),
       }))
-       .filter((candidate) => !requireThreshold || candidate.rate >= DIGIT_FLIP_SIGNAL_FLOOR)
+      .filter((candidate) => !requireThreshold || candidate.rate >= DIGIT_FLIP_SIGNAL_FLOOR)
       .sort((left, right) => right.rate - left.rate || right.signal.sampleCount - left.signal.sampleCount);
     const best = signals[0];
     if (!best) return false;
-     if (best.signal.symbol !== config.symbol) {
+    if (best.signal.symbol !== config.symbol) {
       setDigitFlipSymbol(best.signal.symbol);
       await selectMarket(best.signal.symbol);
     }
-     const nextParity = config.marketType === "auto" && !digitFlipAssaultRef.current ? best.parity : config.parity;
-     if (nextParity !== config.parity) setDigitFlipParity(nextParity);
-     digitFlipConfigRef.current = {
-       ...digitFlipConfigRef.current,
-       symbol: best.signal.symbol,
-       parity: nextParity,
-     };
+    const nextParity = (config.marketType === "auto" || digitFlipMagicRef.current) && !digitFlipAssaultRef.current
+      ? best.parity
+      : config.parity;
+    if (nextParity !== config.parity) setDigitFlipParity(nextParity);
+    digitFlipConfigRef.current = {
+      ...digitFlipConfigRef.current,
+      symbol: best.signal.symbol,
+      parity: nextParity,
+    };
     return true;
   };
+
+  useEffect(() => {
+    if (!digitFlipEnabled || (!digitFlipMagic && digitFlipMarketType !== "auto") || !digitFlipMarketSignals.length) return;
+    const eligible = digitFlipMarketSignals
+      .filter((signal) => digitFlipMarketType === "auto" || tradeXSymbols.some((option) => option.value === signal.symbol && option.marketType === digitFlipMarketType))
+      .sort((left, right) => Math.max(right.evenPercentage, right.oddPercentage) - Math.max(left.evenPercentage, left.oddPercentage) || right.sampleCount - left.sampleCount);
+    const best = eligible[0];
+    if (!best) return;
+    const parity = best.oddPercentage > best.evenPercentage ? "DIGITODD" : "DIGITEVEN";
+    const key = `${best.symbol}:${parity}`;
+    if (digitFlipAutoSelectionKeyRef.current === key) return;
+    digitFlipAutoSelectionKeyRef.current = key;
+    if (digitFlipConfigRef.current.symbol === best.symbol && digitFlipConfigRef.current.parity === parity) return;
+    void chooseDigitFlipSetup(false);
+  }, [digitFlipEnabled, digitFlipMagic, digitFlipMarketSignals, digitFlipMarketType]);
 
   const chooseDigitFlipMarket = async () => chooseDigitFlipSetup(false);
 
@@ -1042,6 +1082,16 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a DigitFlip trade." });
       return false;
     }
+    if (!isTradingCalendarOpen()) {
+      setConnectionMessage({ kind: "info", text: "DigitFlip is outside its configured trading calendar." });
+      return false;
+    }
+    const riskBalance = Number(digitFlipRiskBalance);
+    const declaredAccountBalance = Number(digitFlipAccountBalance);
+    if (!Number.isFinite(riskBalance) || riskBalance <= 0 || !Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
+      setConnectionMessage({ kind: "error", text: "DigitFlip is paused until the expected-outcome balances are entered." });
+      return false;
+    }
     const latestRows = await getDerivHistory();
     applyDigitFlipAssaultSettlements(latestRows);
     const config = digitFlipConfigRef.current;
@@ -1068,7 +1118,7 @@ export default function XTraderPage() {
     const amount = config.stakeMode === "martingale"
       ? digitFlipNextStakeRef.current
       : config.stake;
-    if (currentAccount && amount > currentAccount.balance) {
+    if (amount > riskBalance || amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
       setConnectionMessage({ kind: "error", text: "The DigitFlip stake is higher than the available balance." });
       return false;
     }
@@ -1107,7 +1157,7 @@ export default function XTraderPage() {
     digitFlipNextMarketScanAtRef.current = 0;
     while (digitFlipRunningRef.current) {
       const config = digitFlipConfigRef.current;
-      if (config.marketType === "auto" && Date.now() >= digitFlipNextMarketScanAtRef.current) {
+      if ((config.marketType === "auto" || digitFlipMagicRef.current) && Date.now() >= digitFlipNextMarketScanAtRef.current) {
         const selected = await chooseDigitFlipSetup(digitFlipMagicRef.current);
         if (!selected) {
           setConnectionMessage({ kind: "info", text: `Standby is waiting for a market with an ${DIGIT_FLIP_SIGNAL_FLOOR}% observed parity signal.` });
@@ -1120,7 +1170,7 @@ export default function XTraderPage() {
       const didTrade = await executeDigitFlip();
       if (digitFlipRunningRef.current) {
         await waitForMarketTicks(didTrade ? digitFlipDuration : 1, () => digitFlipRunningRef.current);
-        if (didTrade && digitFlipConfigRef.current.marketType === "auto") {
+        if (didTrade && (digitFlipConfigRef.current.marketType === "auto" || digitFlipMagicRef.current)) {
           await sleep(DIGIT_FLIP_MARKET_SCAN_INTERVAL_MS);
           digitFlipNextMarketScanAtRef.current = 0;
         }
@@ -1180,6 +1230,27 @@ export default function XTraderPage() {
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before running DigitFlip." });
       return;
+    }
+    const riskBalance = Number(digitFlipRiskBalance);
+    const declaredAccountBalance = Number(digitFlipAccountBalance);
+    const outcomeMultiplier = Number(digitFlipOutcomeMultiplier);
+    if (
+      !Number.isFinite(riskBalance)
+      || riskBalance <= 0
+      || !Number.isFinite(declaredAccountBalance)
+      || declaredAccountBalance <= 0
+      || !Number.isFinite(outcomeMultiplier)
+      || outcomeMultiplier < 1
+    ) {
+      setConnectionMessage({ kind: "error", text: "Enter a positive risk balance, account balance, and multiple before starting DigitFlip." });
+      return;
+    }
+    if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
+      setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount.currency ?? "USD"} balance.` });
+      return;
+    }
+    if (digitFlipOutcomeSynced) {
+      setDigitFlipTakeProfit(Math.max(0.01, Number((riskBalance * outcomeMultiplier).toFixed(2))));
     }
     digitFlipSessionKnownIdsRef.current = new Set(digitFlipAllRows.map((trade) => trade.contract_id));
     setDigitFlipSessionPnl(0);
@@ -1554,6 +1625,10 @@ export default function XTraderPage() {
            magicEnabled={digitFlipMagic}
            clearTradesArmed={digitFlipClearArmed}
            historyFading={historyFading}
+            riskBalance={digitFlipRiskBalance}
+            accountBalance={digitFlipAccountBalance}
+            outcomeMultiplier={digitFlipOutcomeMultiplier}
+            outcomeSynced={digitFlipOutcomeSynced}
           isPlacingTrade={digitFlipBuyMutation.isPending}
           disabled={!isConnected}
           onMarketTypeChange={(next) => {
@@ -1582,6 +1657,10 @@ export default function XTraderPage() {
            onRefreshSample={refreshDigitFlipSample}
            onAssaultChange={toggleDigitFlipAssault}
            onMagicChange={toggleDigitFlipMagic}
+            onRiskBalanceChange={setDigitFlipRiskBalance}
+            onAccountBalanceChange={setDigitFlipAccountBalance}
+            onOutcomeMultiplierChange={setDigitFlipOutcomeMultiplier}
+            onOutcomeSyncedChange={setDigitFlipOutcomeSynced}
           onGuide={() => { setGuideMode("digit-flip"); setGuidePage(0); setGuideOpen(true); }}
         />
       )}
@@ -1613,10 +1692,6 @@ export default function XTraderPage() {
           onTakeProfitChange={setTakeProfit}
           stopLoss={stopLoss}
           onStopLossChange={setStopLoss}
-          autoSwitch={autoSwitch}
-          onAutoSwitchChange={toggleAutoBestDigit}
-          edgePercentageMode={edgePercentageMode}
-          onPercentageModeChange={toggleEdgePercentageMode}
           edgeRecommendation={edgeRecommendation}
           marketSignals={(status.data?.market_signals ?? []) as MarketSignal[]}
           analysis={analysis}

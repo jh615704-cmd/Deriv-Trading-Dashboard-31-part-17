@@ -58,6 +58,10 @@ export type DigitFlipPanelProps = {
   magicEnabled: boolean;
   clearTradesArmed: boolean;
   historyFading: boolean;
+  riskBalance: string;
+  accountBalance: string;
+  outcomeMultiplier: string;
+  outcomeSynced: boolean;
   isPlacingTrade?: boolean;
   disabled?: boolean;
   onMarketTypeChange: (value: DigitFlipMarketType) => void;
@@ -75,10 +79,53 @@ export type DigitFlipPanelProps = {
   onRefreshSample: () => void;
   onAssaultChange: (value: boolean) => void;
   onMagicChange: (value: boolean) => void;
+  onRiskBalanceChange: (value: string) => void;
+  onAccountBalanceChange: (value: string) => void;
+  onOutcomeMultiplierChange: (value: string) => void;
+  onOutcomeSyncedChange: (value: boolean) => void;
   onGuide: () => void;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const digitFlipPresets = [
+  {
+    value: "quick",
+    name: "Quick demo",
+    detail: "0.50 stake · 1 tick · flat stake",
+    note: "Smallest practical test with a tight session guard.",
+    stake: 0.5,
+    duration: 1 as DigitFlipDuration,
+    stakeMode: "flat" as DigitFlipStakeMode,
+    multiplier: 1,
+    takeProfit: 2,
+    stopLoss: 2,
+  },
+  {
+    value: "steady",
+    name: "Steady",
+    detail: "1.00 stake · 3 ticks · flat stake",
+    note: "A measured baseline for a fresh sample.",
+    stake: 1,
+    duration: 3 as DigitFlipDuration,
+    stakeMode: "flat" as DigitFlipStakeMode,
+    multiplier: 1,
+    takeProfit: 5,
+    stopLoss: 5,
+  },
+  {
+    value: "recovery",
+    name: "Recovery",
+    detail: "0.50 stake · 1 tick · 1.8x after loss",
+    note: "Higher exposure after a loss; use only with a defined risk balance.",
+    stake: 0.5,
+    duration: 1 as DigitFlipDuration,
+    stakeMode: "martingale" as DigitFlipStakeMode,
+    multiplier: 1.8,
+    takeProfit: 5,
+    stopLoss: 2.5,
+  },
+] as const;
 
 function PremiumPill() {
   return <span className="df-premium">PREMIUM</span>;
@@ -135,6 +182,10 @@ export default function DigitFlipPanel({
   magicEnabled,
   clearTradesArmed,
   historyFading,
+  riskBalance,
+  accountBalance,
+  outcomeMultiplier,
+  outcomeSynced,
   isPlacingTrade = false,
   disabled = false,
   onMarketTypeChange,
@@ -152,12 +203,17 @@ export default function DigitFlipPanel({
   onRefreshSample,
   onAssaultChange,
   onMagicChange,
+  onRiskBalanceChange,
+  onAccountBalanceChange,
+  onOutcomeMultiplierChange,
+  onOutcomeSyncedChange,
   onGuide,
 }: DigitFlipPanelProps) {
   const [marketPickerOpen, setMarketPickerOpen] = useState(false);
   const [preset, setPreset] = useState("custom");
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [multipleBalanceOpen, setMultipleBalanceOpen] = useState(false);
 
-  const marketLabel = symbols.find((option) => option.value === symbol)?.label ?? symbol;
   const activeSymbols = marketType === "auto"
     ? symbols
     : symbols.filter((option) => option.marketType === marketType);
@@ -175,13 +231,14 @@ export default function DigitFlipPanel({
   }, [activeSymbols, marketSignals]);
 
   const bestSignal = useMemo(() => {
-    if (!marketSignals.length) return undefined;
-    return marketSignals.reduce((best, candidate) => {
+    const eligibleSignals = marketSignals.filter((signal) => activeSymbols.some((option) => option.value === signal.symbol));
+    if (!eligibleSignals.length) return undefined;
+    return eligibleSignals.reduce((best, candidate) => {
       const bestRate = Math.max(best.evenPercentage, best.oddPercentage);
       const candidateRate = Math.max(candidate.evenPercentage, candidate.oddPercentage);
       return candidateRate > bestRate ? candidate : best;
     });
-  }, [marketSignals]);
+  }, [activeSymbols, marketSignals]);
 
   const bestParity: DigitFlipParity = bestSignal && bestSignal.oddPercentage > bestSignal.evenPercentage
     ? "DIGITODD"
@@ -189,29 +246,27 @@ export default function DigitFlipPanel({
   const bestRate = bestSignal
     ? Math.max(bestSignal.evenPercentage, bestSignal.oddPercentage)
     : Math.max(evenPercentage, oddPercentage);
-  const bestLabel = symbols.find((option) => option.value === bestSignal?.symbol)?.label
-    ?? marketLabel
-    ?? "Volatility 100 Index";
-  const selectedLabel = selectedParity === "DIGITEVEN" ? "Even" : "Odd";
   const lastParity = lastDigit == null ? null : lastDigit % 2 === 0 ? "Even" : "Odd";
   const currentQuote = quote == null ? "—" : quote.toFixed(2);
   const runText = lastParity ? `Run: ${lastParity.toLowerCase()} · latest tick: ${lastDigit}` : "Waiting for live digit sample";
+  const displayedSymbol = marketType === "auto" ? bestSignal?.symbol ?? symbol : symbol;
+  const marketLabel = symbols.find((option) => option.value === displayedSymbol)?.label ?? displayedSymbol;
+  const bestLabel = symbols.find((option) => option.value === bestSignal?.symbol)?.label
+    ?? marketLabel
+    ?? "Volatility 100 Index";
+  const selectedPreset = digitFlipPresets.find((item) => item.value === preset);
 
   const selectPreset = (value: string) => {
     setPreset(value);
-    if (value === "quick") {
-      onStakeChange(0.5);
-      onDurationChange(1);
-      onStakeModeChange("flat");
-    } else if (value === "steady") {
-      onStakeChange(1);
-      onDurationChange(3);
-      onStakeModeChange("flat");
-    } else if (value === "recovery") {
-      onStakeChange(0.5);
-      onDurationChange(1);
-      onStakeModeChange("martingale");
-    }
+    setPresetOpen(false);
+    const selected = digitFlipPresets.find((item) => item.value === value);
+    if (!selected) return;
+    onStakeChange(selected.stake);
+    onDurationChange(selected.duration);
+    onStakeModeChange(selected.stakeMode);
+    onMultiplierChange(selected.multiplier);
+    onTakeProfitChange(selected.takeProfit);
+    onStopLossChange(selected.stopLoss);
   };
 
   const renderMarketRate = (signal?: DigitFlipMarketSignal) => {
@@ -280,7 +335,7 @@ export default function DigitFlipPanel({
               return (
                 <button
                   type="button"
-                  className={`df-market-option ${marketType !== "auto" && symbol === option.value ? "selected" : ""}`}
+                   className={`df-market-option ${(marketType === "auto" ? displayedSymbol : symbol) === option.value ? "selected" : ""}`}
                   key={option.value}
                   onClick={() => {
                     onMarketTypeChange(option.marketType);
@@ -358,24 +413,44 @@ export default function DigitFlipPanel({
 
       <section className="df-card df-preset-card">
         <div className="df-section-label">Preset</div>
-        <label className="df-preset-select">
-          <select value={preset} onChange={(event) => selectPreset(event.target.value)} disabled={disabled || running}>
-            <option value="custom">Select a Preset</option>
-            <option value="quick">Quick demo · 0.50 / 1 tick</option>
-            <option value="steady">Steady · 1.00 / 3 ticks</option>
-            <option value="recovery">Recovery · martingale</option>
-          </select>
+        <button type="button" className="df-preset-trigger" onClick={() => setPresetOpen((open) => !open)} disabled={disabled || running} aria-expanded={presetOpen}>
+          <b>{selectedPreset?.name ?? "Select a Preset"}</b>
           <ChevronDown size={15} />
-        </label>
-        <p>Each preset is re-sized to your balance when applied. It sets the stake, ladder and stops — not the odds of a trade.</p>
+        </button>
+        {presetOpen && (
+          <div className="df-preset-menu">
+            {digitFlipPresets.map((item) => (
+              <button type="button" key={item.value} className={`df-preset-option ${preset === item.value ? "selected" : ""}`} onClick={() => selectPreset(item.value)} disabled={disabled || running}>
+                <strong>{item.name}</strong>
+                <span>{item.detail}</span>
+                <em>{item.note}</em>
+              </button>
+            ))}
+          </div>
+        )}
+        <p>Presets apply every DigitFlip setting together: stake, duration, staking mode, multiplier, take profit, and stop loss.</p>
       </section>
 
-      <section className={`df-card df-repeat-card ${magicEnabled ? "active" : ""}`}>
-        <div>
-          <div className="df-title"><b>Auto-Repeat 10-Min Sessions</b><PremiumPill /></div>
-          <p>Run a guarded session using the selected parity and market rules.</p>
+      <section className={`df-card df-outcome-card ${outcomeSynced ? "active" : ""}`}>
+        <div className="df-advanced-head">
+          <div>
+            <div className="df-section-label">Expected outcome</div>
+            <h3>Balance target</h3>
+          </div>
+          <span className={`df-sync-badge ${outcomeSynced ? "synced" : ""}`}>{outcomeSynced ? "SYNCED" : "NOT SYNCED"}</span>
         </div>
-        <Switch checked={magicEnabled} onChange={onMagicChange} disabled={disabled} label="Auto-Repeat 10-Min Sessions" />
+        <div className="df-outcome-grid">
+          <label><span>RISK BALANCE</span><input type="number" min="0" step=".01" value={riskBalance} onChange={(event) => onRiskBalanceChange(event.target.value)} placeholder="0.00" disabled={disabled || running} /></label>
+          <label><span>ACCOUNT BALANCE</span><input type="number" min="0" step=".01" value={accountBalance} onChange={(event) => onAccountBalanceChange(event.target.value)} placeholder="0.00" disabled={disabled || running} /></label>
+          <div className="df-multiple-balance">
+            <button type="button" className={`df-multiple-button ${multipleBalanceOpen ? "selected" : ""}`} onClick={() => setMultipleBalanceOpen((open) => !open)} disabled={disabled || running}>Multiple balance</button>
+            {multipleBalanceOpen && <label><span>MULTIPLIER</span><input type="number" min="1" step=".1" value={outcomeMultiplier} onChange={(event) => onOutcomeMultiplierChange(event.target.value)} placeholder="1.0" disabled={disabled || running} /></label>}
+          </div>
+        </div>
+        <div className="df-outcome-actions">
+          <button type="button" className={`df-sync-button ${outcomeSynced ? "selected" : ""}`} onClick={() => onOutcomeSyncedChange(!outcomeSynced)} disabled={disabled || running || !riskBalance || !accountBalance || !outcomeMultiplier || Number(outcomeMultiplier) < 1}>{outcomeSynced ? "Unsync balances" : "Sync balances"}</button>
+          <span>{outcomeSynced && riskBalance && outcomeMultiplier ? `Target: ${(Number(riskBalance) * Number(outcomeMultiplier)).toFixed(2)} · entries stay within the risk balance.` : "Enter both balances before starting a session."}</span>
+        </div>
       </section>
 
       <section className="df-card df-advanced-card">
