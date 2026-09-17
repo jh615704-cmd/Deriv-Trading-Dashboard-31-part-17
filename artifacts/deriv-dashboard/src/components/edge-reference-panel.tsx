@@ -52,6 +52,7 @@ type EdgeReferencePanelProps = {
   analysis: { overPercent: number; underPercent: number };
   lastDigit?: number | null;
   quote?: number | null;
+  payoutPercent?: number | null;
   nextStake: number;
   sessionPnl: number;
   sessionTrades: number;
@@ -80,6 +81,38 @@ type EdgeReferencePanelProps = {
 };
 
 const EDGE_PERCENTAGE_SCAN_FLOOR = 90;
+
+function chooseBestOverThreeSignal(signals: MarketSignal[]): BestEdgeSignal | null {
+  const candidates = signals
+    .filter((signal) => signal.sample_count >= 5 && signal.quote != null)
+    .map((signal) => {
+      const outcome = signal.digit_outcomes?.find((item) => item.digit === 3);
+      return outcome ? { signal, score: Number(outcome.over_percentage) } : null;
+    })
+    .filter((candidate): candidate is { signal: MarketSignal; score: number } => candidate !== null && Number.isFinite(candidate.score))
+    .sort((left, right) => right.score - left.score || right.signal.sample_count - left.signal.sample_count);
+  const best = candidates[0];
+  return best ? {
+    symbol: best.signal.symbol,
+    direction: "DIGITOVER",
+    digit: 3,
+    score: best.score,
+    sampleCount: best.signal.sample_count,
+  } : null;
+}
+
+function chooseBestAnalyzerSignal(signals: MarketSignal[]): BestEdgeSignal | null {
+  const candidates = signals.flatMap((signal) => (signal.digit_outcomes ?? []).filter((outcome) => outcome.digit > 0 && outcome.digit < 9).flatMap((outcome) => {
+    const over = Number(outcome.over_percentage);
+    const under = Number(outcome.under_percentage);
+    if (!Number.isFinite(over) || !Number.isFinite(under)) return [];
+    return [
+      { symbol: signal.symbol, direction: "DIGITOVER" as const, digit: outcome.digit, score: over, sampleCount: signal.sample_count },
+      { symbol: signal.symbol, direction: "DIGITUNDER" as const, digit: outcome.digit, score: under, sampleCount: signal.sample_count },
+    ];
+  })).filter((candidate) => candidate.sampleCount >= 5);
+  return candidates.sort((left, right) => right.score - left.score || right.sampleCount - left.sampleCount || left.digit - right.digit)[0] ?? null;
+}
 
 const presets = [
   { value: "steady-over-4", name: "Steady | Over 4", risk: "12% RISK", detail: "2.2x ladder | 5 rungs | Over 4", note: "Small target: about 6 wins ends the session", tone: "teal" },
@@ -165,6 +198,7 @@ export default function EdgeReferencePanel({
   analysis,
   lastDigit = null,
   quote = null,
+  payoutPercent = null,
   nextStake,
   sessionPnl,
   sessionTrades,
@@ -195,12 +229,20 @@ export default function EdgeReferencePanel({
   const [presetOpen, setPresetOpen] = useState(false);
   const [marketPickerOpen, setMarketPickerOpen] = useState(false);
   const [maxStake, setMaxStake] = useState("No limit");
-  const [autoRepeat, setAutoRepeat] = useState(false);
   const [multipleBalanceOpen, setMultipleBalanceOpen] = useState(false);
 
+  const liveSignals = marketSignals as MarketSignal[];
+  const liveAutomationSignal = useMemo(
+    () => overThreeSniper
+      ? chooseBestOverThreeSignal(liveSignals)
+      : bestPairAnalyzer
+        ? chooseBestAnalyzerSignal(liveSignals)
+        : null,
+    [bestPairAnalyzer, liveSignals, overThreeSniper],
+  );
   const bestSignal = useMemo(
-    () => edgeRecommendation ?? chooseBestEdgeSignal(marketSignals as MarketSignal[], EDGE_PERCENTAGE_SCAN_FLOOR),
-    [edgeRecommendation, marketSignals],
+    () => liveAutomationSignal ?? edgeRecommendation ?? chooseBestEdgeSignal(liveSignals, EDGE_PERCENTAGE_SCAN_FLOOR),
+    [edgeRecommendation, liveAutomationSignal, liveSignals],
   );
   const bestDirection = bestSignal?.direction === "DIGITUNDER" ? "Under" : "Over";
   const bestBarrier = bestSignal?.digit ?? barrier;
@@ -213,19 +255,20 @@ export default function EdgeReferencePanel({
     const signalMap = new Map(marketSignals.map((signal) => [signal.symbol, signal]));
     return markets.map(([value, label]) => {
       const signal = signalMap.get(value);
+      const outcomes = signal?.digit_outcomes?.filter((outcome) => outcome.digit > 0 && outcome.digit < 9) ?? [];
       const score = signal
-        ? Math.max(
-          ...(signal.digit_outcomes ?? []).flatMap((outcome) => [
+        ? overThreeSniper
+          ? Number(outcomes.find((outcome) => outcome.digit === 3)?.over_percentage ?? 0)
+          : Math.max(...outcomes.flatMap((outcome) => [
             Number(outcome.over_percentage),
             Number(outcome.under_percentage),
-          ]),
-          0,
-        )
+          ]), 0)
         : 0;
       return { value, label, score };
     }).sort((left, right) => right.score - left.score || left.label.localeCompare(right.label));
-  }, [marketSignals, markets]);
+  }, [bestPairAnalyzer, marketSignals, markets, overThreeSniper]);
   const quoteText = quote == null ? "—" : Number.isInteger(quote) ? String(quote) : quote.toFixed(2);
+  const payoutText = payoutPercent == null || !Number.isFinite(payoutPercent) ? "waiting" : `${payoutPercent.toFixed(1)}%`;
   const currency = currentAccount?.currency ?? "USD";
 
   const applyPreset = (value: string) => {
@@ -254,7 +297,7 @@ export default function EdgeReferencePanel({
         <div className="edge-ref-rule" />
         <div className="edge-ref-best">
           <div className="edge-ref-best-barrier">{bestDirection} {bestBarrier}</div>
-          <div className="edge-ref-best-copy"><span>BEST BARRIER TO TRADE NOW</span><p><strong>{bestRate.toFixed(1)}% win</strong><em>·</em> payout 106% <em>·</em> {bestMarket}</p></div>
+          <div className="edge-ref-best-copy"><span>BEST BARRIER TO TRADE NOW</span><p><strong>{bestRate.toFixed(1)}% win</strong><em>·</em> payout {payoutText} <em>·</em> {bestMarket}</p></div>
         </div>
       </section>
 
@@ -281,12 +324,12 @@ export default function EdgeReferencePanel({
       </section>
 
       <div className="edge-ref-feature-list">
-        <div className={`edge-ref-feature ${overThreeSniper ? "active" : ""}`}>
-          <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Over 3 Sniper</span><EdgeToggle checked={overThreeSniper} onChange={onOverThreeSniperChange} disabled={running} label="Over 3 Sniper" /></div>
+          <div className={`edge-ref-feature ${overThreeSniper ? "active" : ""}`}>
+          <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Over 3 Sniper</span><EdgeToggle checked={overThreeSniper} onChange={onOverThreeSniperChange} disabled={false} label="Over 3 Sniper" /></div>
           {overThreeSniper && <small className="edge-ref-feature-status">{scannerMessage ?? "Hunting all Volatility and Jump pairs for the best observed Over 3 signal…"}</small>}
         </div>
         <div className={`edge-ref-feature ${bestPairAnalyzer ? "active" : ""}`}>
-          <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Best Pair Analyzer</span><EdgeToggle checked={bestPairAnalyzer} onChange={onBestPairAnalyzerChange} disabled={running} label="Best Pair Analyzer" /></div>
+          <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Best Pair Analyzer</span><EdgeToggle checked={bestPairAnalyzer} onChange={onBestPairAnalyzerChange} disabled={false} label="Best Pair Analyzer" /></div>
           {bestPairAnalyzer && <small className="edge-ref-feature-status">{scannerMessage ?? "Hunting all Volatility and Jump pairs for the best observed Over or Under digit…"}</small>}
         </div>
       </div>
@@ -312,8 +355,6 @@ export default function EdgeReferencePanel({
         {presetOpen && <div className="edge-ref-preset-menu">{presets.map((item) => <button type="button" className={`edge-ref-preset-option ${item.tone}`} key={item.value} onClick={() => applyPreset(item.value)}><strong>{item.name} <small>{item.risk}</small></strong><span>{item.detail}</span>{item.note && <em>{item.note}</em>}</button>)}</div>}
         <p>Each preset is re-sized to your balance when applied. It sets the stake, ladder and stops — not the odds of a trade.</p>
       </section>
-
-      <section className="edge-ref-card edge-ref-repeat"><div><b>Auto-Repeat 10-Min Sessions</b><p>Stops at profit target, waits for next 10-min mark, then restarts</p></div><EdgeToggle checked={autoRepeat} onChange={setAutoRepeat} disabled={running} label="Auto-Repeat 10-Min Sessions" /></section>
 
       <section className={`edge-ref-card edge-ref-outcome ${outcomeSynced ? "active" : ""}`}>
         <div className="edge-ref-advanced-head"><div><span className="edge-ref-field-label">Expected outcome</span><h2>Balance target</h2></div><span className={`edge-ref-sync-badge ${outcomeSynced ? "synced" : ""}`}>{outcomeSynced ? "SYNCED" : "NOT SYNCED"}</span></div>

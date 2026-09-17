@@ -79,7 +79,6 @@
 .edge-ref-live,
 .edge-ref-feature,
 .edge-ref-market-row,
-.edge-ref-repeat,
 .edge-ref-history-heading { display: flex; align-items: center; }
 .edge-ref-heading { justify-content: space-between; gap: 12px; }
 .edge-ref-title { gap: 8px; min-width: 0; }
@@ -266,10 +265,6 @@
 .edge-ref-preset-option.pink strong { color: #ef9fb3; }
 .edge-ref-preset-option.purple { background: rgba(62, 52, 96, .26); }
 .edge-ref-preset-option.purple strong { color: #c2b1ff; }
-
-.edge-ref-repeat { justify-content: space-between; gap: 14px; min-height: 67px; padding: 16px; }
-.edge-ref-repeat b { font-size: 12px; }
-.edge-ref-repeat p { margin: 4px 0 0; color: #9da7b3; font-size: 9px; }
 
 .edge-ref-outcome { padding: 16px; }
 .edge-ref-outcome.active { border-color: rgba(45, 224, 198, .6); }

@@ -1829,6 +1829,9 @@ export default function XTraderPage() {
           analysis={analysis}
           lastDigit={lastDigit}
           quote={status.data?.last_tick?.quote}
+          payoutPercent={status.data?.last_proposal && status.data.last_proposal.ask_price > 0
+            ? (status.data.last_proposal.payout / status.data.last_proposal.ask_price) * 100
+            : null}
           nextStake={nextStake}
           sessionPnl={sessionPnl}
           sessionTrades={sessionTrades}
