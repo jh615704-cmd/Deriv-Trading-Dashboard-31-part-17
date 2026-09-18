@@ -5,8 +5,8 @@ import {
   findSessionByToken,
   featureList,
   hashSecret,
+  isPrimaryAdminKeyHash,
   parseAccessCookie,
-  PRIMARY_ADMIN_KEY_HASH,
 } from "../lib/access-keys";
 
 export const requireAccess: RequestHandler = async (req, res, next) => {
@@ -73,7 +73,7 @@ export const requireAnyAccessFeature = (...allowedFeatures: string[]): RequestHa
 };
 
 export const requireAccessAdmin: RequestHandler = (req, res, next) => {
-  if (res.locals.accessKey?.keyHash === PRIMARY_ADMIN_KEY_HASH) {
+  if (res.locals.accessKey?.keyHash && isPrimaryAdminKeyHash(res.locals.accessKey.keyHash)) {
     next();
     return;
   }

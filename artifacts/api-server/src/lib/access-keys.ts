@@ -4,7 +4,7 @@ import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 
 export const ACCESS_COOKIE_NAME = "jdy_access";
 // This is a SHA-256 fingerprint, never the raw administrator credential.
-export const PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
+const LEGACY_PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
 export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
 export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned" | "deleted";
@@ -13,6 +13,20 @@ export const PRESENCE_STALE_MS = 90_000;
 
 export function hashSecret(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function configuredDashboardApiKey() {
+  const value = process.env.DASHBOARD_API_KEY?.trim();
+  return value || null;
+}
+
+export function primaryAdminKeyHash() {
+  const configuredKey = configuredDashboardApiKey();
+  return configuredKey ? hashSecret(configuredKey) : LEGACY_PRIMARY_ADMIN_KEY_HASH;
+}
+
+export function isPrimaryAdminKeyHash(value: string) {
+  return value === primaryAdminKeyHash();
 }
 
 function accessKeyEncryptionKey() {
@@ -34,6 +48,64 @@ export function decryptAccessKey(value: string) {
   const decipher = createDecipheriv("aes-256-gcm", accessKeyEncryptionKey(), Buffer.from(iv, "base64url"));
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
+}
+
+/**
+ * Makes the Replit secret the single designated administrator access key.
+ * The raw value is only used to create the encrypted recovery copy and is
+ * never returned by this function or written to logs.
+ */
+export async function syncConfiguredPrimaryAdminKey() {
+  const configuredKey = configuredDashboardApiKey();
+  if (!configuredKey) return;
+
+  const configuredHash = hashSecret(configuredKey);
+  const [configuredRow] = await db.select().from(accessKeysTable)
+    .where(eq(accessKeysTable.keyHash, configuredHash))
+    .limit(1);
+  if (configuredRow) {
+    if (configuredRow.status !== "active" || configuredRow.kind !== "admin" || configuredRow.maxDevices !== 0) {
+      await db.update(accessKeysTable).set({
+        kind: "admin",
+        status: "active",
+        maxDevices: 0,
+        features: [...ACCESS_FEATURES],
+        updatedAt: new Date(),
+      }).where(eq(accessKeysTable.id, configuredRow.id));
+    }
+    return;
+  }
+
+  const [legacyRow] = await db.select().from(accessKeysTable)
+    .where(eq(accessKeysTable.keyHash, LEGACY_PRIMARY_ADMIN_KEY_HASH))
+    .limit(1);
+  if (legacyRow) {
+    await db.update(accessKeysTable).set({
+      keyHash: configuredHash,
+      encryptedKey: encryptAccessKey(configuredKey),
+      keyPrefix: configuredKey.slice(0, 17),
+      kind: "admin",
+      status: "active",
+      maxDevices: 0,
+      features: [...ACCESS_FEATURES],
+      updatedAt: new Date(),
+    }).where(eq(accessKeysTable.id, legacyRow.id));
+    await db.update(accessKeySessionsTable)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(accessKeySessionsTable.accessKeyId, legacyRow.id), isNull(accessKeySessionsTable.revokedAt)));
+    return;
+  }
+
+  await db.insert(accessKeysTable).values({
+    keyHash: configuredHash,
+    encryptedKey: encryptAccessKey(configuredKey),
+    keyPrefix: configuredKey.slice(0, 17),
+    label: "Primary administrator",
+    kind: "admin",
+    status: "active",
+    maxDevices: 0,
+    features: [...ACCESS_FEATURES],
+  });
 }
 
 export function generateAccessKey(kind: "admin" | "user") {

@@ -655,7 +655,7 @@ export default function XTraderPage() {
       await connectionMutation.mutateAsync();
       await queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
       await queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
-      setConnectionMessage({ kind: "info", text: "Deriv connected. Your PAT is encrypted and saved." });
+      setConnectionMessage({ kind: "info", text: "Deriv connected. Your credential remains protected on the server." });
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
     }
@@ -1747,7 +1747,7 @@ export default function XTraderPage() {
           </form>
         ) : (
           <div className="xt-connected-row">
-            <span><i />Token encrypted and saved for this browser</span>
+           <span><i />Deriv credential connected securely</span>
             <button onClick={() => void disconnect()} disabled={deleteTokenMutation.isPending}>Disconnect</button>
           </div>
         )}

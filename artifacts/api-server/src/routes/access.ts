@@ -24,10 +24,11 @@ import {
   generateSessionToken,
   hashSecret,
   isOnline,
+  isPrimaryAdminKeyHash,
   offlineSeconds,
   onlineDeviceCount,
   parseAccessCookie,
-  PRIMARY_ADMIN_KEY_HASH,
+  syncConfiguredPrimaryAdminKey,
 } from "../lib/access-keys";
 import { requireAccess, requireAccessAdmin } from "../middlewares/requireAccess";
 
@@ -62,7 +63,7 @@ function sessionResponse(session: {
     key_prefix: session.keyPrefix,
     label: session.label,
     kind: session.kind,
-    is_admin: session.keyHash === PRIMARY_ADMIN_KEY_HASH,
+    is_admin: isPrimaryAdminKeyHash(session.keyHash),
     status: session.status,
     max_devices: session.maxDevices,
     features: featureList(session.features, session.kind),
@@ -78,6 +79,7 @@ router.post("/access/login", async (req, res): Promise<void> => {
     return;
   }
 
+  await syncConfiguredPrimaryAdminKey();
   const [key] = await db.select().from(accessKeysTable)
     .where(eq(accessKeysTable.keyHash, hashSecret(parsed.data.access_key.trim())))
     .limit(1);
@@ -184,11 +186,11 @@ router.get("/access/keys", async (_req, res): Promise<void> => {
     ]);
     return {
       key_id: key.id,
-      access_key: readableAccessKey(key.encryptedKey),
+      access_key: isPrimaryAdminKeyHash(key.keyHash) ? null : readableAccessKey(key.encryptedKey),
       key_prefix: key.keyPrefix,
       label: key.label,
       kind: key.kind,
-      is_admin: key.keyHash === PRIMARY_ADMIN_KEY_HASH,
+      is_admin: isPrimaryAdminKeyHash(key.keyHash),
       status: key.status,
       max_devices: key.maxDevices,
       device_count: deviceCount,
@@ -240,7 +242,7 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     key_prefix: created.keyPrefix,
     label: created.label,
     kind: created.kind,
-    is_admin: created.keyHash === PRIMARY_ADMIN_KEY_HASH,
+    is_admin: isPrimaryAdminKeyHash(created.keyHash),
     status: created.status,
     max_devices: created.maxDevices,
     features: featureList(created.features, created.kind),
@@ -257,7 +259,7 @@ router.delete("/access/keys/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Access key not found" });
     return;
   }
-  if (current.keyHash === PRIMARY_ADMIN_KEY_HASH) {
+  if (isPrimaryAdminKeyHash(current.keyHash)) {
     res.status(400).json({ error: "The primary administrator key cannot be deleted" });
     return;
   }
@@ -284,7 +286,7 @@ router.post("/access/keys/:id/reset", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Access key not found" });
     return;
   }
-  if (current.keyHash === PRIMARY_ADMIN_KEY_HASH) {
+  if (isPrimaryAdminKeyHash(current.keyHash)) {
     res.status(400).json({ error: "The primary administrator key cannot be replaced" });
     return;
   }
@@ -306,7 +308,7 @@ router.post("/access/keys/:id/reset", async (req, res): Promise<void> => {
     key_prefix: updated.keyPrefix,
     label: updated.label,
     kind: updated.kind,
-    is_admin: updated.keyHash === PRIMARY_ADMIN_KEY_HASH,
+    is_admin: isPrimaryAdminKeyHash(updated.keyHash),
     status: updated.status,
     max_devices: updated.maxDevices,
     features: featureList(updated.features, updated.kind),
@@ -355,11 +357,11 @@ router.patch("/access/keys/:id", async (req, res): Promise<void> => {
   const onlineDevices = await onlineDeviceCount(updated.id);
   res.json(ListAccessKeysResponseItem.parse({
     key_id: updated.id,
-    access_key: readableAccessKey(updated.encryptedKey),
+    access_key: isPrimaryAdminKeyHash(updated.keyHash) ? null : readableAccessKey(updated.encryptedKey),
     key_prefix: updated.keyPrefix,
     label: updated.label,
     kind: updated.kind,
-     is_admin: updated.keyHash === PRIMARY_ADMIN_KEY_HASH,
+     is_admin: isPrimaryAdminKeyHash(updated.keyHash),
     status: updated.status,
     max_devices: updated.maxDevices,
     device_count: await activeDeviceCount(updated.id),
