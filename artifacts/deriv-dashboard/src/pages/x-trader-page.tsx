@@ -113,6 +113,7 @@ const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 const DIGIT_FLIP_SIGNAL_FLOOR = 80;
 const DIGIT_FLIP_MARKET_SCAN_INTERVAL_MS = 10_000;
 const EDGE_PERCENTAGE_SCAN_FLOOR = 90;
+const EDGE_MIN_MARKET_SAMPLE = 20;
 // The trading calendar is deliberately internal. "all-days" keeps the
 // strategy available on both weekdays and weekends without adding another
 // user-facing switch that could be mistaken for a market prediction.
@@ -130,7 +131,7 @@ const errorMessage = (error: unknown) => {
 
 function chooseBestOverThreeSignal(signals: MarketSignal[], excludeSymbol?: string): BestEdgeSignal | null {
   const candidates = signals
-    .filter((signal) => signal.sample_count >= 5 && signal.quote != null && signal.symbol !== excludeSymbol)
+    .filter((signal) => signal.sample_count >= EDGE_MIN_MARKET_SAMPLE && signal.quote != null && signal.symbol !== excludeSymbol)
     .map((signal) => {
       const outcome = signal.digit_outcomes?.find((item) => item.digit === 3);
       return outcome ? { signal, score: Number(outcome.over_percentage) } : null;
@@ -142,8 +143,15 @@ function chooseBestOverThreeSignal(signals: MarketSignal[], excludeSymbol?: stri
 }
 
 function chooseBestAnalyzerSignal(signals: MarketSignal[], excludeSymbol?: string): BestEdgeSignal | null {
-  const available = signals.filter((signal) => signal.symbol !== excludeSymbol);
+  const available = signals.filter((signal) =>
+    signal.sample_count >= EDGE_MIN_MARKET_SAMPLE
+    && signal.quote != null
+    && signal.symbol !== excludeSymbol,
+  );
   const candidates = available.flatMap((signal) => (signal.digit_outcomes ?? []).flatMap((outcome) => {
+    // Barriers 0 and 9 make one side tautological, so they are not useful
+    // scanner candidates even when a short sample makes them look perfect.
+    if (outcome.digit <= 0 || outcome.digit >= 9) return [];
     const over = Number(outcome.over_percentage);
     const under = Number(outcome.under_percentage);
     if (!Number.isFinite(over) || !Number.isFinite(under)) return [];
@@ -206,6 +214,7 @@ export default function XTraderPage() {
   const [edgeRecommendation, setEdgeRecommendation] = useState<BestEdgeSignal | null>(null);
   const [edgeOverThreeSniper, setEdgeOverThreeSniper] = useState(false);
   const [edgeBestPairAnalyzer, setEdgeBestPairAnalyzer] = useState(false);
+  const [edgeAutoSelectBest, setEdgeAutoSelectBest] = useState(false);
   const [edgeScannerMessage, setEdgeScannerMessage] = useState<string | null>(null);
   const [edgeRiskBalance, setEdgeRiskBalance] = useState("");
   const [edgeAccountBalance, setEdgeAccountBalance] = useState("");
@@ -271,6 +280,8 @@ export default function XTraderPage() {
   const edgePercentageModeRef = useRef(edgePercentageMode);
   const edgeOverThreeSniperRef = useRef(edgeOverThreeSniper);
   const edgeBestPairAnalyzerRef = useRef(edgeBestPairAnalyzer);
+  const edgeAutoSelectBestRef = useRef(edgeAutoSelectBest);
+  const edgeAutoSelectionKeyRef = useRef("");
   const edgeLossStreakRef = useRef(0);
   const edgeProcessedSettlementIdsRef = useRef(new Set<string>());
   const nextStakeRef = useRef(stake);
@@ -532,7 +543,8 @@ export default function XTraderPage() {
   useEffect(() => {
     edgeOverThreeSniperRef.current = edgeOverThreeSniper;
     edgeBestPairAnalyzerRef.current = edgeBestPairAnalyzer;
-  }, [edgeBestPairAnalyzer, edgeOverThreeSniper]);
+    edgeAutoSelectBestRef.current = edgeAutoSelectBest;
+  }, [edgeAutoSelectBest, edgeBestPairAnalyzer, edgeOverThreeSniper]);
 
   useEffect(() => {
     nextStakeRef.current = stake;
@@ -702,7 +714,9 @@ export default function XTraderPage() {
     const signals = (status.data?.market_signals ?? []) as MarketSignal[];
     const recommendation = edgeOverThreeSniperRef.current
       ? chooseBestOverThreeSignal(signals, excludeSymbol)
-      : chooseBestAnalyzerSignal(signals, excludeSymbol);
+      : (edgeBestPairAnalyzerRef.current || edgeAutoSelectBestRef.current)
+        ? chooseBestAnalyzerSignal(signals, excludeSymbol)
+        : null;
     if (!recommendation) {
       setEdgeScannerMessage("Hunting all Volatility and Jump pairs for enough observed ticks…");
       return null;
@@ -725,6 +739,25 @@ export default function XTraderPage() {
     );
     return recommendation;
   };
+
+  useEffect(() => {
+    if (!isConnected || (!edgeOverThreeSniper && !edgeBestPairAnalyzer && !edgeAutoSelectBest)) return;
+    const signals = (status.data?.market_signals ?? []) as MarketSignal[];
+    const recommendation = edgeOverThreeSniper
+      ? chooseBestOverThreeSignal(signals)
+      : chooseBestAnalyzerSignal(signals);
+    if (!recommendation) return;
+    const key = `${recommendation.symbol}:${recommendation.direction}:${recommendation.digit}:${recommendation.score.toFixed(1)}:${recommendation.sampleCount}`;
+    if (edgeAutoSelectionKeyRef.current === key) return;
+    edgeAutoSelectionKeyRef.current = key;
+    void selectEdgeAutomation();
+  }, [
+    edgeAutoSelectBest,
+    edgeBestPairAnalyzer,
+    edgeOverThreeSniper,
+    isConnected,
+    status.data?.market_signals,
+  ]);
 
   const armMartingaleWatch = (latestRows: typeof rows, amount: number, expectedSettlements: number) => {
     if (configRef.current.strategy !== "martingale") {
@@ -844,12 +877,13 @@ export default function XTraderPage() {
           await sleep(1500);
           continue;
         }
-        if (edgeOverThreeSniperRef.current || edgeBestPairAnalyzerRef.current) {
+        if (edgeOverThreeSniperRef.current || edgeBestPairAnalyzerRef.current || edgeAutoSelectBestRef.current) {
           const recommendation = await selectEdgeAutomation();
           if (!recommendation) {
             await sleep(1500);
             continue;
           }
+          await executeBatch();
         } else if (edgePercentageModeRef.current) {
           const recommendation = await applyPercentageRecommendation();
           if (!recommendation) {
@@ -1850,11 +1884,15 @@ export default function XTraderPage() {
             setEdgeOverThreeSniper(enabled);
             edgeOverThreeSniperRef.current = enabled;
             if (enabled) {
+              setEdgeAutoSelectBest(true);
+              edgeAutoSelectBestRef.current = true;
               setEdgeBestPairAnalyzer(false);
               edgeBestPairAnalyzerRef.current = false;
               setEdgeScannerMessage("Hunting all Volatility and Jump pairs for the best observed Over 3 signal…");
               void selectEdgeAutomation();
             } else if (!edgeBestPairAnalyzerRef.current) {
+              setEdgeAutoSelectBest(false);
+              edgeAutoSelectBestRef.current = false;
               setEdgeScannerMessage(null);
             }
           }}
@@ -1862,11 +1900,15 @@ export default function XTraderPage() {
             setEdgeBestPairAnalyzer(enabled);
             edgeBestPairAnalyzerRef.current = enabled;
             if (enabled) {
+              setEdgeAutoSelectBest(true);
+              edgeAutoSelectBestRef.current = true;
               setEdgeOverThreeSniper(false);
               edgeOverThreeSniperRef.current = false;
               setEdgeScannerMessage("Hunting all Volatility and Jump pairs for the best observed Over or Under digit…");
               void selectEdgeAutomation();
             } else if (!edgeOverThreeSniperRef.current) {
+              setEdgeAutoSelectBest(false);
+              edgeAutoSelectBestRef.current = false;
               setEdgeScannerMessage(null);
             }
           }}
