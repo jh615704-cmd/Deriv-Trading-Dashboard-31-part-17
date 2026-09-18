@@ -7,4 +7,4 @@ Only the designated administrator access-key fingerprint may open or mutate the 
 
 **Why:** The owner explicitly chose to keep the Deriv PAT separate from application administration and requires one known EDGE key to control all admin operations.
 
-**How to apply:** Keep the primary-key fingerprint as a one-way hash, expose an explicit `is_admin` session flag, and use a session cookie with no Max-Age. Do not revoke the access session on page exit or backgrounding; users can explicitly lock EDGE from the user menu.
+**How to apply:** Keep the primary-key fingerprint as a one-way hash, expose an explicit `is_admin` session flag, and use a session cookie with no Max-Age. Do not revoke the access session on page exit or backgrounding; users can explicitly lock EDGE from the user menu. The designated key has unlimited use but is capped at 10 simultaneous devices.
