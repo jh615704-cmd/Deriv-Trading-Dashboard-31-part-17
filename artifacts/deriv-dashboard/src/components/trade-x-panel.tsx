@@ -405,7 +405,7 @@ export default function TradeXPanel({
               <span className="tx-index">04</span>
               <div>
                 <h3>Execution rail</h3>
-                <p>Choose a duration, then send one deliberate action.</p>
+                <p>Deriv settles this contract on the next selected number of live market ticks.</p>
               </div>
             </div>
             <TimerReset size={18} />
@@ -498,7 +498,7 @@ export default function TradeXPanel({
               </select>
             </label>
             <label className="tx-smart-control">
-              <span className="tx-field-label">AI TICKS</span>
+              <span className="tx-field-label">LIVE TICKS TO OBSERVE</span>
               <select value={smartAiTicks} onChange={(event) => onSmartAiTicksChange(Number(event.target.value))} disabled={disabled} data-testid="select-smart-ai-ticks">
                 <option value={1}>1 tick</option>
                 <option value={2}>2 ticks</option>

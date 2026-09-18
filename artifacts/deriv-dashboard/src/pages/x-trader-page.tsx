@@ -16,6 +16,7 @@ import {
   useSelectDerivSymbol,
   useTestDerivConnection,
   useTestDerivToken,
+  useRequestDerivProposal,
   getGetDerivTokenStatusQueryKey,
   getGetDerivAccountsQueryKey,
   getGetDerivStatusQueryKey,
@@ -282,6 +283,8 @@ export default function XTraderPage() {
   const edgeBestPairAnalyzerRef = useRef(edgeBestPairAnalyzer);
   const edgeAutoSelectBestRef = useRef(edgeAutoSelectBest);
   const edgeAutoSelectionKeyRef = useRef("");
+  const edgeProposalRequestKeyRef = useRef("");
+  const edgeProposalMutation = useRequestDerivProposal();
   const edgeLossStreakRef = useRef(0);
   const edgeProcessedSettlementIdsRef = useRef(new Set<string>());
   const nextStakeRef = useRef(stake);
@@ -298,6 +301,7 @@ export default function XTraderPage() {
   const digitFlipMarketSignalsRef = useRef<DigitFlipMarketSignal[]>([]);
   const digitFlipRatesRef = useRef({ even: 50, odd: 50 });
   const tradeXLastDigitRef = useRef<number | null>(null);
+  const tradeXObservedTickWindowRef = useRef<number[]>([]);
   const tradeXAnalysisDigitsRef = useRef<number[]>([]);
   const digitFlipConfigRef = useRef({
     marketType: digitFlipMarketType,
@@ -581,11 +585,14 @@ export default function XTraderPage() {
     liveTickSequenceRef.current += 1;
     setAnalysisDigits((current) => [...current, digit].slice(-100));
     setAnalysisTickCount((current) => current + 1);
+    if (tradeXEnabled && status.data?.last_tick?.symbol === tradeXSymbol) {
+      tradeXObservedTickWindowRef.current = [...tradeXObservedTickWindowRef.current, digit].slice(-5);
+    }
     if (digitFlipEnabled) {
       setDigitFlipSampleCount((current) => current + 1);
       if (digit % 2 === 0) setDigitFlipEvenCount((current) => current + 1);
     }
-  }, [digitFlipEnabled, status.data?.last_tick?.epoch, status.data?.last_digit]);
+  }, [digitFlipEnabled, status.data?.last_tick?.epoch, status.data?.last_digit, status.data?.last_tick?.symbol, tradeXEnabled, tradeXSymbol]);
 
   useEffect(() => {
     digitFlipAssaultRef.current = digitFlipAssault;
@@ -710,6 +717,32 @@ export default function XTraderPage() {
     return recommendation;
   };
 
+  const requestEdgeQuote = async (quote: {
+    symbol: string;
+    direction: "DIGITOVER" | "DIGITUNDER";
+    barrier: number;
+  }) => {
+    const key = `${quote.symbol}:${quote.direction}:${quote.barrier}:${stake}:${duration}`;
+    if (edgeProposalRequestKeyRef.current === key) return;
+    edgeProposalRequestKeyRef.current = key;
+    try {
+      await edgeProposalMutation.mutateAsync({
+        data: {
+          amount: stake,
+          duration,
+          duration_unit: "t",
+          contract_type: quote.direction,
+          barrier: quote.barrier,
+          symbol: quote.symbol,
+        },
+      });
+      await sleep(150);
+      await queryClient.refetchQueries({ queryKey: getGetDerivStatusQueryKey(), type: "active" });
+    } catch {
+      edgeProposalRequestKeyRef.current = "";
+    }
+  };
+
   const selectEdgeAutomation = async (excludeSymbol?: string) => {
     const signals = (status.data?.market_signals ?? []) as MarketSignal[];
     const recommendation = edgeOverThreeSniperRef.current
@@ -732,6 +765,11 @@ export default function XTraderPage() {
       symbol: recommendation.symbol,
     };
     setEdgeRecommendation(recommendation);
+    void requestEdgeQuote({
+      symbol: recommendation.symbol,
+      direction: nextDirection,
+      barrier: recommendation.digit,
+    });
     setEdgeScannerMessage(
       edgeOverThreeSniperRef.current
         ? `Hunting all Volatility and Jump pairs for the best observed Over 3 · ${recommendation.symbol}`
@@ -739,6 +777,11 @@ export default function XTraderPage() {
     );
     return recommendation;
   };
+
+  useEffect(() => {
+    if (!isConnected || !xTraderEnabled) return;
+    void requestEdgeQuote({ symbol, direction, barrier });
+  }, [barrier, direction, duration, isConnected, stake, symbol, xTraderEnabled]);
 
   useEffect(() => {
     if (!isConnected || (!edgeOverThreeSniper && !edgeBestPairAnalyzer && !edgeAutoSelectBest)) return;
@@ -1048,6 +1091,7 @@ export default function XTraderPage() {
   const selectMarket = async (next: string) => {
     setSymbol(next);
     analysisEpochRef.current = null;
+    tradeXObservedTickWindowRef.current = [];
     setAnalysisDigits([]);
     setAnalysisTickCount(0);
     if (digitFlipEnabled) resetDigitFlipScanner();
@@ -1467,12 +1511,23 @@ export default function XTraderPage() {
   const runTradeXSmartLoop = async () => {
     while (tradeXSmartRef.current) {
       const config = tradeXConfigRef.current;
-      const rankedDigit = digitForTick(config.smartAiTicks, config.rankedDigits, config.selectedDigit);
+      await waitForMarketTicks(config.smartAiTicks, () => tradeXSmartRef.current);
+      if (!tradeXSmartRef.current) break;
+      const observedTicks = tradeXObservedTickWindowRef.current.slice(-config.smartAiTicks);
+      if (observedTicks.length < config.smartAiTicks) {
+        setTradeXMessage(`Trade X is collecting the next ${config.smartAiTicks} live tick${config.smartAiTicks === 1 ? "" : "s"} before evaluating the entry.`);
+        continue;
+      }
+      const observedCounts = Array.from({ length: 10 }, (_, digit) => observedTicks.filter((value) => value === digit).length);
+      const observedRankedDigits = rankDigitsForDiffers(observedCounts);
+      const rankedDigit = config.manualSelect
+        ? config.selectedDigit
+        : observedRankedDigits[0] ?? digitForTick(config.smartAiTicks, config.rankedDigits, config.selectedDigit);
       const confidence = tradeXDistributionRef.current.length
         ? Math.min(99, Math.max(50, Math.round(100 - (tradeXDistributionRef.current[rankedDigit]?.percentage ?? 0))))
         : tradeXAnalysisRef.current.confidence;
       if (confidence < config.smartConfidence) {
-        setTradeXMessage(`Smart Auto Trade is waiting for a ${config.smartConfidence}% signal; current sample is ${confidence}%.`);
+        setTradeXMessage(`Smart Auto Trade observed the next ${config.smartAiTicks} live tick${config.smartAiTicks === 1 ? "" : "s"}; current signal is ${confidence}% against the ${config.smartConfidence}% floor.`);
         await waitForMarketTicks(1, () => tradeXSmartRef.current);
         continue;
       }
@@ -1871,6 +1926,7 @@ export default function XTraderPage() {
           sessionTrades={sessionTrades}
           overThreeSniper={edgeOverThreeSniper}
           bestPairAnalyzer={edgeBestPairAnalyzer}
+          autoSelectBest={edgeAutoSelectBest}
           scannerMessage={edgeScannerMessage}
           riskBalance={edgeRiskBalance}
           accountBalance={edgeAccountBalance}
@@ -1909,6 +1965,17 @@ export default function XTraderPage() {
             } else if (!edgeOverThreeSniperRef.current) {
               setEdgeAutoSelectBest(false);
               edgeAutoSelectBestRef.current = false;
+              setEdgeScannerMessage(null);
+            }
+          }}
+          onAutoSelectBestChange={(enabled) => {
+            edgeAutoSelectBestRef.current = enabled;
+            setEdgeAutoSelectBest(enabled);
+            if (enabled) {
+              setEdgeScannerMessage("Following the live best observed market and barrier…");
+              void selectEdgeAutomation();
+            } else if (!edgeOverThreeSniperRef.current && !edgeBestPairAnalyzerRef.current) {
+              setEdgeRecommendation(null);
               setEdgeScannerMessage(null);
             }
           }}

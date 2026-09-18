@@ -140,8 +140,11 @@ export function chooseBestEdgeSignal(
   minimumScore: number,
 ): BestEdgeSignal | null {
   const candidates = signals.flatMap((signal) => {
-    if (signal.sample_count < 5 || signal.quote == null || !signal.digit_outcomes?.length) return [];
+    if (signal.sample_count < 20 || signal.quote == null || !signal.digit_outcomes?.length) return [];
     return signal.digit_outcomes.flatMap((outcome) => {
+      // Barrier 0 for Over and barrier 9 for Under are tautological
+      // candidates, not useful evidence for a live scanner.
+      if (outcome.digit <= 0 || outcome.digit >= 9) return [];
       const over = Number(outcome.over_percentage);
       const under = Number(outcome.under_percentage);
       if (!Number.isFinite(over) || !Number.isFinite(under)) return [];
@@ -158,7 +161,10 @@ export function chooseBestEdgeSignal(
     });
   });
   return candidates.sort(
-    (left, right) => right.score - left.score || right.sampleCount - left.sampleCount || left.digit - right.digit,
+    (left, right) => right.score - left.score
+      || right.sampleCount - left.sampleCount
+      || Number(right.direction === "DUAL") - Number(left.direction === "DUAL")
+      || left.digit - right.digit,
   )[0] ?? null;
 }
 
