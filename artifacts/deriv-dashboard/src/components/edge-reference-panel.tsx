@@ -332,7 +332,7 @@ export default function EdgeReferencePanel({
 
       <div className="edge-ref-feature-list">
           <div className={`edge-ref-feature ${overThreeSniper ? "active" : ""}`}>
-          <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Over 3 Sniper</span><EdgeToggle checked={overThreeSniper} onChange={onOverThreeSniperChange} disabled={false} label="Over 3 Sniper" /></div>
+          <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Over 3 Best Pair</span><EdgeToggle checked={overThreeSniper} onChange={onOverThreeSniperChange} disabled={false} label="Over 3 Best Pair" /></div>
           {overThreeSniper && <small className="edge-ref-feature-status">{scannerMessage ?? "Hunting all Volatility and Jump pairs for the best observed Over 3 signal…"}</small>}
         </div>
         <div className={`edge-ref-feature ${bestPairAnalyzer ? "active" : ""}`}>

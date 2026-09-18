@@ -5,6 +5,8 @@ import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
 export const ACCESS_COOKIE_NAME = "jdy_access";
 // This is a SHA-256 fingerprint, never the raw administrator credential.
 const LEGACY_PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
+export const PRIMARY_ADMIN_MAX_DEVICES = 10;
+const PRIMARY_ADMIN_LABEL = "Primary administrator";
 export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
 export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned" | "deleted";
@@ -64,11 +66,12 @@ export async function syncConfiguredPrimaryAdminKey() {
     .where(eq(accessKeysTable.keyHash, configuredHash))
     .limit(1);
   if (configuredRow) {
-    if (configuredRow.status !== "active" || configuredRow.kind !== "admin" || configuredRow.maxDevices !== 0) {
+    if (configuredRow.status !== "active" || configuredRow.kind !== "admin" || configuredRow.maxDevices !== PRIMARY_ADMIN_MAX_DEVICES || configuredRow.label !== PRIMARY_ADMIN_LABEL) {
       await db.update(accessKeysTable).set({
+        label: PRIMARY_ADMIN_LABEL,
         kind: "admin",
         status: "active",
-        maxDevices: 0,
+        maxDevices: PRIMARY_ADMIN_MAX_DEVICES,
         features: [...ACCESS_FEATURES],
         updatedAt: new Date(),
       }).where(eq(accessKeysTable.id, configuredRow.id));
@@ -76,23 +79,24 @@ export async function syncConfiguredPrimaryAdminKey() {
     return;
   }
 
-  const [legacyRow] = await db.select().from(accessKeysTable)
-    .where(eq(accessKeysTable.keyHash, LEGACY_PRIMARY_ADMIN_KEY_HASH))
+  const [previousPrimaryRow] = await db.select().from(accessKeysTable)
+    .where(eq(accessKeysTable.label, PRIMARY_ADMIN_LABEL))
     .limit(1);
-  if (legacyRow) {
+  if (previousPrimaryRow) {
     await db.update(accessKeysTable).set({
       keyHash: configuredHash,
       encryptedKey: encryptAccessKey(configuredKey),
       keyPrefix: configuredKey.slice(0, 17),
+      label: PRIMARY_ADMIN_LABEL,
       kind: "admin",
       status: "active",
-      maxDevices: 0,
+      maxDevices: PRIMARY_ADMIN_MAX_DEVICES,
       features: [...ACCESS_FEATURES],
       updatedAt: new Date(),
-    }).where(eq(accessKeysTable.id, legacyRow.id));
+    }).where(eq(accessKeysTable.id, previousPrimaryRow.id));
     await db.update(accessKeySessionsTable)
       .set({ revokedAt: new Date() })
-      .where(and(eq(accessKeySessionsTable.accessKeyId, legacyRow.id), isNull(accessKeySessionsTable.revokedAt)));
+      .where(and(eq(accessKeySessionsTable.accessKeyId, previousPrimaryRow.id), isNull(accessKeySessionsTable.revokedAt)));
     return;
   }
 
@@ -100,10 +104,10 @@ export async function syncConfiguredPrimaryAdminKey() {
     keyHash: configuredHash,
     encryptedKey: encryptAccessKey(configuredKey),
     keyPrefix: configuredKey.slice(0, 17),
-    label: "Primary administrator",
+    label: PRIMARY_ADMIN_LABEL,
     kind: "admin",
     status: "active",
-    maxDevices: 0,
+    maxDevices: PRIMARY_ADMIN_MAX_DEVICES,
     features: [...ACCESS_FEATURES],
   });
 }

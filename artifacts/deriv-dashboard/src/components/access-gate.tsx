@@ -184,8 +184,8 @@ export function AccessGate({ children }: { children: ReactNode }) {
           </button>
         </form>
         <div className="access-gate-footer">
-          <span>One device per key by default</span>
-          <span>Administrator keys unlock the control panel</span>
+          <span>User keys use their assigned device limit</span>
+          <span>Admin key: up to 10 devices</span>
         </div>
       </div>
     </div>

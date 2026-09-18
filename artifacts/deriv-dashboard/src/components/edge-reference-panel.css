@@ -219,12 +219,12 @@
   box-shadow: 0 0 0 3px rgba(66, 226, 201, .13);
   content: "";
 }
-.edge-toggle { position: relative; display: inline-flex; flex: 0 0 auto; width: 42px; height: 23px; }
+.edge-toggle { position: relative; display: inline-flex; flex: 0 0 auto; width: 34px; height: 20px; }
 .edge-toggle input { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; margin: 0; cursor: pointer; opacity: 0; }
-.edge-toggle > i { display: block; width: 100%; height: 100%; border: 1px solid #5d4d27; border-radius: 999px; background: #4b3a20; transition: .2s ease; }
-.edge-toggle > i::after { display: block; width: 17px; height: 17px; margin: 2px; border-radius: 50%; background: #ae8126; content: ""; transition: .2s ease; }
-.edge-toggle input:checked + i { border-color: #1fd2b9; background: #0d9e8d; box-shadow: 0 0 12px rgba(25, 213, 186, .35); }
-.edge-toggle input:checked + i::after { transform: translateX(19px); background: #42efd7; }
+.edge-toggle > i { display: block; width: 100%; height: 100%; border: 1px solid #755d25; border-radius: 999px; background: #644f23; transition: .2s ease; }
+.edge-toggle > i::after { display: block; width: 14px; height: 14px; margin: 2px; border-radius: 50%; background: #aa812b; content: ""; transition: .2s ease; }
+.edge-toggle input:checked + i { border-color: #1fd5b8; background: #08aa91; box-shadow: 0 0 13px rgba(32, 213, 189, .36); }
+.edge-toggle input:checked + i::after { transform: translateX(14px); background: #42f1d4; }
 
 .edge-ref-quote { min-height: 91px; padding: 14px; border-color: rgba(191, 152, 50, .44); background: linear-gradient(135deg, #17243a, #11192a 72%); text-align: center; }
 .edge-ref-quote strong { display: block; color: #f7f8fa; font-size: 32px; line-height: 1.03; letter-spacing: -.04em; }

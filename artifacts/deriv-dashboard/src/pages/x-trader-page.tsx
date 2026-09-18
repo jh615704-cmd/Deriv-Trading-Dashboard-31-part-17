@@ -1737,7 +1737,7 @@ export default function XTraderPage() {
       </header>
 
       <section className="xt-connect-card">
-        <div className="xt-section-title"><Link2 size={17} /><div><b>Deriv API Connection</b><small>Enter a Personal Access Token with trade and read scopes.</small></div></div>
+        <div className="xt-section-title"><Link2 size={17} /><div><b>Connect your Deriv account</b><small>Enter your own Personal Access Token with trade and read scopes. Your access key only opens this workspace.</small></div></div>
          {!canUseDeriv ? (
            <div className="xt-restricted-message"><ShieldAlert size={17} /><span>Restricted — admin access only. This key has not been granted a trading feature.</span></div>
          ) : !connectedToken ? (
