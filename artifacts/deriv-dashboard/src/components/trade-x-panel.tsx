@@ -5,9 +5,9 @@ import {
   Gauge,
   GitCompare,
   Layers3,
+  Medal,
   Play,
   RefreshCw,
-  ShieldCheck,
   Target,
   TimerReset,
 } from "lucide-react";
@@ -283,12 +283,12 @@ export default function TradeXPanel({
               <div>
                 <span className="tx-index">02</span>
                 <div>
-                  <h3>Digit Distribution <span>&amp; Entry Signal</span></h3>
+                   <h3>Digit Distribution <span>&amp; Safe Entry</span></h3>
                   <p>Recent frequency, absence streak, and market-touch confirmation.</p>
                 </div>
               </div>
               <div className="tx-distribution-actions">
-                <span className="tx-header-badge">{currentSymbolLabel}</span>
+                 <span className="tx-header-badge tx-header-badge-symbol">{symbol}</span>
                 <span className="tx-header-badge">{analysisTickCount} ticks</span>
                 {lastDigit != null && <span className="tx-header-badge tx-header-badge-last">Last: {lastDigit}</span>}
                 <button type="button" className="tx-icon-button" onClick={onRefreshAnalysis} disabled={disabled || isRefreshingAnalysis} aria-label="Refresh digit analysis" data-testid="button-refresh-trade-x-analysis">
@@ -318,7 +318,7 @@ export default function TradeXPanel({
                   <button
                     type="button"
                     key={item.digit}
-                     className={`tx-digit ${isSelected ? "tx-digit-selected" : ""} ${isRanked ? "tx-digit-ranked" : ""} ${isMarketDigit ? "tx-digit-market" : ""} ${isSelected && safeEntry ? "tx-digit-safe" : ""}`}
+                     className={`tx-digit ${isSelected ? "tx-digit-selected" : ""} ${isRanked ? "tx-digit-ranked" : ""} ${isMarketDigit ? "tx-digit-market" : ""} ${item.percentage >= 15 ? "tx-digit-high" : ""} ${isSelected && safeEntry ? "tx-digit-safe" : ""}`}
                     onClick={() => onSelectedDigitChange(item.digit)}
                     disabled={disabled}
                     aria-pressed={isSelected}
@@ -326,8 +326,9 @@ export default function TradeXPanel({
                     data-testid={`button-trade-x-digit-${item.digit}`}
                   >
                     <span className={`tx-market-touch ${isMarketDigit ? "is-live" : ""}`}>{isMarketDigit ? `LIVE ${item.digit}` : "\u00a0"}</span>
-                    <span className="tx-digit-number">{item.digit}</span>
-                    <span className="tx-digit-percent">{item.percentage.toFixed(1)}%</span>
+                     <span className="tx-digit-number">{item.digit}</span>
+                     <span className="tx-digit-percent">{item.percentage.toFixed(1)}%</span>
+                     <span className={`tx-digit-meta tx-digit-meta-${item.momentum ?? "flat"}`}><i />{item.streak}x</span>
                   </button>
                 );
               })}
@@ -359,11 +360,11 @@ export default function TradeXPanel({
               <div>
                 <span className="tx-index">03</span>
                 <div>
-                  <h3>Top 3 lowest observed differs digits</h3>
-                  <p>Ranked from the current distribution window.</p>
+                   <h3>Top 3 Safest DIFFERS Digits</h3>
+                   <p>Lowest observed frequency in the current window.</p>
                 </div>
               </div>
-              <ShieldCheck size={18} />
+               <Target size={18} />
             </div>
             <div className="tx-ranking-list">
               {ranking.map((digit, index) => {
@@ -375,12 +376,11 @@ export default function TradeXPanel({
                     aria-label={`Rank ${index + 1}, digit ${digit}`}
                     data-testid={`button-trade-x-ranked-digit-${digit}`}
                   >
-                    <button type="button" className="tx-rank-select" onClick={() => onSelectedDigitChange(digit)} disabled={disabled} aria-label={`Select digit ${digit}`}>
-                      <span className="tx-rank-number">0{index + 1}</span>
-                      <span className="tx-rank-digit">{digit}</span>
-                    </button>
-                    <span className="tx-rank-bar"><i style={{ width: `${clamp(item.percentage * 6.2, 8, 100)}%` }} /></span>
-                    <span className="tx-rank-metrics"><b>{item.percentage.toFixed(1)}%</b><small>{item.streak} tick streak</small></span>
+                     <button type="button" className="tx-rank-select" onClick={() => onSelectedDigitChange(digit)} disabled={disabled} aria-label={`Select digit ${digit}`}>
+                       <span className="tx-rank-medal" aria-hidden="true"><Medal size={18} /></span>
+                       <span className="tx-rank-digit">{digit}</span>
+                     </button>
+                     <span className="tx-rank-metrics"><b>{item.percentage.toFixed(1)}%</b><small>freq · {item.streak}x absent</small></span>
                     <button type="button" className="tx-tap-trade" onClick={() => onTradeSelect(digit)} disabled={disabled || isPlacingTrade || !enabled} data-testid={`button-trade-x-tap-${digit}`}>TAP TO TRADE</button>
                   </div>
                 );
