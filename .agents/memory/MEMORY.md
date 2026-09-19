@@ -12,3 +12,4 @@
 - [DigitFlip scanner isolation](digitflip-scanner-isolation.md) — parity samples and visible history must remain separate from EDGE and Trade X.
 - [Trade X distribution visual language](trade-x-distribution-style.md) — keep the digit distribution dark, textured, crisp, and pill-based with three clear safest-digit cards.
 - [EDGE visual verification](edge-visual-verification.md) — the access gate blocks authenticated cockpit screenshots unless a valid access-key session is available.
+- [API test runtime](api-test-runtime.md) — run API TypeScript tests through the workspace TSX runner because source imports use bundler-style extensionless paths.

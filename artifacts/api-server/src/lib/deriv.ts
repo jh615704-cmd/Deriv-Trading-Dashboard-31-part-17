@@ -756,6 +756,9 @@ async function connectInternal() {
           payout: Number(message.buy?.payout ?? 0),
           start_time: message.buy?.start_time == null ? null : Number(message.buy.start_time),
         };
+        if (getState().lastBuy.contract_id && buyInput) {
+          getState().contractInputs.set(getState().lastBuy.contract_id, buyInput);
+        }
         const historyItem = normalizeHistory({
           contract_id: getState().lastBuy.contract_id,
           buy_price: getState().lastBuy.buy_price,
@@ -767,7 +770,6 @@ async function connectInternal() {
         }, "open");
         if (historyItem) upsertHistory(historyItem);
         if (getState().lastBuy.contract_id) {
-          if (buyInput) getState().contractInputs.set(getState().lastBuy.contract_id, buyInput);
           send({ balance: 1 });
           send({
             proposal_open_contract: 1,
