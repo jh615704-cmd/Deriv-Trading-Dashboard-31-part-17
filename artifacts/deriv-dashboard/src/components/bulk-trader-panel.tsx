@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Activity, Play, RefreshCw, Trash2 } from "lucide-react";
+import { Activity, BarChart3, Play, RefreshCw, Trash2 } from "lucide-react";
 
 export type BulkTraderType = "over-under" | "even-odd" | "rise-fall" | "differs";
 export type BulkTraderPrediction = number | "even" | "odd" | "dual" | "rise" | "fall";
@@ -171,30 +171,35 @@ export default function BulkTraderPanel({
     else onTrade(contractType);
   };
 
+  const predictionTitle = type === "over-under" ? "DIGIT THRESHOLD" : type === "differs" ? "DIGIT TO AVOID" : "SIGNAL DIRECTION";
+
   return (
-    <section className="bulk-trader-panel">
+    <section className="bulk-trader-panel" data-testid="panel-bulk-trader">
       <header className="bulk-trader-head">
-        <div><Activity size={18} /><span><b>Bulk Trader</b><small>1–6 contracts · live observed market signals</small></span></div>
-        <div className="bulk-trader-live"><i />{isConnected ? "LIVE" : "WAITING"}<strong>{quote == null ? "—" : quote.toFixed(3)}</strong></div>
+        <div className="bulk-trader-identity">
+          <span className="bulk-trader-mark"><Activity size={18} /></span>
+          <span><small className="bulk-trader-kicker">LIVE EXECUTION / BULK MODE</small><b>Bulk Trader</b><small>1–6 contracts · observed market signals</small></span>
+        </div>
+        <div className="bulk-trader-live" data-testid="status-bulk-connection"><i />{isConnected ? "LIVE" : "WAITING"}<strong>{quote == null ? "—" : quote.toFixed(3)}</strong></div>
       </header>
 
       <div className="bulk-trader-grid">
         <div className="bulk-trader-main">
           <div className="bulk-trader-market">
-            <div className="bulk-trader-label"><small>MARKET · {marketLabel}</small><b>{currentSignal ? `${currentSignal.sampleCount} observed ticks` : "Waiting for sample"}</b></div>
-            <div className="bulk-trader-filter">
+            <div className="bulk-trader-label"><small>MARKET SCAN · {marketLabel}</small><b>{currentSignal ? `${currentSignal.sampleCount} observed ticks` : "Waiting for sample"}</b></div>
+            <div className="bulk-trader-filter" aria-label="Market family">
               {(["all", "volatility", "jumps"] as const).map((filter) => (
-                <button type="button" key={filter} className={marketFilter === filter ? "active" : ""} onClick={() => setMarketFilter(filter)}>{filter}</button>
+                <button type="button" data-testid={`button-market-filter-${filter}`} key={filter} className={marketFilter === filter ? "active" : ""} onClick={() => setMarketFilter(filter)}>{filter}</button>
               ))}
             </div>
-            <select value={symbol} onChange={(event) => onSymbolChange(event.target.value)} disabled={!isConnected || isPlacingTrade}>
+            <select data-testid="select-bulk-market" value={symbol} onChange={(event) => onSymbolChange(event.target.value)} disabled={!isConnected || isPlacingTrade}>
               {filteredSymbols.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <div className="bulk-trader-market-list" aria-label="Live market observations">
               {filteredSymbols.map((item) => {
                 const signal = marketSignals.find((entry) => entry.symbol === item.value);
-                return <button type="button" key={item.value} className={item.value === symbol ? "selected" : ""} onClick={() => onSymbolChange(item.value)}>
-                  <span>{item.label}</span><strong>{signal ? displayPercentage(signal.observedPercentage) : "—"}</strong>
+                return <button type="button" data-testid={`button-market-${item.value}`} key={item.value} className={item.value === symbol ? "selected" : ""} onClick={() => onSymbolChange(item.value)}>
+                  <span><i />{item.label}</span><strong>{signal ? displayPercentage(signal.observedPercentage) : "—"}</strong>
                 </button>;
               })}
             </div>
@@ -202,21 +207,25 @@ export default function BulkTraderPanel({
 
           <div className="bulk-trader-type">
             <small>TRADE TYPE</small>
-            <div>{(Object.keys(typeLabels) as BulkTraderType[]).map((option) => <button type="button" key={option} className={type === option ? "active" : ""} onClick={() => onTypeChange(option)}>{typeLabels[option]}</button>)}</div>
+            <div>{(Object.keys(typeLabels) as BulkTraderType[]).map((option) => <button type="button" data-testid={`button-type-${option}`} key={option} className={type === option ? "active" : ""} onClick={() => onTypeChange(option)}>{typeLabels[option]}</button>)}</div>
           </div>
 
           <div className="bulk-trader-tick-card">
-            <div className="bulk-trader-tick-head"><span><small>CURRENT TICK</small><strong>{lastDigit == null ? "—" : lastDigit}</strong></span><span><small>MARKET SIGNAL</small><strong className={signalReady ? "ready" : ""}>{signalReady ? "READY" : displayPercentage(observedRate)}</strong></span></div>
-            <div className="bulk-trader-digit-row">
+            <div className="bulk-trader-tick-head">
+              <span><small>CURRENT TICK</small><strong className="bulk-current-digit">{lastDigit == null ? "—" : lastDigit}</strong><em>{isConnected ? "streaming now" : "offline"}</em></span>
+              <span><small>MARKET SIGNAL</small><strong className={signalReady ? "ready" : ""}>{signalReady ? "READY" : displayPercentage(observedRate)}</strong><em>{currentSignal ? `${currentSignal.sampleCount} tick sample` : "No sample yet"}</em></span>
+              <span className="bulk-analysis-badge"><BarChart3 size={13} /><small>ANALYSIS</small><b>{sampleTicks}T</b></span>
+            </div>
+            <div className="bulk-trader-digit-row" aria-label="Current digit distribution">
               {counts.map((count, digit) => {
-                const absent = visibleDigits.length;
+                const sampleSize = visibleDigits.length;
+                const absent = count === 0;
                 let marker = "";
                 if (type === "over-under" && selectedDigit != null) marker = digit > selectedDigit ? "O" : digit < selectedDigit ? "U" : "=";
                 if (type === "even-odd") marker = digit % 2 === 0 ? "E" : "O";
-                if (type === "rise-fall") marker = movement;
-                if (type === "differs" && selectedDigit === digit) marker = "=";
-                return <button type="button" key={digit} className={`bulk-digit ${selectedDigit === digit ? "selected" : ""} ${lastDigit === digit ? "current" : ""}`} onClick={() => (type === "over-under" || type === "differs") && onPredictionChange(digit)}>
-                  <span className="bulk-digit-marker">{marker || "·"}</span><b>{digit}</b><small>{displayPercentage(absent ? (count / absent) * 100 : 0)}</small><i style={{ height: `${Math.max(8, (count / maxCount) * 54)}%` }} />
+                if (type === "rise-fall") marker = lastDigit == null ? "·" : digit >= lastDigit ? "R" : "F";
+                return <button type="button" data-testid={`button-digit-${digit}`} key={digit} className={`bulk-digit ${selectedDigit === digit ? "selected" : ""} ${lastDigit === digit ? "current" : ""} ${absent ? "absent" : ""}`} onClick={() => ((type === "over-under" && digit > 0) || type === "differs") && onPredictionChange(digit)}>
+                  <span className="bulk-digit-marker">{marker || "·"}</span><b>{digit}</b><small>{displayPercentage(sampleSize ? (count / sampleSize) * 100 : 0)}</small><i style={{ height: `${Math.max(absent ? 5 : 8, (count / maxCount) * 54)}%` }} />
                   {lastDigit === digit && <em aria-label="current digit" />}
                 </button>;
               })}
@@ -225,29 +234,30 @@ export default function BulkTraderPanel({
               {visibleDigits.slice(-28).map((digit, index) => <span key={`${digit}-${index}`} className={digit === lastDigit ? "current" : ""}>{digit}</span>)}
               {!visibleDigits.length && <small>Live digits appear after the selected market connects.</small>}
             </div>
-            <p>Observed percentages, streaks, and absence cues describe this sample. They are not guaranteed outcomes.</p>
+            <p>Observed percentages and absence cues describe this sample only. They are not guaranteed outcomes.</p>
           </div>
         </div>
 
         <aside className="bulk-trader-controls">
-          <label><small>PREDICTION</small><div className="bulk-prediction-grid">{predictionOptions.map((option) => <button type="button" key={String(option)} className={prediction === option ? "active" : ""} onClick={() => onPredictionChange(option)}>{typeof option === "number" ? option : option.toUpperCase()}</button>)}</div></label>
-          <label><small>ANALYSIS TICKS</small><div className="bulk-choice-row">{sampleOptions.map((option) => <button type="button" key={option} className={sampleTicks === option ? "active" : ""} onClick={() => onSampleTicksChange(option)}>{option}</button>)}</div></label>
-          <label><small>EXECUTION DURATION</small><div className="bulk-choice-row">{durationOptions.map((option) => <button type="button" key={option} className={duration === option ? "active" : ""} onClick={() => onDurationChange(option)}>{option}T</button>)}</div></label>
-          <label><small>STAKE · MIN 0.35</small><div className="bulk-money"><span>USD</span><input type="number" min=".35" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.35, Number(event.target.value) || .35))} /></div><b>No artificial maximum</b></label>
-          <label><small>BULK TRADES</small><div className="bulk-choice-row">{countOptions.map((option) => <button type="button" key={option} className={tradeCount === option ? "active" : ""} onClick={() => onTradeCountChange(option)}>{option}</button>)}</div><b>Contracts sent immediately and tracked separately</b></label>
-          {isReal && <label className="bulk-live-confirm"><input type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} /><span><b>Confirm live funds</b>Real-money contracts will be sent from the selected account.</span></label>}
-          <div className="bulk-trader-actions">
-            {actionButtons.map((action) => <button type="button" key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{displayPercentage(action.percentage)} observed</small></button>)}
+          <div className="bulk-controls-heading"><div><small>{predictionTitle}</small><b>Choose an entry signal</b></div><span>{typeLabels[type]}</span></div>
+          <label><div className="bulk-field-label"><small>PREDICTION</small><span>required</span></div><div className={`bulk-prediction-grid ${predictionOptions.length > 9 ? "wide" : ""}`}>{predictionOptions.map((option) => <button type="button" data-testid={`button-prediction-${String(option)}`} key={String(option)} className={prediction === option ? "active" : ""} onClick={() => onPredictionChange(option)}>{typeof option === "number" ? option : option.toUpperCase()}</button>)}</div></label>
+          <label><small>ANALYSIS TICKS</small><div className="bulk-choice-row">{sampleOptions.map((option) => <button type="button" data-testid={`button-sample-${option}`} key={option} className={sampleTicks === option ? "active" : ""} onClick={() => onSampleTicksChange(option)}>{option}</button>)}</div></label>
+          <label><small>EXECUTION DURATION</small><div className="bulk-choice-row duration">{durationOptions.map((option) => <button type="button" data-testid={`button-duration-${option}`} key={option} className={duration === option ? "active" : ""} onClick={() => onDurationChange(option)}>{option}T</button>)}</div></label>
+          <label><small>STAKE · MIN 0.35</small><div className="bulk-money"><span>USD</span><input data-testid="input-bulk-stake" type="number" min=".35" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.35, Number(event.target.value) || .35))} /></div><b>No artificial maximum</b></label>
+          <label><small>BULK TRADES</small><div className="bulk-choice-row bulk-count-row">{countOptions.map((option) => <button type="button" data-testid={`button-count-${option}`} key={option} className={tradeCount === option ? "active" : ""} onClick={() => onTradeCountChange(option)}>{option}</button>)}</div><b>Contracts sent immediately and tracked separately</b></label>
+          {isReal && <label className="bulk-live-confirm"><input data-testid="input-confirm-live-funds" type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} /><span><b>Confirm live funds</b>Real-money contracts will be sent from the selected account.</span></label>}
+          <div className={`bulk-trader-actions action-count-${actionButtons.length}`}>
+            {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{displayPercentage(action.percentage)} observed</small></button>)}
           </div>
           {isPlacingTrade && <div className="bulk-sending"><RefreshCw size={14} className="spin" />Sending contracts to Deriv…</div>}
         </aside>
       </div>
 
       <section className="bulk-trader-history">
-        <div className="xt-history-head"><div><Activity size={17} /><span><b>Bulk Trade History</b><small>Each returned contract is listed separately</small></span></div><button type="button" onClick={onClearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={14} />{clearArmed ? "Tap again" : "Clear"}</button></div>
+        <div className="xt-history-head"><div><Activity size={17} /><span><b>Bulk Trade History</b><small>Each returned contract is listed separately</small></span></div><button type="button" data-testid="button-clear-bulk-history" onClick={onClearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={14} />{clearArmed ? "Tap again" : "Clear"}</button></div>
         {!recentTrades.length ? <div className="xt-empty"><RefreshCw size={18} />Bulk contracts will appear here after the first action.</div> : recentTrades.slice(0, 18).map((trade) => {
           const settled = trade.status !== "open";
-          return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
+          return <div className={`xt-trade ${historyFading ? "fading" : ""}`} data-testid={`row-bulk-trade-${trade.contract_id}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
         })}
       </section>
     </section>
