@@ -29,6 +29,16 @@ export interface DerivMarketSignal {
      * @maximum 100
      */
   digit_odd_percentage: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  rise_percentage: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  fall_percentage: number;
   digit_streaks: DigitStreak[];
   digit_outcomes: DigitOutcome[];
 }

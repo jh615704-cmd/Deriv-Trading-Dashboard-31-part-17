@@ -274,9 +274,7 @@ export default function XTraderPage() {
   const [edgeBestPairAnalyzer, setEdgeBestPairAnalyzer] = useState(false);
   const [edgeAutoSelectBest, setEdgeAutoSelectBest] = useState(false);
   const [edgeScannerMessage, setEdgeScannerMessage] = useState<string | null>(null);
-  const [edgeRiskBalance, setEdgeRiskBalance] = useState("");
   const [edgeAccountBalance, setEdgeAccountBalance] = useState("");
-  const [edgeOutcomeMultiplier, setEdgeOutcomeMultiplier] = useState("");
   const [edgeOutcomeSynced, setEdgeOutcomeSynced] = useState(false);
   const [xTraderEnabled, setXTraderEnabled] = useState(false);
   const [tradeXEnabled, setTradeXEnabled] = useState(false);
@@ -318,9 +316,7 @@ export default function XTraderPage() {
   const [digitFlipTradeCount, setDigitFlipTradeCount] = useState(0);
   const [digitFlipSampleCount, setDigitFlipSampleCount] = useState(0);
   const [digitFlipEvenCount, setDigitFlipEvenCount] = useState(0);
-  const [digitFlipRiskBalance, setDigitFlipRiskBalance] = useState("");
   const [digitFlipAccountBalance, setDigitFlipAccountBalance] = useState("");
-  const [digitFlipOutcomeMultiplier, setDigitFlipOutcomeMultiplier] = useState("1");
   const [digitFlipOutcomeSynced, setDigitFlipOutcomeSynced] = useState(false);
   const [digitFlipClearArmed, setDigitFlipClearArmed] = useState(false);
   const [edgeHiddenHistoryIds, setEdgeHiddenHistoryIds] = useState<Set<string>>(new Set());
@@ -471,15 +467,28 @@ export default function XTraderPage() {
     [status.data?.market_signals],
   );
   const bulkTraderMarketSignals = useMemo(
-    () => (status.data?.market_signals ?? []).map((signal) => ({
-      symbol: signal.symbol,
-      sampleCount: signal.sample_count,
-      observedPercentage: Math.max(
-        50,
-        ...(signal.digit_outcomes ?? []).flatMap((outcome) => [Number(outcome.over_percentage), Number(outcome.under_percentage)]),
-      ),
-    })),
-    [status.data?.market_signals],
+    () => (status.data?.market_signals ?? []).map((signal) => {
+      const selectedDigit = typeof bulkTraderPrediction === "number" ? bulkTraderPrediction : 5;
+      const selectedOutcome = signal.digit_outcomes?.find((outcome) => outcome.digit === selectedDigit);
+      const differsRate = selectedOutcome
+        ? Number(selectedOutcome.over_percentage) + Number(selectedOutcome.under_percentage)
+        : 50;
+      const parityRate = Math.max(signal.digit_even_percentage, signal.digit_odd_percentage);
+      const movementRate = Math.max(signal.rise_percentage, signal.fall_percentage);
+      const observedPercentage = bulkTraderType === "over-under"
+        ? Number((selectedOutcome ? Math.max(Number(selectedOutcome.over_percentage), Number(selectedOutcome.under_percentage)) : 50).toFixed(1))
+        : bulkTraderType === "differs"
+          ? Number(differsRate.toFixed(1))
+          : bulkTraderType === "even-odd"
+            ? Number(parityRate.toFixed(1))
+            : Number(movementRate.toFixed(1));
+      return {
+        symbol: signal.symbol,
+        sampleCount: signal.sample_count,
+        observedPercentage,
+      };
+    }),
+    [bulkTraderPrediction, bulkTraderType, status.data?.market_signals],
   );
 
   useEffect(() => {
@@ -940,10 +949,11 @@ export default function XTraderPage() {
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
     const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
-    const riskBalance = Number(edgeRiskBalance);
     const declaredAccountBalance = Number(edgeAccountBalance);
-    if (!Number.isFinite(riskBalance) || riskBalance <= 0 || !Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0 || amount > riskBalance || amount > declaredAccountBalance) {
-      throw new Error("EDGE is paused until the expected-outcome balances are valid and the next stake fits the risk balance.");
+    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0 || amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
+      setConnectionMessage({ kind: "info", text: "EDGE is waiting for the synced account balance to cover the next stake." });
+      await sleep(1000);
+      return;
     }
     armMartingaleWatch(latestRows, amount, 1);
     await bulkBuyMutation.mutateAsync({
@@ -1059,22 +1069,19 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live-funds trading before starting." });
       return;
     }
-    const riskBalance = Number(edgeRiskBalance);
     const declaredAccountBalance = Number(edgeAccountBalance);
-    const outcomeMultiplier = Number(edgeOutcomeMultiplier);
-    if (!Number.isFinite(riskBalance) || riskBalance <= 0 || !Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0 || !Number.isFinite(outcomeMultiplier) || outcomeMultiplier < 1) {
-      setConnectionMessage({ kind: "error", text: "Enter a positive risk balance, account balance, and multiple before starting EDGE." });
+    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
+      setConnectionMessage({ kind: "error", text: "Enter a positive account balance before starting EDGE." });
       return;
     }
     if (!edgeOutcomeSynced) {
-      setConnectionMessage({ kind: "error", text: "Select Sync balances in Expected outcome before starting EDGE." });
+      setConnectionMessage({ kind: "error", text: "Select Sync balance in Expected outcome before starting EDGE." });
       return;
     }
     if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
       setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount.currency ?? "USD"} balance.` });
       return;
     }
-    if (edgeOutcomeSynced) setTakeProfit(Math.max(0.01, Number((riskBalance * outcomeMultiplier).toFixed(2))));
     try {
       const latestRows = await getDerivHistory();
       const latestEdgeIds = latestRows
@@ -1376,10 +1383,9 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "info", text: "DigitFlip is outside its configured trading calendar." });
       return false;
     }
-    const riskBalance = Number(digitFlipRiskBalance);
     const declaredAccountBalance = Number(digitFlipAccountBalance);
-    if (!Number.isFinite(riskBalance) || riskBalance <= 0 || !Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
-      setConnectionMessage({ kind: "error", text: "DigitFlip is paused until the expected-outcome balances are entered." });
+    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
+      setConnectionMessage({ kind: "error", text: "DigitFlip is paused until the account balance is entered." });
       return false;
     }
     const latestRows = await getDerivHistory();
@@ -1408,7 +1414,7 @@ export default function XTraderPage() {
     const amount = config.stakeMode === "martingale"
       ? digitFlipNextStakeRef.current
       : config.stake;
-    if (amount > riskBalance || amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
+    if (amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
       setConnectionMessage({ kind: "error", text: "The DigitFlip stake is higher than the available balance." });
       return false;
     }
@@ -1522,26 +1528,18 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before running DigitFlip." });
       return;
     }
-    const riskBalance = Number(digitFlipRiskBalance);
     const declaredAccountBalance = Number(digitFlipAccountBalance);
-    const outcomeMultiplier = Number(digitFlipOutcomeMultiplier);
-    if (
-      !Number.isFinite(riskBalance)
-      || riskBalance <= 0
-      || !Number.isFinite(declaredAccountBalance)
-      || declaredAccountBalance <= 0
-      || !Number.isFinite(outcomeMultiplier)
-      || outcomeMultiplier < 1
-    ) {
-      setConnectionMessage({ kind: "error", text: "Enter a positive risk balance, account balance, and multiple before starting DigitFlip." });
+    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
+      setConnectionMessage({ kind: "error", text: "Enter a positive account balance before starting DigitFlip." });
+      return;
+    }
+    if (!digitFlipOutcomeSynced) {
+      setConnectionMessage({ kind: "error", text: "Select Sync balance before starting DigitFlip." });
       return;
     }
     if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
       setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount.currency ?? "USD"} balance.` });
       return;
-    }
-    if (digitFlipOutcomeSynced) {
-      setDigitFlipTakeProfit(Math.max(0.01, Number((riskBalance * outcomeMultiplier).toFixed(2))));
     }
     digitFlipSessionKnownIdsRef.current = new Set(digitFlipAllRows.map((trade) => trade.contract_id));
     setDigitFlipSessionPnl(0);
@@ -1881,16 +1879,12 @@ export default function XTraderPage() {
         : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const edgeRiskReady = edgeOutcomeSynced
-    && Number.isFinite(Number(edgeRiskBalance))
-    && Number(edgeRiskBalance) > 0
+  const edgeBalanceReady = edgeOutcomeSynced
     && Number.isFinite(Number(edgeAccountBalance))
-    && Number(edgeAccountBalance) > 0
-    && Number.isFinite(Number(edgeOutcomeMultiplier))
-    && Number(edgeOutcomeMultiplier) >= 1;
-  const canTrade = isConnected && !running && edgeRiskReady
+    && Number(edgeAccountBalance) > 0;
+  const canTrade = isConnected && !running && edgeBalanceReady
     && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
-    && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= Number(edgeRiskBalance)
+    && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= Number(edgeAccountBalance)
     && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
 
   return (
@@ -2029,6 +2023,7 @@ export default function XTraderPage() {
           onTradeCountChange={setBulkTraderCount}
           onLiveConfirmChange={setLiveConfirmed}
           onTrade={(contractType, selectedBarrier) => void executeBulkTrade(contractType, selectedBarrier)}
+          onRefreshAnalysis={refreshAnalysis}
           onClearHistory={() => void clearBulkTraderHistory()}
         />
       )}
@@ -2061,9 +2056,7 @@ export default function XTraderPage() {
            magicEnabled={digitFlipMagic}
            clearTradesArmed={digitFlipClearArmed}
            historyFading={historyFading}
-            riskBalance={digitFlipRiskBalance}
-            accountBalance={digitFlipAccountBalance}
-            outcomeMultiplier={digitFlipOutcomeMultiplier}
+           accountBalance={digitFlipAccountBalance || (currentAccount ? currentAccount.balance.toFixed(2) : "")}
             outcomeSynced={digitFlipOutcomeSynced}
           isPlacingTrade={digitFlipBuyMutation.isPending}
           disabled={!isConnected}
@@ -2093,10 +2086,11 @@ export default function XTraderPage() {
            onRefreshSample={refreshDigitFlipSample}
            onAssaultChange={toggleDigitFlipAssault}
            onMagicChange={toggleDigitFlipMagic}
-            onRiskBalanceChange={setDigitFlipRiskBalance}
             onAccountBalanceChange={setDigitFlipAccountBalance}
-            onOutcomeMultiplierChange={setDigitFlipOutcomeMultiplier}
-            onOutcomeSyncedChange={setDigitFlipOutcomeSynced}
+           onOutcomeSyncedChange={(synced) => {
+             if (synced && currentAccount) setDigitFlipAccountBalance(currentAccount.balance.toFixed(2));
+             setDigitFlipOutcomeSynced(synced);
+           }}
           onGuide={() => { setGuideMode("digit-flip"); setGuidePage(0); setGuideOpen(true); }}
         />
       )}
@@ -2143,9 +2137,7 @@ export default function XTraderPage() {
           bestPairAnalyzer={edgeBestPairAnalyzer}
           autoSelectBest={edgeAutoSelectBest}
           scannerMessage={edgeScannerMessage}
-          riskBalance={edgeRiskBalance}
-          accountBalance={edgeAccountBalance}
-          outcomeMultiplier={edgeOutcomeMultiplier}
+          accountBalance={edgeAccountBalance || (currentAccount ? currentAccount.balance.toFixed(2) : "")}
           outcomeSynced={edgeOutcomeSynced}
           canTrade={canTrade}
           onStart={start}
@@ -2194,10 +2186,11 @@ export default function XTraderPage() {
               setEdgeScannerMessage(null);
             }
           }}
-          onRiskBalanceChange={setEdgeRiskBalance}
           onAccountBalanceChange={setEdgeAccountBalance}
-          onOutcomeMultiplierChange={setEdgeOutcomeMultiplier}
-          onOutcomeSyncedChange={setEdgeOutcomeSynced}
+          onOutcomeSyncedChange={(synced) => {
+            if (synced && currentAccount) setEdgeAccountBalance(currentAccount.balance.toFixed(2));
+            setEdgeOutcomeSynced(synced);
+          }}
           canViewHistory={canViewHistory}
           recentTrades={edgeRows}
           historyFading={historyFading}

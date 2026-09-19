@@ -60,9 +60,7 @@ type EdgeReferencePanelProps = {
   bestPairAnalyzer: boolean;
   autoSelectBest: boolean;
   scannerMessage?: string | null;
-  riskBalance: string;
   accountBalance: string;
-  outcomeMultiplier: string;
   outcomeSynced: boolean;
   canTrade: boolean;
   onStart: () => void | Promise<void>;
@@ -71,9 +69,7 @@ type EdgeReferencePanelProps = {
   onOverThreeSniperChange: (value: boolean) => void;
   onBestPairAnalyzerChange: (value: boolean) => void;
   onAutoSelectBestChange: (value: boolean) => void;
-  onRiskBalanceChange: (value: string) => void;
   onAccountBalanceChange: (value: string) => void;
-  onOutcomeMultiplierChange: (value: string) => void;
   onOutcomeSyncedChange: (value: boolean) => void;
   canViewHistory: boolean;
   recentTrades: readonly EdgeTradeRow[];
@@ -211,9 +207,7 @@ export default function EdgeReferencePanel({
   bestPairAnalyzer,
   autoSelectBest,
   scannerMessage = null,
-  riskBalance,
   accountBalance,
-  outcomeMultiplier,
   outcomeSynced,
   canTrade,
   onStart,
@@ -222,9 +216,7 @@ export default function EdgeReferencePanel({
   onOverThreeSniperChange,
   onBestPairAnalyzerChange,
   onAutoSelectBestChange,
-  onRiskBalanceChange,
   onAccountBalanceChange,
-  onOutcomeMultiplierChange,
   onOutcomeSyncedChange,
   canViewHistory,
   recentTrades,
@@ -236,7 +228,6 @@ export default function EdgeReferencePanel({
   const [presetOpen, setPresetOpen] = useState(false);
   const [marketPickerOpen, setMarketPickerOpen] = useState(false);
   const [maxStake, setMaxStake] = useState("No limit");
-  const [multipleBalanceOpen, setMultipleBalanceOpen] = useState(false);
 
   const liveSignals = marketSignals as MarketSignal[];
   const liveAutomationSignal = useMemo(
@@ -366,16 +357,11 @@ export default function EdgeReferencePanel({
       <section className={`edge-ref-card edge-ref-outcome ${outcomeSynced ? "active" : ""}`}>
         <div className="edge-ref-advanced-head"><div><span className="edge-ref-field-label">Expected outcome</span><h2>Balance target</h2></div><span className={`edge-ref-sync-badge ${outcomeSynced ? "synced" : ""}`}>{outcomeSynced ? "SYNCED" : "NOT SYNCED"}</span></div>
         <div className="edge-ref-outcome-grid">
-          <label><span>RISK BALANCE</span><input type="number" min="0" step=".01" value={riskBalance} onChange={(event) => onRiskBalanceChange(event.target.value)} placeholder="0.00" disabled={running} /></label>
           <label><span>ACCOUNT BALANCE</span><input type="number" min="0" step=".01" value={accountBalance} onChange={(event) => onAccountBalanceChange(event.target.value)} placeholder="0.00" disabled={running} /></label>
-          <div className="edge-ref-multiple-balance">
-            <button type="button" className={`edge-ref-multiple-button ${multipleBalanceOpen ? "selected" : ""}`} onClick={() => setMultipleBalanceOpen((open) => !open)} disabled={running}>Multiple balance</button>
-            {multipleBalanceOpen && <label><span>MULTIPLIER</span><input type="number" min="1" step=".1" value={outcomeMultiplier} onChange={(event) => onOutcomeMultiplierChange(event.target.value)} placeholder="1.0" disabled={running} /></label>}
-          </div>
         </div>
         <div className="edge-ref-outcome-actions">
-          <button type="button" className={`edge-ref-sync-button ${outcomeSynced ? "selected" : ""}`} onClick={() => onOutcomeSyncedChange(!outcomeSynced)} disabled={running || !riskBalance || !accountBalance || !outcomeMultiplier || Number(outcomeMultiplier) < 1}>{outcomeSynced ? "Unsync balances" : "Sync balances"}</button>
-          <span>{outcomeSynced && riskBalance && outcomeMultiplier ? `Target: ${(Number(riskBalance) * Number(outcomeMultiplier)).toFixed(2)} · entries stay within the risk balance.` : "Enter both balances before starting an EDGE session."}</span>
+          <button type="button" className={`edge-ref-sync-button ${outcomeSynced ? "selected" : ""}`} onClick={() => onOutcomeSyncedChange(!outcomeSynced)} disabled={running || !accountBalance || Number(accountBalance) <= 0}>{outcomeSynced ? "Unsync balance" : "Sync balance"}</button>
+          <span>{outcomeSynced ? "Live balance is checked before each entry; the next trade waits when the configured balance is no longer available." : "Enter the current account balance before starting an EDGE session."}</span>
         </div>
       </section>
 

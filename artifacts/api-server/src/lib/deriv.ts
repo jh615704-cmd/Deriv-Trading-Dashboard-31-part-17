@@ -100,6 +100,8 @@ export type DerivStatus = {
     sample_count: number;
     digit_even_percentage: number;
     digit_odd_percentage: number;
+    rise_percentage: number;
+    fall_percentage: number;
     digit_streaks: Array<{ digit: number; over: number; under: number }>;
   }>;
 };
@@ -166,7 +168,12 @@ return {
   digitEvenCount: 0,
   digitOddCount: 0,
   digitHistory: [] as number[],
-  marketHistory: new Map<string, { quote: number | null; epoch: number; digitHistory: number[] }>(),
+  marketHistory: new Map<string, {
+    quote: number | null;
+    epoch: number;
+    digitHistory: number[];
+    movementHistory: Array<"rise" | "fall" | "flat">;
+  }>(),
   selectedSymbol: defaultSymbol,
   hiddenHistoryIds: new Set<string>(),
   selectedAccountId: configuredAccountId ?? null as string | null,
@@ -334,13 +341,27 @@ function digitStreaksFor(history: number[]) {
 
 function recordMarketTick(symbol: string, quote: unknown, epoch: number) {
   const runtime = getState();
-  const digits = String(quote ?? "").replace(/\D/g, "");
+  // Deriv sends quotes as JSON numbers, so a trailing decimal zero is lost
+  // before it reaches this process. Preserve the synthetic-index precision
+  // when deriving the final digit; otherwise digit 0 can disappear from the
+  // stream whenever a quote ends in .0.
+  const rawQuote = typeof quote === "string"
+    ? quote
+    : Number.isFinite(Number(quote))
+      ? Number(quote).toFixed(3)
+      : "";
+  const digits = rawQuote.replace(/\D/g, "");
   const lastDigit = digits.at(-1);
-  const market = runtime.marketHistory.get(symbol) ?? { quote: null, epoch: 0, digitHistory: [] };
-  market.quote = Number(quote ?? 0);
+  const market = runtime.marketHistory.get(symbol) ?? { quote: null, epoch: 0, digitHistory: [], movementHistory: [] };
+  const nextQuote = Number(quote ?? 0);
+  if (market.quote != null && Number.isFinite(market.quote) && Number.isFinite(nextQuote)) {
+    market.movementHistory.push(nextQuote > market.quote ? "rise" : nextQuote < market.quote ? "fall" : "flat");
+    market.movementHistory = market.movementHistory.slice(-1000);
+  }
+  market.quote = nextQuote;
   market.epoch = epoch;
   if (lastDigit !== undefined) market.digitHistory.push(Number(lastDigit));
-  market.digitHistory = market.digitHistory.slice(-100);
+  market.digitHistory = market.digitHistory.slice(-1000);
   runtime.marketHistory.set(symbol, market);
   if (symbol === runtime.selectedSymbol) {
     runtime.lastTick = { symbol, quote: market.quote, epoch };
@@ -360,6 +381,9 @@ function getMarketSignals() {
     const digits = market?.digitHistory ?? [];
     const evenCount = digits.filter((digit: number) => digit % 2 === 0).length;
     const sampleCount = digits.length;
+    const movementHistory = market?.movementHistory ?? [];
+    const riseCount = movementHistory.filter((movement: "rise" | "fall" | "flat") => movement === "rise").length;
+    const movementSampleCount = movementHistory.length;
     return {
       symbol,
       quote: market?.quote ?? null,
@@ -367,6 +391,8 @@ function getMarketSignals() {
       sample_count: sampleCount,
       digit_even_percentage: sampleCount ? Number(((evenCount / sampleCount) * 100).toFixed(1)) : 50,
       digit_odd_percentage: sampleCount ? Number((((sampleCount - evenCount) / sampleCount) * 100).toFixed(1)) : 50,
+      rise_percentage: movementSampleCount ? Number(((riseCount / movementSampleCount) * 100).toFixed(1)) : 50,
+      fall_percentage: movementSampleCount ? Number((((movementSampleCount - riseCount - movementHistory.filter((movement: "rise" | "fall" | "flat") => movement === "flat").length) / movementSampleCount) * 100).toFixed(1)) : 50,
       digit_streaks: digitStreaksFor(digits),
       digit_outcomes: Array.from({ length: 10 }, (_, digit) => {
         const overCount = digits.filter((value: number) => value > digit).length;

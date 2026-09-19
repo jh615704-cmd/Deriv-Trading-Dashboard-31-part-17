@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Activity, BarChart3, Play, RefreshCw, Trash2 } from "lucide-react";
 
 export type BulkTraderType = "over-under" | "even-odd" | "rise-fall" | "differs";
@@ -65,6 +65,7 @@ type Props = {
   onTradeCountChange: (count: number) => void;
   onLiveConfirmChange: (confirmed: boolean) => void;
   onTrade: (contractType: BulkTraderContractType, barrier?: number) => void;
+  onRefreshAnalysis: () => void;
   onClearHistory: () => void;
 };
 
@@ -113,13 +114,19 @@ export default function BulkTraderPanel({
   onTradeCountChange,
   onLiveConfirmChange,
   onTrade,
+  onRefreshAnalysis,
   onClearHistory,
 }: Props) {
-  const [marketFilter, setMarketFilter] = useState<"all" | "volatility" | "jumps">("all");
   const visibleDigits = useMemo(() => digitHistory.slice(-sampleTicks), [digitHistory, sampleTicks]);
-  const filteredSymbols = useMemo(
-    () => symbols.filter((item) => marketFilter === "all" || item.marketType === marketFilter),
-    [marketFilter, symbols],
+  const rankedSymbols = useMemo(
+    () => [...symbols].sort((left, right) => {
+      const leftSignal = marketSignals.find((signal) => signal.symbol === left.value);
+      const rightSignal = marketSignals.find((signal) => signal.symbol === right.value);
+      return (rightSignal?.observedPercentage ?? -1) - (leftSignal?.observedPercentage ?? -1)
+        || (rightSignal?.sampleCount ?? 0) - (leftSignal?.sampleCount ?? 0)
+        || left.label.localeCompare(right.label);
+    }),
+    [marketSignals, symbols],
   );
   const counts = useMemo(
     () => Array.from({ length: 10 }, (_, digit) => visibleDigits.filter((value) => value === digit).length),
@@ -156,13 +163,16 @@ export default function BulkTraderPanel({
       ? [
         { label: "Even", type: "DIGITEVEN" as const, percentage: evenRate },
         { label: "Odd", type: "DIGITODD" as const, percentage: oddRate },
-        { label: "Dual", type: "DIGITEVEN" as const, percentage: 100 },
+        { label: "Dual", type: "DIGITEVEN" as const, percentage: Math.min(evenRate, oddRate) },
       ]
       : type === "rise-fall"
         ? [
           { label: "Rise", type: "CALL" as const, percentage: movement === "R" ? observedRate : 100 - observedRate },
           { label: "Fall", type: "PUT" as const, percentage: movement === "F" ? observedRate : 100 - observedRate },
-          { label: "Dual", type: "CALL" as const, percentage: 100 },
+          { label: "Dual", type: "CALL" as const, percentage: Math.min(
+            movement === "R" ? observedRate : 100 - observedRate,
+            movement === "F" ? observedRate : 100 - observedRate,
+          ) },
         ]
         : [{ label: `Differs ${selectedDigit ?? 0}`, type: "DIGITDIFF" as const, percentage: selectedDigit == null ? 50 : 100 - ((counts[selectedDigit] + 1) / (visibleDigits.length + 10)) * 100 }];
 
@@ -187,20 +197,16 @@ export default function BulkTraderPanel({
         <div className="bulk-trader-main">
           <div className="bulk-trader-market">
             <div className="bulk-trader-label"><small>MARKET SCAN · {marketLabel}</small><b>{currentSignal ? `${currentSignal.sampleCount} observed ticks` : "Waiting for sample"}</b></div>
-            <div className="bulk-trader-filter" aria-label="Market family">
-              {(["all", "volatility", "jumps"] as const).map((filter) => (
-                <button type="button" data-testid={`button-market-filter-${filter}`} key={filter} className={marketFilter === filter ? "active" : ""} onClick={() => setMarketFilter(filter)}>{filter}</button>
-              ))}
-            </div>
             <select data-testid="select-bulk-market" value={symbol} onChange={(event) => onSymbolChange(event.target.value)} disabled={!isConnected || isPlacingTrade}>
-              {filteredSymbols.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-            <div className="bulk-trader-market-list" aria-label="Live market observations">
-              {filteredSymbols.map((item) => {
+              {rankedSymbols.map((item, index) => {
                 const signal = marketSignals.find((entry) => entry.symbol === item.value);
-                return <button type="button" data-testid={`button-market-${item.value}`} key={item.value} className={item.value === symbol ? "selected" : ""} onClick={() => onSymbolChange(item.value)}>
-                  <span><i />{item.label}</span><strong>{signal ? displayPercentage(signal.observedPercentage) : "—"}</strong>
-                </button>;
+                return <option key={item.value} value={item.value}>{index + 1}. {item.label} · {signal ? displayPercentage(signal.observedPercentage) : "waiting"}</option>;
+              })}
+            </select>
+            <div className="bulk-market-ranking" aria-label="Live market ranking">
+              {rankedSymbols.slice(0, 3).map((item, index) => {
+                const signal = marketSignals.find((entry) => entry.symbol === item.value);
+                return <button type="button" key={item.value} className={item.value === symbol ? "selected" : ""} onClick={() => onSymbolChange(item.value)} disabled={!isConnected || isPlacingTrade}><b>{index + 1}</b><span>{item.label.replace(" Index", "")}</span><strong>{signal ? displayPercentage(signal.observedPercentage) : "—"}</strong></button>;
               })}
             </div>
           </div>
@@ -214,7 +220,7 @@ export default function BulkTraderPanel({
             <div className="bulk-trader-tick-head">
               <span><small>CURRENT TICK</small><strong className="bulk-current-digit">{lastDigit == null ? "—" : lastDigit}</strong><em>{isConnected ? "streaming now" : "offline"}</em></span>
               <span><small>MARKET SIGNAL</small><strong className={signalReady ? "ready" : ""}>{signalReady ? "READY" : displayPercentage(observedRate)}</strong><em>{currentSignal ? `${currentSignal.sampleCount} tick sample` : "No sample yet"}</em></span>
-              <span className="bulk-analysis-badge"><BarChart3 size={13} /><small>ANALYSIS</small><b>{sampleTicks}T</b></span>
+              <button type="button" className="bulk-analysis-badge" onClick={onRefreshAnalysis} disabled={!isConnected || isPlacingTrade} title="Restart live tick analysis" aria-label="Restart live tick analysis" data-testid="button-refresh-bulk-analysis"><BarChart3 size={13} /><small>ANALYSIS</small><b>{sampleTicks}T</b><RefreshCw size={12} /></button>
             </div>
             <div className="bulk-trader-digit-row" aria-label="Current digit distribution">
               {counts.map((count, digit) => {
