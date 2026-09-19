@@ -10,6 +10,7 @@ const configuredAccountId = process.env.DERIV_ACCOUNT_ID;
 const liveTradingEnabled = process.env.DERIV_ALLOW_LIVE_TRADING === "true";
 const proposalTimeoutMs = 8_000;
 const proposalAttempts = 3;
+const buyAckTimeoutMs = 12_000;
 const supportedSymbols = new Set([
   "R_10", "R_25", "R_50", "R_75", "R_100",
   "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
@@ -155,6 +156,11 @@ return {
   proposalIds: new Set<string>(),
   lastBuy: null as DerivBuy | null,
   pendingBuyInputs: new Map<string, ProposalInput>(),
+  buyWaiters: new Map<string, {
+    resolve: (buy: DerivBuy) => void;
+    reject: (error: Error) => void;
+    timer: NodeJS.Timeout;
+  }>(),
   lastContract: null as DerivContract | null,
   history: [] as DerivHistoryItem[],
   lastProposalContractType: "",
@@ -261,6 +267,11 @@ export function disposeUser(userId: string) {
     waiter.reject(new Error("Deriv runtime disposed"));
   }
   runtime.proposalWaiters.clear();
+  for (const waiter of runtime.buyWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error("Deriv runtime disposed"));
+  }
+  runtime.buyWaiters.clear();
   if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
   runtime.socket?.close();
   runtimes.delete(userId);
@@ -272,6 +283,28 @@ function rejectProposalWaiters(message: string) {
     waiter.reject(new Error(message));
   }
   getState().proposalWaiters.clear();
+}
+
+function rejectBuyWaiters(message: string) {
+  for (const waiter of getState().buyWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error(message));
+  }
+  getState().buyWaiters.clear();
+  getState().pendingBuyInputs.clear();
+}
+
+function hasActiveContract() {
+  const runtime = getState();
+  return runtime.pendingBuyInputs.size > 0
+    || runtime.history.some((item: DerivHistoryItem) => item.status === "open")
+    || Boolean(runtime.lastContract && !runtime.lastContract.is_sold && runtime.lastContract.status === "open");
+}
+
+function assertNoActiveContract() {
+  if (hasActiveContract()) {
+    throw new Error("The previous contract is still settling. Wait for it to finish before sending another trade.");
+  }
 }
 
 function assertConfigured() {
@@ -396,7 +429,9 @@ function getMarketSignals() {
       digit_even_percentage: sampleCount ? Number(((evenCount / sampleCount) * 100).toFixed(1)) : 50,
       digit_odd_percentage: sampleCount ? Number((((sampleCount - evenCount) / sampleCount) * 100).toFixed(1)) : 50,
       rise_percentage: movementSampleCount ? Number(((riseCount / movementSampleCount) * 100).toFixed(1)) : 50,
-      fall_percentage: movementSampleCount ? Number((((movementSampleCount - riseCount - movementHistory.filter((movement: "rise" | "fall" | "flat") => movement === "flat").length) / movementSampleCount) * 100).toFixed(1)) : 50,
+      fall_percentage: movementSampleCount
+        ? Number((((movementSampleCount - riseCount - movementHistory.filter((movement: "rise" | "fall" | "flat") => movement === "flat").length) / movementSampleCount) * 100).toFixed(1))
+        : 50,
       digit_streaks: digitStreaksFor(digits),
       digit_outcomes: Array.from({ length: 10 }, (_, digit) => {
         const overCount = digits.filter((value: number) => value > digit).length;
@@ -563,6 +598,24 @@ function sendProposalRequest(input: ProposalInput) {
   return sent ? reqId : null;
 }
 
+async function sendProposalBuy(proposal: DerivProposal, input: ProposalInput): Promise<DerivBuy> {
+  return new Promise<DerivBuy>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      getState().buyWaiters.delete(proposal.id);
+      getState().pendingBuyInputs.delete(proposal.id);
+      reject(new Error("Deriv did not confirm the contract purchase in time"));
+    }, buyAckTimeoutMs);
+    getState().pendingBuyInputs.set(proposal.id, input);
+    getState().buyWaiters.set(proposal.id, { resolve, reject, timer });
+    if (!send({ buy: proposal.id, price: proposal.ask_price })) {
+      clearTimeout(timer);
+      getState().buyWaiters.delete(proposal.id);
+      getState().pendingBuyInputs.delete(proposal.id);
+      reject(new Error("Deriv WebSocket is not ready"));
+    }
+  });
+}
+
 function proposalFromMessage(raw: unknown): DerivProposal | null {
   if (!raw || typeof raw !== "object") return null;
   const proposal = raw as Record<string, unknown>;
@@ -636,6 +689,26 @@ async function connectInternal() {
       if (!isCurrentSocket()) return;
       const message = JSON.parse(raw.toString()) as Record<string, any>;
       if (message.error) {
+        const errorMessage = String(message.error.message ?? message.error.code ?? "Deriv rejected the request");
+        const reqId = Number(message.req_id ?? message.echo_req?.req_id);
+        const proposalWaiter = getState().proposalWaiters.get(reqId);
+        if (proposalWaiter) {
+          clearTimeout(proposalWaiter.timer);
+          getState().proposalWaiters.delete(reqId);
+          proposalWaiter.reject(new Error(errorMessage));
+        }
+        const rejectedProposalId = typeof message.echo_req?.buy === "string"
+          ? message.echo_req.buy
+          : null;
+        if (rejectedProposalId) {
+          getState().pendingBuyInputs.delete(rejectedProposalId);
+          const buyWaiter = getState().buyWaiters.get(rejectedProposalId);
+          if (buyWaiter) {
+            clearTimeout(buyWaiter.timer);
+            getState().buyWaiters.delete(rejectedProposalId);
+            buyWaiter.reject(new Error(errorMessage));
+          }
+        }
         logger.warn({ code: message.error.code }, "Deriv WebSocket returned an error");
         return;
       }
@@ -674,10 +747,9 @@ async function connectInternal() {
         const echoedProposalId = typeof message.echo_req?.buy === "string"
           ? message.echo_req.buy
           : null;
-        const buyInput = echoedProposalId
-          ? getState().pendingBuyInputs.get(echoedProposalId) ?? getState().lastProposalInput
-          : getState().lastProposalInput;
-        if (echoedProposalId) getState().pendingBuyInputs.delete(echoedProposalId);
+        const proposalId = echoedProposalId;
+        const buyInput = proposalId ? getState().pendingBuyInputs.get(proposalId) : undefined;
+        if (proposalId) getState().pendingBuyInputs.delete(proposalId);
         getState().lastBuy = {
           contract_id: String(message.buy?.contract_id ?? ""),
           buy_price: Number(message.buy?.buy_price ?? 0),
@@ -689,8 +761,8 @@ async function connectInternal() {
           buy_price: getState().lastBuy.buy_price,
           payout: getState().lastBuy.payout,
           purchase_time: getState().lastBuy.start_time,
-          contract_type: buyInput?.contract_type ?? getState().lastProposalContractType,
-          underlying_symbol: buyInput?.symbol ?? getState().lastProposalSymbol,
+          contract_type: buyInput?.contract_type ?? "unknown",
+          underlying_symbol: buyInput?.symbol ?? defaultSymbol,
           status: "open",
         }, "open");
         if (historyItem) upsertHistory(historyItem);
@@ -702,6 +774,14 @@ async function connectInternal() {
             contract_id: getState().lastBuy.contract_id,
             subscribe: 1,
           });
+        }
+        if (proposalId) {
+          const buyWaiter = getState().buyWaiters.get(proposalId);
+          if (buyWaiter) {
+            clearTimeout(buyWaiter.timer);
+            getState().buyWaiters.delete(proposalId);
+            buyWaiter.resolve(getState().lastBuy);
+          }
         }
       } else if (message.msg_type === "proposal_open_contract") {
         const contract = message.proposal_open_contract;
@@ -756,6 +836,7 @@ async function connectInternal() {
       }
       getState().socket = null;
       getState().account = null;
+      rejectBuyWaiters("Deriv WebSocket disconnected before the contract purchase was acknowledged");
       logger.warn("Deriv WebSocket closed");
       resolveOnce(false);
       if (isRuntimeCurrent()) scheduleReconnect();
@@ -924,6 +1005,7 @@ export async function selectAccount(accountId: string) {
   getState().lastProposal = null;
   getState().lastBuy = null;
   getState().lastContract = null;
+  rejectBuyWaiters("Deriv account changed before the contract purchase was acknowledged");
   getState().lastProposalContractType = "";
   getState().lastProposalSymbol = defaultSymbol;
   getState().lastProposalInput = null;
@@ -965,6 +1047,7 @@ export async function buyContract(input: BuyInput) {
     throw new Error("The selected stake exceeds the current account balance");
   }
   validateContractBarrier(input);
+  assertNoActiveContract();
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
     throw new Error(`Buy cooldown active. Wait ${Math.ceil(remainingCooldown / 1000)} second.`);
@@ -982,18 +1065,14 @@ export async function buyContract(input: BuyInput) {
   if (!connected) {
     throw new Error("Deriv WebSocket is not ready");
   }
-  getState().pendingBuyInputs.set(proposal.id, input);
-  if (!send({ buy: proposal.id, price: proposal.ask_price })) {
-    getState().pendingBuyInputs.delete(proposal.id);
-    throw new Error("Deriv WebSocket is not ready");
-  }
+  const buy = await sendProposalBuy(proposal, input);
   return {
     ok: true,
     message: getState().account.type === "real"
       ? "Live buy request sent. Contract and balance updates will appear here."
       : "Demo buy request sent to Deriv. Contract and balance updates will appear here.",
     proposal,
-    buy: getState().lastBuy,
+    buy,
   };
 }
 
@@ -1019,20 +1098,9 @@ export async function bulkBuyContracts(input: {
   }
   validateContractBarrier(input);
 
-  const proposals = await Promise.all(
-    Array.from({ length: input.count }, () => requestFreshProposal({
-      amount: input.amount,
-      duration: input.duration,
-      duration_unit: input.duration_unit,
-      contract_type: input.contract_type,
-      barrier: input.barrier,
-      symbol: input.symbol,
-    })),
-  );
-  const connected = await connect();
-  if (!connected) throw new Error("Deriv WebSocket is not ready");
-  for (const proposal of proposals) {
-    getState().pendingBuyInputs.set(proposal.id, {
+  const proposals: DerivProposal[] = [];
+  for (let index = 0; index < input.count; index += 1) {
+    const proposal = await requestFreshProposal({
       amount: input.amount,
       duration: input.duration,
       duration_unit: input.duration_unit,
@@ -1040,10 +1108,18 @@ export async function bulkBuyContracts(input: {
       barrier: input.barrier,
       symbol: input.symbol,
     });
-    if (!send({ buy: proposal.id, price: proposal.ask_price })) {
-      getState().pendingBuyInputs.delete(proposal.id);
-      throw new Error("Deriv WebSocket is not ready");
-    }
+    const connected = await connect();
+    if (!connected) throw new Error("Deriv WebSocket is not ready");
+    const buyInput = {
+      amount: input.amount,
+      duration: input.duration,
+      duration_unit: input.duration_unit,
+      contract_type: input.contract_type,
+      barrier: input.barrier,
+      symbol: input.symbol,
+    } satisfies ProposalInput;
+    await sendProposalBuy(proposal, buyInput);
+    proposals.push(proposal);
   }
   return {
     ok: true,
@@ -1083,34 +1159,11 @@ export async function dualBuyContracts(input: {
   if (input.amount * 2 > getState().account.balance) {
     throw new Error("The selected dual stake exceeds the current account balance");
   }
+  assertNoActiveContract();
 
-  const [overProposal, underProposal] = await Promise.all([
-    requestFreshProposal({
-      amount: input.amount,
-      duration: input.duration,
-      duration_unit: input.duration_unit,
-      contract_type: "DIGITOVER",
-      barrier: input.barrier,
-      symbol: input.symbol,
-    }),
-    requestFreshProposal({
-      amount: input.amount,
-      duration: input.duration,
-      duration_unit: input.duration_unit,
-      contract_type: "DIGITUNDER",
-      barrier: input.barrier,
-      symbol: input.symbol,
-    }),
-  ]);
-  const connected = await connect();
-  if (!connected) throw new Error("Deriv WebSocket is not ready");
-
-  const proposals = [
-    { proposal: overProposal, contract_type: "DIGITOVER" as const },
-    { proposal: underProposal, contract_type: "DIGITUNDER" as const },
-  ];
-  for (const { proposal, contract_type } of proposals) {
-    getState().pendingBuyInputs.set(proposal.id, {
+  const proposals: Array<{ proposal: DerivProposal; contract_type: "DIGITOVER" | "DIGITUNDER" }> = [];
+  for (const contract_type of ["DIGITOVER", "DIGITUNDER"] as const) {
+    const proposal = await requestFreshProposal({
       amount: input.amount,
       duration: input.duration,
       duration_unit: input.duration_unit,
@@ -1118,10 +1171,18 @@ export async function dualBuyContracts(input: {
       barrier: input.barrier,
       symbol: input.symbol,
     });
-    if (!send({ buy: proposal.id, price: proposal.ask_price })) {
-      getState().pendingBuyInputs.delete(proposal.id);
-      throw new Error("Deriv WebSocket is not ready");
-    }
+    const connected = await connect();
+    if (!connected) throw new Error("Deriv WebSocket is not ready");
+    const buyInput = {
+      amount: input.amount,
+      duration: input.duration,
+      duration_unit: input.duration_unit,
+      contract_type,
+      barrier: input.barrier,
+      symbol: input.symbol,
+    } satisfies ProposalInput;
+    await sendProposalBuy(proposal, buyInput);
+    proposals.push({ proposal, contract_type });
   }
 
   return {

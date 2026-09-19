@@ -143,7 +143,7 @@ router.get("/deriv/history", (_req, res) => {
 
 router.delete("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  withCredential(res.locals.userId, async () => clearHistory())
+  withCredential(res.locals.userId, async () => clearHistory(), false, configuredOwnerPat(res.locals.accessKey))
     .then((result) => res.json(result))
      .catch((error) => {
        const missingCredential = isCredentialError(error);
@@ -228,6 +228,8 @@ router.post("/deriv/buy", async (req, res) => {
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
+       : message.includes("still settling") || message.includes("safety timeout")
+         ? 409
       : message.includes("cooldown")
         ? 429
       : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
@@ -255,6 +257,8 @@ router.post("/deriv/bulk-buy", async (req, res) => {
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
+      : message.includes("still settling") || message.includes("safety timeout")
+        ? 409
       : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
@@ -280,6 +284,8 @@ router.post("/deriv/dual-buy", async (req, res) => {
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
+      : message.includes("still settling") || message.includes("safety timeout")
+        ? 409
       : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")

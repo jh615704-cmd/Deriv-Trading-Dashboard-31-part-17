@@ -355,6 +355,7 @@ export default function XTraderPage() {
   const analysisEpochRef = useRef<number | null>(null);
   const tradeXSmartRef = useRef(false);
   const tradeXActionLockRef = useRef(false);
+  const bulkActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
   const digitFlipActionLockRef = useRef(false);
   const digitFlipAssaultRef = useRef(false);
@@ -1686,6 +1687,10 @@ export default function XTraderPage() {
   };
 
   const executeBulkTrade = async (contractType: BulkTraderContractType, barrierOverride?: number) => {
+    if (bulkActionLockRef.current || bulkBuyMutation.isPending) {
+      setConnectionMessage({ kind: "info", text: "Bulk Trader is already sending. Wait for the current request to finish." });
+      return;
+    }
     if (!isConnected) {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before sending a Bulk Trader contract." });
       return;
@@ -1707,17 +1712,22 @@ export default function XTraderPage() {
       },
     });
     const isDual = bulkTraderPrediction === "dual";
+    bulkActionLockRef.current = true;
     try {
       if (isDual && bulkTraderType === "even-odd") {
-        await Promise.all([send("DIGITEVEN"), send("DIGITODD")]);
+        await send("DIGITEVEN");
+        await send("DIGITODD");
       } else if (isDual && bulkTraderType === "rise-fall") {
-        await Promise.all([send("CALL"), send("PUT")]);
+        await send("CALL");
+        await send("PUT");
       } else {
         await send(contractType);
       }
-      await queryClient.invalidateQueries();
+      refreshTradeResults();
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    } finally {
+      bulkActionLockRef.current = false;
     }
   };
 
@@ -1918,7 +1928,7 @@ export default function XTraderPage() {
           <strong><span>{currentAccount?.currency ?? "USD"}</span>{(currentAccount?.balance ?? 0).toFixed(2)}</strong>
           <div>{currentAccount?.id ?? "No account connected"} <b className={isReal ? "real" : ""}>{currentAccount?.type ?? "—"}</b></div>
         </div>
-        <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running}>
+        <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running || digitFlipRunning || tradeXSmartAuto || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || accountMutation.isPending}>
           {!accountOptions.length && <option value="">Connect PAT first</option>}
           {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
         </select><ChevronDown size={15} /></div></label>
