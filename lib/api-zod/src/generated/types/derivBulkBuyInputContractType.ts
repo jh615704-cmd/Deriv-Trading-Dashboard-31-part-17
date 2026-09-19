@@ -10,7 +10,11 @@ export type DerivBulkBuyInputContractType = typeof DerivBulkBuyInputContractType
 
 
 export const DerivBulkBuyInputContractType = {
+  DIGITEVEN: 'DIGITEVEN',
+  DIGITODD: 'DIGITODD',
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
   DIGITDIFF: 'DIGITDIFF',
+  CALL: 'CALL',
+  PUT: 'PUT',
 } as const;

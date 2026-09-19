@@ -1774,7 +1774,7 @@ export const getBulkBuyDerivContractsUrl = () => {
 }
 
 /**
- * Requests and sends 1 to 5 digit contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
+ * Requests and sends 1 to 6 contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
  * @summary Buy a batch of digit contracts immediately
  */
 export const bulkBuyDerivContracts = async (derivBulkBuyInput: DerivBulkBuyInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivBulkBuyResponse> => {

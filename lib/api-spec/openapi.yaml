@@ -608,7 +608,7 @@ paths:
       operationId: bulkBuyDerivContracts
       tags: [deriv]
       summary: Buy a batch of digit contracts immediately
-      description: Requests and sends 1 to 5 digit contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
+      description: Requests and sends 1 to 6 contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
       requestBody:
         required: true
         content:
@@ -1052,7 +1052,7 @@ components:
           enum: [t, s, m]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF, CALL, PUT]
         barrier:
           type: integer
           minimum: 0
@@ -1097,7 +1097,7 @@ components:
           enum: [t]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF, CALL, PUT]
         barrier:
           type: integer
           minimum: 0
@@ -1123,7 +1123,7 @@ components:
           enum: [t]
         contract_type:
           type: string
-          enum: [DIGITOVER, DIGITUNDER, DIGITDIFF]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF, CALL, PUT]
         barrier:
           type: integer
           minimum: 0
@@ -1133,7 +1133,7 @@ components:
         count:
           type: integer
           minimum: 1
-          maximum: 5
+          maximum: 6
         confirm_live_trade:
           type: boolean
           const: true
@@ -1147,7 +1147,7 @@ components:
         duration:
           type: integer
           minimum: 1
-          maximum: 5
+          maximum: 6
         duration_unit:
           type: string
           enum: [t]

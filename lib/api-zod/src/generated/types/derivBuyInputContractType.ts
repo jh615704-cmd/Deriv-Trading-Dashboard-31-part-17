@@ -15,4 +15,6 @@ export const DerivBuyInputContractType = {
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
   DIGITDIFF: 'DIGITDIFF',
+  CALL: 'CALL',
+  PUT: 'PUT',
 } as const;

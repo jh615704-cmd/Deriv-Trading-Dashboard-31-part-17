@@ -360,6 +360,8 @@ export const DerivProposalInputContractType = {
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
   DIGITDIFF: 'DIGITDIFF',
+  CALL: 'CALL',
+  PUT: 'PUT',
 } as const;
 
 export interface DerivProposalInput {
@@ -411,6 +413,8 @@ export const DerivBuyInputContractType = {
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
   DIGITDIFF: 'DIGITDIFF',
+  CALL: 'CALL',
+  PUT: 'PUT',
 } as const;
 
 export interface DerivBuyInput {
@@ -443,9 +447,13 @@ export type DerivBulkBuyInputContractType = typeof DerivBulkBuyInputContractType
 
 
 export const DerivBulkBuyInputContractType = {
+  DIGITEVEN: 'DIGITEVEN',
+  DIGITODD: 'DIGITODD',
   DIGITOVER: 'DIGITOVER',
   DIGITUNDER: 'DIGITUNDER',
   DIGITDIFF: 'DIGITDIFF',
+  CALL: 'CALL',
+  PUT: 'PUT',
 } as const;
 
 export interface DerivBulkBuyInput {
@@ -466,7 +474,7 @@ export interface DerivBulkBuyInput {
   symbol?: string;
   /**
      * @minimum 1
-     * @maximum 5
+     * @maximum 6
      */
   count: number;
   confirm_live_trade: true;
@@ -484,7 +492,7 @@ export interface DerivDualBuyInput {
   amount: number;
   /**
      * @minimum 1
-     * @maximum 5
+     * @maximum 6
      */
   duration: number;
   duration_unit: DerivDualBuyInputDurationUnit;

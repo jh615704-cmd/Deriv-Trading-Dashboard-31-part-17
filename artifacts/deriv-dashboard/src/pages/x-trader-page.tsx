@@ -52,6 +52,11 @@ import DigitFlipPanel, {
   type DigitFlipParity,
   type DigitFlipStakeMode,
 } from "../components/digit-flip-panel";
+import BulkTraderPanel, {
+  type BulkTraderContractType,
+  type BulkTraderPrediction,
+  type BulkTraderType,
+} from "../components/bulk-trader-panel";
 import EdgeReferencePanel from "../components/edge-reference-panel";
 
 const markets = [
@@ -234,6 +239,16 @@ export default function XTraderPage() {
   const [tradeXSmartTradeCount, setTradeXSmartTradeCount] = useState<TradeXTradeCount>(1);
   const [tradeXSmartAiTicks, setTradeXSmartAiTicks] = useState<TradeXDuration>(1);
   const [digitFlipEnabled, setDigitFlipEnabled] = useState(false);
+  const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
+  const [bulkTraderType, setBulkTraderType] = useState<BulkTraderType>("over-under");
+  const [bulkTraderPrediction, setBulkTraderPrediction] = useState<BulkTraderPrediction>(5);
+  const [bulkTraderSymbol, setBulkTraderSymbol] = useState("R_75");
+  const [bulkTraderSampleTicks, setBulkTraderSampleTicks] = useState(100);
+  const [bulkTraderDuration, setBulkTraderDuration] = useState(1);
+  const [bulkTraderStake, setBulkTraderStake] = useState(.35);
+  const [bulkTraderCount, setBulkTraderCount] = useState(1);
+  const [bulkTraderClearArmed, setBulkTraderClearArmed] = useState(false);
+  const [bulkTraderHiddenHistoryIds, setBulkTraderHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipMarketType, setDigitFlipMarketType] = useState<DigitFlipMarketType>("auto");
   const [digitFlipSymbol, setDigitFlipSymbol] = useState("R_75");
   const [digitFlipParity, setDigitFlipParity] = useState<DigitFlipParity>("DIGITEVEN");
@@ -356,9 +371,19 @@ export default function XTraderPage() {
   const edgeAllRows = rows.filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER");
   const tradeXAllRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF");
   const digitFlipAllRows = rows.filter((trade) => trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD");
+  const bulkAllRows = rows.filter((trade) => (
+    trade.contract_type === "DIGITOVER"
+    || trade.contract_type === "DIGITUNDER"
+    || trade.contract_type === "DIGITEVEN"
+    || trade.contract_type === "DIGITODD"
+    || trade.contract_type === "DIGITDIFF"
+    || trade.contract_type === "CALL"
+    || trade.contract_type === "PUT"
+  ));
   const edgeRows = edgeAllRows.filter((trade) => !edgeHiddenHistoryIds.has(trade.contract_id));
   const tradeXRows = tradeXAllRows.filter((trade) => !tradeXHiddenHistoryIds.has(trade.contract_id));
   const digitFlipRows = digitFlipAllRows.filter((trade) => !digitFlipHiddenHistoryIds.has(trade.contract_id));
+  const bulkRows = bulkAllRows.filter((trade) => !bulkTraderHiddenHistoryIds.has(trade.contract_id));
   const edgeSessionRows = edgeSessionKnownIdsRef.current
     ? edgeAllRows.filter((trade) => !edgeSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
@@ -390,6 +415,17 @@ export default function XTraderPage() {
       evenPercentage: signal.digit_even_percentage,
       oddPercentage: signal.digit_odd_percentage,
       sampleCount: signal.sample_count,
+    })),
+    [status.data?.market_signals],
+  );
+  const bulkTraderMarketSignals = useMemo(
+    () => (status.data?.market_signals ?? []).map((signal) => ({
+      symbol: signal.symbol,
+      sampleCount: signal.sample_count,
+      observedPercentage: Math.max(
+        50,
+        ...(signal.digit_outcomes ?? []).flatMap((outcome) => [Number(outcome.over_percentage), Number(outcome.under_percentage)]),
+      ),
     })),
     [status.data?.market_signals],
   );
@@ -1022,6 +1058,7 @@ export default function XTraderPage() {
     digitFlipRunningRef.current = false;
     setDigitFlipRunning(false);
     setTradeXEnabled(false);
+    setBulkTraderEnabled(false);
     tradeXSmartRef.current = false;
     setTradeXSmartAuto(false);
   };
@@ -1389,6 +1426,7 @@ export default function XTraderPage() {
     }
     setXTraderEnabled(false);
     setTradeXEnabled(false);
+    setBulkTraderEnabled(false);
     runningRef.current = false;
     tradeXSmartRef.current = false;
     setRunning(false);
@@ -1570,6 +1608,7 @@ export default function XTraderPage() {
     if (enabled) {
       setXTraderEnabled(false);
       setDigitFlipEnabled(false);
+      setBulkTraderEnabled(false);
       digitFlipRunningRef.current = false;
       setDigitFlipRunning(false);
       stop();
@@ -1580,6 +1619,56 @@ export default function XTraderPage() {
     tradeXSmartRef.current = false;
     setTradeXSmartAuto(false);
     setTradeXMessage("Trade X paused.");
+  };
+
+  const toggleBulkTrader = (enabled: boolean) => {
+    setBulkTraderEnabled(enabled);
+    if (!enabled) return;
+    setXTraderEnabled(false);
+    setTradeXEnabled(false);
+    setDigitFlipEnabled(false);
+    runningRef.current = false;
+    tradeXSmartRef.current = false;
+    digitFlipRunningRef.current = false;
+    setRunning(false);
+    setTradeXSmartAuto(false);
+    setDigitFlipRunning(false);
+  };
+
+  const executeBulkTrade = async (contractType: BulkTraderContractType, barrierOverride?: number) => {
+    if (!isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before sending a Bulk Trader contract." });
+      return;
+    }
+    if (isReal && !liveConfirmed) {
+      setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a Bulk Trader contract." });
+      return;
+    }
+    const send = (type: BulkTraderContractType) => bulkBuyMutation.mutateAsync({
+      data: {
+        amount: bulkTraderStake,
+        duration: bulkTraderDuration,
+        duration_unit: "t",
+        contract_type: type,
+        ...(barrierOverride == null ? {} : { barrier: barrierOverride }),
+        symbol: bulkTraderSymbol,
+        count: bulkTraderCount,
+        confirm_live_trade: true,
+      },
+    });
+    const isDual = bulkTraderPrediction === "dual";
+    try {
+      if (isDual && bulkTraderType === "even-odd") {
+        await Promise.all([send("DIGITEVEN"), send("DIGITODD")]);
+      } else if (isDual && bulkTraderType === "rise-fall") {
+        await Promise.all([send("CALL"), send("PUT")]);
+      } else {
+        await send(contractType);
+      }
+      await queryClient.invalidateQueries();
+    } catch (error) {
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    }
   };
 
   const selectDuration = (next: number) => {
@@ -1712,6 +1801,23 @@ export default function XTraderPage() {
     setHistoryFading(false);
   };
 
+  const clearBulkTraderHistory = async () => {
+    if (!bulkTraderClearArmed) {
+      setBulkTraderClearArmed(true);
+      window.setTimeout(() => setBulkTraderClearArmed(false), 2_500);
+      return;
+    }
+    setBulkTraderClearArmed(false);
+    setHistoryFading(true);
+    await sleep(260);
+    setBulkTraderHiddenHistoryIds((current) => {
+      const next = new Set(current);
+      bulkRows.forEach((trade) => next.add(trade.contract_id));
+      return next;
+    });
+    setHistoryFading(false);
+  };
+
   const accountOptions = accounts.data ?? [];
   const entryDigit = barrier;
   const activeGuidePages = guideMode === "trade-x" ? tradeXGuidePages : guideMode === "digit-flip" ? digitFlipGuidePages : guidePages;
@@ -1767,6 +1873,16 @@ export default function XTraderPage() {
       </section>
 
       <section className="xt-feature-card xt-feature-card-digit-flip">
+        <div><Activity size={18} /><span><b>Bulk Trader</b><small>Send 1–6 contracts instantly across four trade types</small></span></div>
+        <div className="xt-feature-actions">
+          <label className="xt-switch">
+            <input type="checkbox" checked={bulkTraderEnabled} onChange={(event) => toggleBulkTrader(event.target.checked)} aria-label="Toggle Bulk Trader" disabled={!isConnected} />
+            <span />
+          </label>
+        </div>
+      </section>
+
+      <section className="xt-feature-card xt-feature-card-digit-flip">
         <div><Zap size={18} /><span><b>DigitFlip</b><small>Even / Odd parity trading with live estimates</small></span></div>
         <div className="xt-feature-actions">
           {!canUseDigitFlip && <span className="xt-feature-locked">RESTRICTED</span>}
@@ -1817,6 +1933,44 @@ export default function XTraderPage() {
           </label>
         </div>
       </section>
+
+      {bulkTraderEnabled && (
+        <BulkTraderPanel
+          symbol={bulkTraderSymbol}
+          symbols={tradeXSymbols}
+          marketSignals={bulkTraderMarketSignals}
+          marketLabel={markets.find(([id]) => id === bulkTraderSymbol)?.[1] ?? bulkTraderSymbol}
+          quote={status.data?.last_tick?.quote}
+          lastDigit={lastDigit}
+          digitHistory={analysisDigits}
+          type={bulkTraderType}
+          prediction={bulkTraderPrediction}
+          sampleTicks={bulkTraderSampleTicks}
+          duration={bulkTraderDuration}
+          stake={bulkTraderStake}
+          tradeCount={bulkTraderCount}
+          recentTrades={bulkRows}
+          isConnected={isConnected}
+          isReal={Boolean(isReal)}
+          liveConfirmed={liveConfirmed}
+          isPlacingTrade={bulkBuyMutation.isPending}
+          historyFading={historyFading}
+          clearArmed={bulkTraderClearArmed}
+          onSymbolChange={(next) => { setBulkTraderSymbol(next); void selectMarket(next); }}
+          onTypeChange={(next) => {
+            setBulkTraderType(next);
+            setBulkTraderPrediction(next === "over-under" ? 5 : next === "differs" ? 0 : next === "even-odd" ? "even" : "rise");
+          }}
+          onPredictionChange={setBulkTraderPrediction}
+          onSampleTicksChange={setBulkTraderSampleTicks}
+          onDurationChange={setBulkTraderDuration}
+          onStakeChange={setBulkTraderStake}
+          onTradeCountChange={setBulkTraderCount}
+          onLiveConfirmChange={setLiveConfirmed}
+          onTrade={(contractType, selectedBarrier) => void executeBulkTrade(contractType, selectedBarrier)}
+          onClearHistory={() => void clearBulkTraderHistory()}
+        />
+      )}
 
       {digitFlipEnabled && (
         <DigitFlipPanel

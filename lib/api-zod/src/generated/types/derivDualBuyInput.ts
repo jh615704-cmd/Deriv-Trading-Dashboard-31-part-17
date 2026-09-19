@@ -12,7 +12,7 @@ export interface DerivDualBuyInput {
   amount: number;
   /**
      * @minimum 1
-     * @maximum 5
+     * @maximum 6
      */
   duration: number;
   duration_unit: DerivDualBuyInputDurationUnit;

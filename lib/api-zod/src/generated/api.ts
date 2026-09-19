@@ -587,7 +587,7 @@ export const RequestDerivProposalBody = zod.object({
   "amount": zod.number().gt(requestDerivProposalBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(requestDerivProposalBodyDurationMax),
   "duration_unit": zod.enum(['t', 's', 'm']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT']),
   "barrier": zod.number().int().min(requestDerivProposalBodyBarrierMin).max(requestDerivProposalBodyBarrierMax).optional(),
   "symbol": zod.string().optional()
 })
@@ -875,7 +875,7 @@ export const BuyDerivContractBody = zod.object({
   "amount": zod.number().gt(buyDerivContractBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(buyDerivContractBodyDurationMax),
   "duration_unit": zod.enum(['t']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT']),
   "barrier": zod.number().int().min(buyDerivContractBodyBarrierMin).max(buyDerivContractBodyBarrierMax).optional(),
   "symbol": zod.string().optional(),
   "confirm_live_trade": zod.literal(true)
@@ -901,7 +901,7 @@ export const BuyDerivContractResponse = zod.object({
 
 
 /**
- * Requests and sends 1 to 5 digit contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
+ * Requests and sends 1 to 6 contracts without the single-trade cooldown. The total requested stake must fit within the selected account balance.
  * @summary Buy a batch of digit contracts immediately
  */
 export const bulkBuyDerivContractsBodyAmountExclusiveMin = 0;
@@ -911,7 +911,7 @@ export const bulkBuyDerivContractsBodyDurationMax = 5;
 export const bulkBuyDerivContractsBodyBarrierMin = 0;
 export const bulkBuyDerivContractsBodyBarrierMax = 9;
 
-export const bulkBuyDerivContractsBodyCountMax = 5;
+export const bulkBuyDerivContractsBodyCountMax = 6;
 
 
 
@@ -919,7 +919,7 @@ export const BulkBuyDerivContractsBody = zod.object({
   "amount": zod.number().gt(bulkBuyDerivContractsBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(bulkBuyDerivContractsBodyDurationMax),
   "duration_unit": zod.enum(['t']),
-  "contract_type": zod.enum(['DIGITOVER', 'DIGITUNDER', 'DIGITDIFF']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT']),
   "barrier": zod.number().int().min(bulkBuyDerivContractsBodyBarrierMin).max(bulkBuyDerivContractsBodyBarrierMax).optional(),
   "symbol": zod.string().optional(),
   "count": zod.number().int().min(1).max(bulkBuyDerivContractsBodyCountMax),
@@ -946,7 +946,7 @@ export const BulkBuyDerivContractsResponse = zod.object({
  */
 export const dualBuyDerivContractsBodyAmountExclusiveMin = 0;
 
-export const dualBuyDerivContractsBodyDurationMax = 5;
+export const dualBuyDerivContractsBodyDurationMax = 6;
 
 export const dualBuyDerivContractsBodyBarrierMin = 0;
 export const dualBuyDerivContractsBodyBarrierMax = 9;

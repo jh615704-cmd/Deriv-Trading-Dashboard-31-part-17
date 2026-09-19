@@ -15,7 +15,7 @@ const supportedSymbols = new Set([
   "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
   "JD10", "JD25", "JD50", "JD75", "JD100",
 ]);
-type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF";
+type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF" | "CALL" | "PUT";
 
 export type DerivAccount = {
   id: string;
@@ -970,10 +970,10 @@ export async function bulkBuyContracts(input: {
   amount: number;
   duration: number;
   duration_unit: "t";
-  contract_type: "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF";
+  contract_type: DigitContractType;
   barrier?: number;
   symbol?: string;
-  count: number;
+    count: number;
   confirm_live_trade: true;
 }) {
   if (!getState().account) throw new Error("Select an account before buying contracts");
