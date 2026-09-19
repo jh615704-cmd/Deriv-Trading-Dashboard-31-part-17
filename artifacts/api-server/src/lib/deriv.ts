@@ -339,16 +339,20 @@ function digitStreaksFor(history: number[]) {
   });
 }
 
-function recordMarketTick(symbol: string, quote: unknown, epoch: number) {
+function recordMarketTick(symbol: string, quote: unknown, epoch: number, pipSize: unknown) {
   const runtime = getState();
   // Deriv sends quotes as JSON numbers, so a trailing decimal zero is lost
-  // before it reaches this process. Preserve the synthetic-index precision
-  // when deriving the final digit; otherwise digit 0 can disappear from the
-  // stream whenever a quote ends in .0.
+  // before it reaches this process. Use the pip size reported with the tick
+  // instead of guessing a fixed precision: a wrong precision turns every
+  // quote into a synthetic trailing zero.
+  const reportedPrecision = Number(pipSize);
+  const precision = Number.isInteger(reportedPrecision) && reportedPrecision >= 0 && reportedPrecision <= 8
+    ? reportedPrecision
+    : null;
   const rawQuote = typeof quote === "string"
     ? quote
     : Number.isFinite(Number(quote))
-      ? Number(quote).toFixed(3)
+      ? precision == null ? String(quote) : Number(quote).toFixed(precision)
       : "";
   const digits = rawQuote.replace(/\D/g, "");
   const lastDigit = digits.at(-1);
@@ -378,10 +382,10 @@ function getDigitStreaks() {
 function getMarketSignals() {
   return Array.from(supportedSymbols, (symbol) => {
     const market = getState().marketHistory.get(symbol);
-    const digits = market?.digitHistory ?? [];
+    const digits = (market?.digitHistory ?? []).slice(-100);
     const evenCount = digits.filter((digit: number) => digit % 2 === 0).length;
     const sampleCount = digits.length;
-    const movementHistory = market?.movementHistory ?? [];
+    const movementHistory = (market?.movementHistory ?? []).slice(-100);
     const riseCount = movementHistory.filter((movement: "rise" | "fall" | "flat") => movement === "rise").length;
     const movementSampleCount = movementHistory.length;
     return {
@@ -647,6 +651,7 @@ async function connectInternal() {
           String(message.tick?.symbol ?? getState().selectedSymbol),
           message.tick?.quote,
           Number(message.tick?.epoch ?? 0),
+          message.tick?.pip_size,
         );
         if (getState().lastProposalInput && Date.now() - getState().lastProposalRefreshAt >= 1000) {
           getState().lastProposalRefreshAt = Date.now();
