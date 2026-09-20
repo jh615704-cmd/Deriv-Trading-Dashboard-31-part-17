@@ -289,6 +289,7 @@ export default function XTraderPage() {
   const [tradeXSmartTradeCount, setTradeXSmartTradeCount] = useState<TradeXTradeCount>(1);
   const [tradeXSmartAiTicks, setTradeXSmartAiTicks] = useState<TradeXDuration>(1);
   const [digitFlipEnabled, setDigitFlipEnabled] = useState(false);
+  const [edge2Enabled, setEdge2Enabled] = useState(false);
   const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
   const [bulkTraderType, setBulkTraderType] = useState<BulkTraderType>("over-under");
   const [bulkTraderPrediction, setBulkTraderPrediction] = useState<BulkTraderPrediction>(5);
@@ -1936,6 +1937,22 @@ export default function XTraderPage() {
           {!accountOptions.length && <option value="">Connect PAT first</option>}
           {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
         </select><ChevronDown size={15} /></div></label>
+      </section>
+
+      <section className="xt-feature-card xt-feature-card-edge2">
+        <div><Bot size={18} /><span><b>EDGE 2.0</b><small>OVER / UNDER ADVANCED</small></span></div>
+        <div className="xt-feature-actions">
+          <label className="xt-switch">
+            <input
+              type="checkbox"
+              checked={edge2Enabled}
+              onChange={(event) => setEdge2Enabled(event.target.checked)}
+              aria-label="Toggle EDGE 2.0"
+              disabled={!isConnected}
+            />
+            <span />
+          </label>
+        </div>
       </section>
 
       <section className="xt-feature-card xt-feature-card-digit-flip">

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Activity, BarChart3, Play, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Activity, BarChart3, Play, RefreshCw, Trash2 } from "lucide-react";
 
 export type BulkTraderType = "over-under" | "even-odd" | "rise-fall" | "differs";
 export type BulkTraderPrediction = number | "even" | "odd" | "dual" | "rise" | "fall";
@@ -185,14 +185,6 @@ export default function BulkTraderPanel({
 
   return (
     <section className="bulk-trader-panel" data-testid="panel-bulk-trader">
-      <section className="bulk-edge2-placeholder" data-testid="panel-edge-2">
-        <div className="bulk-edge2-mark"><Sparkles size={16} /></div>
-        <div className="bulk-edge2-copy">
-          <div><small>NEW FEATURE · COMING SOON</small><b>EDGE 2.0</b></div>
-          <p>The new EDGE logic and layout will appear here when the strategy pack is ready.</p>
-        </div>
-        <span className="bulk-edge2-status">AWAITING LOGIC</span>
-      </section>
       <header className="bulk-trader-head">
         <div className="bulk-trader-identity">
           <span className="bulk-trader-mark"><Activity size={18} /></span>

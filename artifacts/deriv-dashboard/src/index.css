@@ -1205,31 +1205,6 @@ body { overflow-x: hidden; }
   content: "";
 }
 .bulk-trader-panel > * { position: relative; z-index: 1; }
-.bulk-edge2-placeholder {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(92, 156, 155, .22);
-  background: linear-gradient(100deg, rgba(26, 94, 88, .42), rgba(17, 40, 51, .72));
-}
-.bulk-edge2-mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border: 1px solid rgba(103, 230, 207, .55);
-  border-radius: 8px;
-  color: #68ecd6;
-  background: rgba(23, 150, 132, .18);
-}
-.bulk-edge2-copy { min-width: 0; flex: 1; }
-.bulk-edge2-copy > div { display: flex; align-items: center; gap: 8px; }
-.bulk-edge2-copy small { color: #69d7c2; font-family: var(--app-font-mono); font-size: 7px; letter-spacing: .12em; }
-.bulk-edge2-copy b { color: #e6fbf6; font-size: 12px; letter-spacing: .04em; }
-.bulk-edge2-copy p { margin: 3px 0 0; color: #91b2b3; font-size: 9px; line-height: 1.35; }
-.bulk-edge2-status { flex: 0 0 auto; padding: 5px 7px; border: 1px solid rgba(117, 191, 181, .35); border-radius: 999px; color: #8fbbb7; font-family: var(--app-font-mono); font-size: 7px; letter-spacing: .08em; }
 .bulk-trader-head {
   display: flex;
   justify-content: space-between;
