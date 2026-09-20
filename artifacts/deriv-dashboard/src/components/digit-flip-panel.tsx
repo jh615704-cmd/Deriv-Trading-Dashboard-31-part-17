@@ -139,14 +139,17 @@ function Switch({
   label: string;
 }) {
   return (
-    <label className="df-toggle" aria-label={label}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        disabled={disabled}
-      />
-      <i />
+    <label className="df-toggle-control" aria-label={label}>
+      <span className="df-toggle-state">{checked ? "ON" : "OFF"}</span>
+      <span className="df-toggle">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+          disabled={disabled}
+        />
+        <i />
+      </span>
     </label>
   );
 }
@@ -431,11 +434,11 @@ export default function DigitFlipPanel({
           <span className={`df-sync-badge ${outcomeSynced ? "synced" : ""}`}>{outcomeSynced ? "SYNCED" : "NOT SYNCED"}</span>
         </div>
         <div className="df-outcome-grid">
-          <label><span>ACCOUNT BALANCE</span><input type="number" min="0" step=".01" value={accountBalance} onChange={(event) => onAccountBalanceChange(event.target.value)} placeholder="0.00" disabled={disabled || running} /></label>
+          <label><span>ACCOUNT BALANCE {outcomeSynced && "· LIVE SYNC"}</span><input type="number" min="0" step=".01" value={accountBalance} onChange={(event) => onAccountBalanceChange(event.target.value)} placeholder="0.00" disabled={disabled || running || outcomeSynced} /></label>
         </div>
         <div className="df-outcome-actions">
           <button type="button" className={`df-sync-button ${outcomeSynced ? "selected" : ""}`} onClick={() => onOutcomeSyncedChange(!outcomeSynced)} disabled={disabled || running || !accountBalance || Number(accountBalance) <= 0}>{outcomeSynced ? "Unsync balance" : "Sync balance"}</button>
-          <span>{outcomeSynced ? "Live balance is checked before each entry; the next trade waits when the configured balance is no longer available." : "Enter the current account balance before starting a session."}</span>
+          <span>{outcomeSynced ? "The connected Deriv balance is copied here automatically and checked before every entry." : "Enter the current account balance before starting a session."}</span>
         </div>
       </section>
 

@@ -497,7 +497,23 @@ export default function XTraderPage() {
     sessionAccountIdRef.current = currentAccount?.id ?? null;
     edgeSessionKnownIdsRef.current = null;
     digitFlipSessionKnownIdsRef.current = null;
+    setEdgeOutcomeSynced(false);
+    setEdgeAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
+    setDigitFlipOutcomeSynced(false);
+    setDigitFlipAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
   }, [currentAccount?.id]);
+
+  useEffect(() => {
+    if (!edgeOutcomeSynced || !currentAccount) return;
+    const liveBalance = currentAccount.balance.toFixed(2);
+    if (edgeAccountBalance !== liveBalance) setEdgeAccountBalance(liveBalance);
+  }, [currentAccount?.balance, edgeAccountBalance, edgeOutcomeSynced]);
+
+  useEffect(() => {
+    if (!digitFlipOutcomeSynced || !currentAccount) return;
+    const liveBalance = currentAccount.balance.toFixed(2);
+    if (digitFlipAccountBalance !== liveBalance) setDigitFlipAccountBalance(liveBalance);
+  }, [currentAccount?.balance, digitFlipAccountBalance, digitFlipOutcomeSynced]);
 
   useEffect(() => {
     if (history.data == null || sessionAccountIdRef.current == null) return;
@@ -951,10 +967,11 @@ export default function XTraderPage() {
     if (!runningRef.current) return;
     const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
     const declaredAccountBalance = Number(edgeAccountBalance);
-    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0 || amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
-      setConnectionMessage({ kind: "info", text: "EDGE is waiting for the synced account balance to cover the next stake." });
-      await sleep(1000);
-      return;
+    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
+      throw new Error("Sync the connected account balance before EDGE places another trade.");
+    }
+    if (amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
+      throw new Error(`EDGE stopped before the next trade because the ${amount.toFixed(2)} ${currentAccount?.currency ?? "USD"} stake exceeds the connected balance. Lower the stake or Martingale multiplier.`);
     }
     armMartingaleWatch(latestRows, amount, 1);
     await bulkBuyMutation.mutateAsync({
@@ -1004,21 +1021,6 @@ export default function XTraderPage() {
   const runLoop = async () => {
     while (runningRef.current) {
       try {
-        if (edgeBestPairAnalyzerRef.current && edgeLossStreakRef.current >= 4) {
-          setEdgeScannerMessage("Paused after 4 losses — switching to another best pair and Over/Under digit.");
-          setConnectionMessage({
-            kind: "info",
-            text: "Best Pair Analyzer paused trading after 4 consecutive losses and is selecting a different market and digit.",
-          });
-          const switched = await selectEdgeAutomation(configRef.current.symbol);
-          if (!switched) {
-            await sleep(1500);
-            continue;
-          }
-          edgeLossStreakRef.current = 0;
-          await sleep(1500);
-          continue;
-        }
         if (edgeOverThreeSniperRef.current || edgeBestPairAnalyzerRef.current || edgeAutoSelectBestRef.current) {
           const recommendation = await selectEdgeAutomation();
           if (!recommendation) {
@@ -1098,6 +1100,8 @@ export default function XTraderPage() {
     }
     setSessionPnl(0);
     setSessionTrades(0);
+      nextStakeRef.current = stake;
+      setNextStake(stake);
     runningRef.current = true;
     setRunning(true);
     void runLoop();
@@ -1894,8 +1898,8 @@ export default function XTraderPage() {
     && Number(edgeAccountBalance) > 0;
   const canTrade = isConnected && !running && edgeBalanceReady
     && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
-    && Boolean(currentAccount) && (strategy !== "martingale" ? stake : nextStake) <= Number(edgeAccountBalance)
-    && (strategy !== "martingale" ? stake : nextStake) <= (currentAccount?.balance ?? 0);
+    && Boolean(currentAccount) && stake <= Number(edgeAccountBalance)
+    && stake <= (currentAccount?.balance ?? 0);
 
   return (
     <main className="xt-app">
