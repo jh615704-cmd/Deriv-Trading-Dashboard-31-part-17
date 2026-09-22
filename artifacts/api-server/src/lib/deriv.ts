@@ -1100,35 +1100,32 @@ export async function bulkBuyContracts(input: {
   }
   validateContractBarrier(input);
 
-  const proposals: DerivProposal[] = [];
-  for (let index = 0; index < input.count; index += 1) {
-    const proposal = await requestFreshProposal({
-      amount: input.amount,
-      duration: input.duration,
-      duration_unit: input.duration_unit,
-      contract_type: input.contract_type,
-      barrier: input.barrier,
-      symbol: input.symbol,
-    });
-    const connected = await connect();
-    if (!connected) throw new Error("Deriv WebSocket is not ready");
-    const buyInput = {
-      amount: input.amount,
-      duration: input.duration,
-      duration_unit: input.duration_unit,
-      contract_type: input.contract_type,
-      barrier: input.barrier,
-      symbol: input.symbol,
-    } satisfies ProposalInput;
-    await sendProposalBuy(proposal, buyInput);
-    proposals.push(proposal);
-  }
+  const proposalInput = {
+    amount: input.amount,
+    duration: input.duration,
+    duration_unit: input.duration_unit,
+    contract_type: input.contract_type,
+    barrier: input.barrier,
+    symbol: input.symbol,
+  } satisfies ProposalInput;
+
+  // Quote the complete batch before buying anything. This prevents a
+  // partially-started batch when one contract is unavailable, and lets the
+  // buys leave the socket together instead of serializing them.
+  const proposals = await Promise.all(
+    Array.from({ length: input.count }, () => requestFreshProposal(proposalInput)),
+  );
+  const connected = await connect();
+  if (!connected) throw new Error("Deriv WebSocket is not ready");
+
+  await Promise.all(proposals.map((proposal) => sendProposalBuy(proposal, proposalInput)));
+
   return {
     ok: true,
     count: proposals.length,
     message: getState().account.type === "real"
-      ? `${proposals.length} live buy requests sent.`
-      : `${proposals.length} demo buy requests sent.`,
+      ? `${proposals.length} live buy requests sent together.`
+      : `${proposals.length} demo buy requests sent together.`,
     proposals,
   };
 }
@@ -1140,6 +1137,12 @@ function validateContractBarrier(input: { contract_type: DigitContractType; barr
   const barrier = input.barrier;
   if (requiresBarrier && (typeof barrier !== "number" || !Number.isInteger(barrier) || barrier < 0 || barrier > 9)) {
     throw new Error(`A digit barrier from 0 to 9 is required for ${input.contract_type}.`);
+  }
+  if (input.contract_type === "DIGITOVER" && barrier === 9) {
+    throw new Error("DIGITOVER barrier 9 offers no return. Choose a barrier from 0 to 8.");
+  }
+  if (input.contract_type === "DIGITUNDER" && barrier === 0) {
+    throw new Error("DIGITUNDER barrier 0 offers no return. Choose a barrier from 1 to 9.");
   }
 }
 

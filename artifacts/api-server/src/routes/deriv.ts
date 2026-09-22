@@ -215,7 +215,7 @@ router.post("/deriv/buy", async (req, res) => {
          ? 409
       : message.includes("cooldown")
         ? 429
-      : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
+       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
           ? 504
@@ -242,7 +242,7 @@ router.post("/deriv/bulk-buy", async (req, res) => {
       ? 403
       : message.includes("still settling") || message.includes("safety timeout")
         ? 409
-      : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
+       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
           ? 504
@@ -269,7 +269,7 @@ router.post("/deriv/dual-buy", async (req, res) => {
       ? 403
       : message.includes("still settling") || message.includes("safety timeout")
         ? 409
-      : message.includes("not available") || message.includes("balance") || message.includes("confirmation")
+       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
           ? 504

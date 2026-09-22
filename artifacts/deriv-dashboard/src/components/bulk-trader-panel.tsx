@@ -140,13 +140,15 @@ export default function BulkTraderPanel({
   const lowDigitSignal = selectedDigit != null && selectedRate < 7 && lastDigit === selectedDigit;
   const recommendedDirection = selectedDigit != null && selectedDigit <= 4 ? "OVER" : "UNDER";
   const signalReady = type === "differs" ? lowDigitSignal : lowDigitSignal;
+  const overUnavailable = selectedDigit === 9;
+  const underUnavailable = selectedDigit === 0;
 
   const predictionOptions = Array.from({ length: 10 }, (_, digit) => digit);
 
   const actionButtons = type === "over-under"
     ? [
-      { label: `Over ${selectedDigit ?? 0}${signalReady && recommendedDirection === "OVER" ? " · signal" : ""}`, type: "DIGITOVER" as const, percentage: overRate },
-      { label: `Under ${selectedDigit ?? 0}${signalReady && recommendedDirection === "UNDER" ? " · signal" : ""}`, type: "DIGITUNDER" as const, percentage: underRate },
+      { label: `Over ${selectedDigit ?? 0}${signalReady && recommendedDirection === "OVER" ? " · signal" : ""}`, type: "DIGITOVER" as const, percentage: overRate, disabled: overUnavailable },
+      { label: `Under ${selectedDigit ?? 0}${signalReady && recommendedDirection === "UNDER" ? " · signal" : ""}`, type: "DIGITUNDER" as const, percentage: underRate, disabled: underUnavailable },
     ]
     : [{ label: `Differs ${selectedDigit ?? 0}${signalReady ? " · signal" : ""}`, type: "DIGITDIFF" as const, percentage: selectedDigit == null ? 50 : 100 - ((counts[selectedDigit] + 1) / (visibleDigits.length + 10)) * 100 }];
 
@@ -221,11 +223,12 @@ export default function BulkTraderPanel({
           <label><div className="bulk-field-label"><small>PREDICTION</small><span>required</span></div><div className={`bulk-prediction-grid ${predictionOptions.length > 9 ? "wide" : ""}`}>{predictionOptions.map((option) => <button type="button" data-testid={`button-prediction-${String(option)}`} key={String(option)} className={prediction === option ? "active" : ""} onClick={() => onPredictionChange(option)}>{option}</button>)}</div></label>
           <label><small>EXECUTION DURATION</small><div className="bulk-choice-row duration">{durationOptions.map((option) => <button type="button" data-testid={`button-duration-${option}`} key={option} className={duration === option ? "active" : ""} onClick={() => onDurationChange(option)}>{option}T</button>)}</div></label>
           <label><small>STAKE · MIN 0.35</small><div className="bulk-money"><span>USD</span><input data-testid="input-bulk-stake" type="number" min=".35" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.35, Number(event.target.value) || .35))} /></div><b>No artificial maximum</b></label>
-          <label><small>BULK TRADES</small><div className="bulk-choice-row bulk-count-row">{countOptions.map((option) => <button type="button" data-testid={`button-count-${option}`} key={option} className={tradeCount === option ? "active" : ""} onClick={() => onTradeCountChange(option)}>{option}</button>)}</div><b>Contracts sent immediately and tracked separately</b></label>
+           <label><small>BULK TRADES</small><div className="bulk-choice-row bulk-count-row">{countOptions.map((option) => <button type="button" data-testid={`button-count-${option}`} key={option} className={tradeCount === option ? "active" : ""} onClick={() => onTradeCountChange(option)}>{option}</button>)}</div><b>Contracts are quoted first, then sent together and tracked separately</b></label>
           {isReal && <label className="bulk-live-confirm"><input data-testid="input-confirm-live-funds" type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} /><span><b>Confirm live funds</b>Real-money contracts will be sent from the selected account.</span></label>}
           <div className={`bulk-trader-actions action-count-${actionButtons.length}`}>
-            {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{displayPercentage(action.percentage)} observed</small></button>)}
+             {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed) || Boolean("disabled" in action && action.disabled)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{Boolean("disabled" in action && action.disabled) ? "Unavailable at this barrier" : `${displayPercentage(action.percentage)} observed`}</small></button>)}
           </div>
+          {type === "over-under" && (overUnavailable || underUnavailable) && <p className="bulk-contract-warning">Over 9 and Under 0 have no possible winning digit, so Deriv does not offer a return. Choose the other direction or another barrier.</p>}
           {isPlacingTrade && <div className="bulk-sending"><RefreshCw size={14} className="spin" />Sending contracts to Deriv…</div>}
         </aside>
       </div>

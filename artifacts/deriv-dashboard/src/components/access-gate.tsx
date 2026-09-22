@@ -7,7 +7,7 @@ import {
   useLoginAccessKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, MessageCircle, ShieldCheck } from "lucide-react";
 
 const DEVICE_STORAGE_KEY = "jdy-edge-device-id";
 
@@ -186,7 +186,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
         </form>
         <div className="access-gate-footer">
           <span>User keys use their assigned device limit</span>
-          <span>Admin key: up to 10 devices</span>
+          <a href="https://t.me/JDY_HATED" target="_blank" rel="noreferrer"><MessageCircle size={12} /> Need access? Message @JDY_HATED</a>
         </div>
       </div>
     </div>
