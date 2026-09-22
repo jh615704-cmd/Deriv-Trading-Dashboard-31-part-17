@@ -1,6 +1,5 @@
 import {
   Activity,
-  Bot,
   ChevronRight,
   Gauge,
   GitCompare,
@@ -42,10 +41,6 @@ export interface TradeXPanelProps {
   selectedDigit: number;
   duration: TradeXDuration;
   manualSelectMode: boolean;
-  smartAutoEnabled: boolean;
-  smartConfidence: number;
-  smartTradeCount: TradeXTradeCount;
-  smartAiTicks: number;
   distribution?: readonly TradeXDigitDistribution[];
   rankedSafestDigits?: readonly number[];
   symbols?: readonly TradeXSymbolOption[];
@@ -64,10 +59,6 @@ export interface TradeXPanelProps {
   onManualSelectModeChange: (enabled: boolean) => void;
   onTradeSelect: (digit: number) => void;
   onPlaceTrade: () => void;
-  onSmartAutoChange: (enabled: boolean) => void;
-  onSmartConfidenceChange: (confidence: number) => void;
-  onSmartTradeCountChange: (count: TradeXTradeCount) => void;
-  onSmartAiTicksChange: (ticks: number) => void;
   onRefreshAnalysis: () => void;
 }
 
@@ -117,10 +108,6 @@ export default function TradeXPanel({
   selectedDigit,
   duration,
   manualSelectMode,
-  smartAutoEnabled,
-  smartConfidence,
-  smartTradeCount,
-  smartAiTicks,
   distribution = defaultDistribution,
   rankedSafestDigits,
   symbols = defaultSymbols,
@@ -139,10 +126,6 @@ export default function TradeXPanel({
   onManualSelectModeChange,
   onTradeSelect,
   onPlaceTrade,
-  onSmartAutoChange,
-  onSmartConfidenceChange,
-  onSmartTradeCountChange,
-  onSmartAiTicksChange,
   onRefreshAnalysis,
 }: TradeXPanelProps) {
   const activeSymbols = symbols.filter((option) => option.marketType === marketType);
@@ -159,11 +142,6 @@ export default function TradeXPanel({
     : [...digitData].sort((left, right) => left.percentage - right.percentage || right.streak - left.streak).map((item) => item.digit)
   ).slice(0, 3);
   const selectedData = digitData[selectedDigit] ?? digitData[0];
-  const confidence = clamp(smartConfidence, 80, 100);
-  const safeEntry = analysisTickCount > 0
-    && selectedData.percentage < 7
-    && selectedData.streak >= 1
-    && (lastDigit == null || lastDigit !== selectedDigit);
   const currentSymbolLabel = symbols.find((option) => option.value === symbol)?.label ?? symbol;
 
   const selectMarketType = (nextMarketType: TradeXMarketType) => {
@@ -283,8 +261,8 @@ export default function TradeXPanel({
               <div>
                 <span className="tx-index">02</span>
                 <div>
-                   <h3>Digit Distribution <span>&amp; Safe Entry</span></h3>
-                  <p>Recent frequency, absence streak, and market-touch confirmation.</p>
+                    <h3>Digit Distribution</h3>
+                   <p>Recent frequency and live market touch.</p>
                 </div>
               </div>
               <div className="tx-distribution-actions">
@@ -304,7 +282,7 @@ export default function TradeXPanel({
               <div className="tx-readout-divider" />
               <div>
                 <span className="tx-micro-label">SELECTED DIGIT</span>
-                <strong data-testid="text-trade-x-selected-digit">{selectedDigit}<small>{safeEntry ? "filter ready" : manualSelectMode ? "manual entry" : "ranked entry"}</small></strong>
+                 <strong data-testid="text-trade-x-selected-digit">{selectedDigit}<small>{manualSelectMode ? "manual entry" : "ranked entry"}</small></strong>
               </div>
                <div className="tx-distribution-state"><Activity size={14} />LIVE TICKS</div>
             </div>
@@ -318,38 +296,36 @@ export default function TradeXPanel({
                   <button
                     type="button"
                     key={item.digit}
-                     className={`tx-digit ${isSelected ? "tx-digit-selected" : ""} ${isRanked ? "tx-digit-ranked" : ""} ${isMarketDigit ? "tx-digit-market" : ""} ${item.percentage >= 15 ? "tx-digit-high" : ""} ${isSelected && safeEntry ? "tx-digit-safe" : ""}`}
+                     className={`tx-digit ${isSelected ? "tx-digit-selected" : ""} ${isRanked ? "tx-digit-ranked" : ""} ${isMarketDigit ? "tx-digit-market" : ""} ${item.percentage >= 15 ? "tx-digit-high" : ""}`}
                     onClick={() => onSelectedDigitChange(item.digit)}
                     disabled={disabled}
                     aria-pressed={isSelected}
-                    aria-label={`Digit ${item.digit}, ${item.percentage.toFixed(1)} percent frequency, ${item.streak} tick streak${isMarketDigit ? ", current market digit" : ""}`}
+                     aria-label={`Digit ${item.digit}, ${item.percentage.toFixed(1)} percent frequency${isMarketDigit ? ", current market digit" : ""}`}
                     data-testid={`button-trade-x-digit-${item.digit}`}
                   >
                     <span className={`tx-market-touch ${isMarketDigit ? "is-live" : ""}`}>{isMarketDigit ? `LIVE ${item.digit}` : "\u00a0"}</span>
                      <span className="tx-digit-number">{item.digit}</span>
                      <span className="tx-digit-percent">{item.percentage.toFixed(1)}%</span>
-                     <span className={`tx-digit-meta tx-digit-meta-${item.momentum ?? "flat"}`}><i />{item.streak}x</span>
+                     <span className={`tx-digit-meta tx-digit-meta-${item.momentum ?? "flat"}`}><i />{momentumLabel(item.momentum)}</span>
                   </button>
                 );
               })}
             </div>
              <div className="tx-signal-detail">
               <div className="tx-signal-detail-head">
-                <div><b>DIFFERS {selectedDigit}</b><span className={safeEntry ? "tx-safe-label" : "tx-risk-label"}>{safeEntry ? "LOW OBSERVED RATE" : "HIGHER OBSERVED RATE"}</span></div>
+                  <div><b>DIFFERS {selectedDigit}</b><span className="tx-risk-label">MARKET CONTEXT</span></div>
                 <strong>{clamp(100 - selectedData.percentage, 0, 100).toFixed(0)}%</strong>
               </div>
               <div className="tx-signal-metrics">
                 <span>Frequency <b>{selectedData.percentage.toFixed(1)}% <small>(avg 10%)</small></b></span>
-                <span>Absence streak <b>{selectedData.streak} ticks without appearing</b></span>
+                 <span>Sample <b>{selectedData.sampleCount ?? analysisTickCount} ticks observed</b></span>
                 <span>Occurrences <b>{Math.round((selectedData.sampleCount ?? analysisTickCount) * selectedData.percentage / 100)} / {selectedData.sampleCount ?? analysisTickCount}</b></span>
               </div>
-               <div className={`tx-signal-progress ${safeEntry ? "tx-signal-progress-safe" : ""}`}><i style={{ width: `${clamp(selectedData.percentage * 10, 2, 100)}%` }} /></div>
-                 <p>{safeEntry
-                    ? `Observed frequency is below 7%, and the current market digit has moved away from ${selectedDigit}. This is a filter for Digit Differs ${selectedDigit}, not a probability guarantee.`
-                    : "The selected digit does not meet the observed <7% and market-away filter yet."}</p>
+                <div className="tx-signal-progress"><i style={{ width: `${clamp(selectedData.percentage * 10, 2, 100)}%` }} /></div>
+                   <p>The current selection is available for manual trading at any time.</p>
             </div>
             <div className="tx-distribution-foot">
-              <span><i className="tx-key tx-key-ranked" /> ranked differ signal</span>
+               <span><i className="tx-key tx-key-ranked" /> ranked differ candidate</span>
               <span><i className="tx-key tx-key-selected" /> current selection</span>
               <span className="tx-foot-note">Descriptive signal, not a guarantee.</span>
             </div>
@@ -360,7 +336,7 @@ export default function TradeXPanel({
               <div>
                 <span className="tx-index">03</span>
                 <div>
-                   <h3>Top 3 Safest DIFFERS Digits</h3>
+                    <h3>Top 3 DIFFERS Digits</h3>
                    <p>Lowest observed frequency in the current window.</p>
                 </div>
               </div>
@@ -380,7 +356,7 @@ export default function TradeXPanel({
                        <span className="tx-rank-medal" aria-hidden="true"><Medal size={18} /></span>
                        <span className="tx-rank-digit">{digit}</span>
                      </button>
-                     <span className="tx-rank-metrics"><b>{item.percentage.toFixed(1)}%</b><small>freq · {item.streak}x absent</small></span>
+                     <span className="tx-rank-metrics"><b>{item.percentage.toFixed(1)}%</b><small>observed frequency</small></span>
                     <button type="button" className="tx-tap-trade" onClick={() => onTradeSelect(digit)} disabled={disabled || isPlacingTrade || !enabled} data-testid={`button-trade-x-tap-${digit}`}>TAP TO TRADE</button>
                   </div>
                 );
@@ -442,10 +418,6 @@ export default function TradeXPanel({
                 <span><b>Manual select</b><small>{manualSelectMode ? "select a digit before trade" : "ranked entry mode"}</small></span>
                 <span className="tx-mini-toggle"><i /></span>
               </button>
-              <button type="button" className="tx-trade-select-button" onClick={() => onTradeSelect(selectedDigit)} disabled={disabled || !manualSelectMode} data-testid="button-trade-x-select">
-                Trade select
-                <ChevronRight size={15} />
-              </button>
             </div>
           </div>
           <div className="tx-action-grid">
@@ -457,62 +429,6 @@ export default function TradeXPanel({
           </div>
         </section>
 
-        <section className="tx-smart tx-section">
-          <div className="tx-smart-heading">
-            <div className="tx-section-heading">
-              <div>
-                <span className="tx-index">05</span>
-                <div>
-                  <h3>Smart Auto Trade</h3>
-              <p>Let the ranked signal gate entries against your live percentage floor.</p>
-                </div>
-              </div>
-              <Bot size={19} />
-            </div>
-            <button
-              type="button"
-              className={`tx-smart-toggle ${smartAutoEnabled ? "tx-smart-toggle-on" : ""}`}
-              role="switch"
-              aria-checked={smartAutoEnabled}
-              aria-label="Enable Smart Auto Trade"
-              onClick={() => onSmartAutoChange(!smartAutoEnabled)}
-              disabled={disabled || !enabled}
-              data-testid="switch-smart-auto-trade"
-            >
-              <span />
-              {smartAutoEnabled ? "ON" : "OFF"}
-            </button>
-          </div>
-          <div className={`tx-smart-controls ${smartAutoEnabled ? "tx-smart-controls-enabled" : ""}`}>
-            <label className="tx-smart-control tx-confidence-control">
-              <span className="tx-field-label">MIN OBSERVED SIGNAL SCORE <b>{confidence}%</b></span>
-              <input type="range" min="80" max="100" step="1" value={confidence} onChange={(event) => onSmartConfidenceChange(Number(event.target.value))} disabled={disabled} aria-label="Smart auto minimum observed signal score" data-testid="input-smart-confidence" />
-              <span className="tx-range-labels"><span>80%</span><span>sample filter</span><span>100%</span></span>
-            </label>
-            <label className="tx-smart-control">
-              <span className="tx-field-label">TRADE COUNT</span>
-              <select value={smartTradeCount} onChange={(event) => onSmartTradeCountChange(Number(event.target.value) as TradeXTradeCount)} disabled={disabled} data-testid="select-smart-trade-count">
-                <option value={1}>1 trade</option>
-                <option value={2}>2 trades</option>
-                <option value={3}>3 trades</option>
-              </select>
-            </label>
-            <label className="tx-smart-control">
-              <span className="tx-field-label">LIVE TICKS TO OBSERVE</span>
-              <select value={smartAiTicks} onChange={(event) => onSmartAiTicksChange(Number(event.target.value))} disabled={disabled} data-testid="select-smart-ai-ticks">
-                <option value={1}>1 tick</option>
-                <option value={2}>2 ticks</option>
-                <option value={3}>3 ticks</option>
-                <option value={4}>4 ticks</option>
-                <option value={5}>5 ticks</option>
-              </select>
-            </label>
-            <div className="tx-smart-summary">
-              <span className={`tx-smart-pulse ${smartAutoEnabled ? "tx-smart-pulse-on" : ""}`} />
-              <span>{smartAutoEnabled ? `Watching for ≥ ${confidence}% observed signal score` : "Smart automation is standing by"}</span>
-            </div>
-          </div>
-        </section>
       </div>
     </section>
   );

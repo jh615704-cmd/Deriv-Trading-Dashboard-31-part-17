@@ -35,9 +35,10 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const isAdmin = accessSession.data?.is_admin === true;
   const features = accessSession.data?.features ?? [];
   const canUseEdge = isAdmin || features.includes("edge");
-  const canUseDigitFlip = isAdmin || features.includes("digit-flip") || canUseEdge;
+  const canUseDigitFlip = isAdmin || features.includes("digit-flip");
   const canUseTradeX = isAdmin || features.includes("trade-x");
-  const canUseTrading = canUseEdge || canUseDigitFlip || canUseTradeX;
+  const canUseBulkTrader = isAdmin || features.includes("bulk-trader");
+  const canUseTrading = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader;
   const canUseSettings = isAdmin || features.includes("settings");
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -134,7 +135,7 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
                     onClick={() => {
                       logoutAccess.mutate(undefined, {
                         onSettled: () => {
-                          queryClient.removeQueries({ queryKey: getGetAccessSessionQueryKey() });
+                          queryClient.clear();
                           setLocation('/');
                         },
                       });

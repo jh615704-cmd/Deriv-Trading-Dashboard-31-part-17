@@ -72,6 +72,7 @@ export const AccessFeature = {
   edge: 'edge',
   'digit-flip': 'digit-flip',
   'trade-x': 'trade-x',
+  'bulk-trader': 'bulk-trader',
   settings: 'settings',
   history: 'history',
   admin: 'admin',

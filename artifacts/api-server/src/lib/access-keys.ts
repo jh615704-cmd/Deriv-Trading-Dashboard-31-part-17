@@ -7,7 +7,7 @@ export const ACCESS_COOKIE_NAME = "jdy_access";
 const LEGACY_PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
 export const PRIMARY_ADMIN_MAX_DEVICES = 10;
 const PRIMARY_ADMIN_LABEL = "Primary administrator";
-export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "settings", "history", "admin"] as const;
+export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "bulk-trader", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
 export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned" | "deleted";
 
@@ -203,7 +203,10 @@ export function featureList(features: string[] | null | undefined, kind: "admin"
   const normalized = Array.from(new Set((features ?? []).filter((feature): feature is AccessFeature =>
     (ACCESS_FEATURES as readonly string[]).includes(feature),
   )));
-  if (kind === "admin") return ACCESS_FEATURES.slice();
+  // The primary administrator is synchronized with every current feature by
+  // syncConfiguredPrimaryAdminKey. Other admin-kind keys still need their own
+  // explicitly granted feature set.
   const userFeatures = normalized.filter((feature) => feature !== "admin");
-  return userFeatures.length ? userFeatures : ["edge"];
+  const selectedFeatures = kind === "admin" ? normalized : userFeatures;
+  return selectedFeatures.length ? selectedFeatures : ["edge"];
 }

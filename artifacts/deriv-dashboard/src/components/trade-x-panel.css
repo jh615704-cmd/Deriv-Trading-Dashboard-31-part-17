@@ -795,8 +795,8 @@
 .tx-trend-down { color: #ff8d8a; }
 .tx-absence-dot { color: #f2c443; }
 .tx-market-digit { display: none; }
-.tx-market-touch { position: absolute; top: 5px; right: 6px; min-height: 10px; color: transparent; font: 800 6px var(--app-font-mono,monospace); letter-spacing: .04em; }
-.tx-market-touch.is-live { padding: 2px 3px; border: 1px solid #72d7ff; border-radius: 4px; background: #124f70; color: #c8f3ff; box-shadow: 0 0 8px rgba(86,202,255,.45); }
+.tx-market-touch { position: absolute; left: 50%; bottom: 3px; width: 0; height: 0; transform: translateX(-50%); color: transparent; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid transparent; filter: drop-shadow(0 0 4px transparent); }
+.tx-market-touch.is-live { border-top-color: #e13cff; filter: drop-shadow(0 0 5px rgba(225, 60, 255, .95)); }
 .tx-signal-detail { margin: 0 16px 14px; padding: 13px; border: 1px solid rgba(126, 80, 98, .55); border-radius: 10px; background: rgba(59, 39, 53, .8); }
 .tx-signal-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .tx-signal-detail-head > div { display: flex; align-items: center; gap: 7px; }

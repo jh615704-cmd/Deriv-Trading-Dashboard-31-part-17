@@ -226,7 +226,7 @@ router.post("/access/keys", async (req, res): Promise<void> => {
     return;
   }
   const rawKey = generateAccessKey(kind);
-  const features = kind === "admin" ? [...ACCESS_FEATURES] : featureList(parsed.data.features, kind);
+  const features = featureList(parsed.data.features, kind);
   const [created] = await db.insert(accessKeysTable).values({
     keyHash: hashSecret(rawKey),
     encryptedKey: encryptAccessKey(rawKey),

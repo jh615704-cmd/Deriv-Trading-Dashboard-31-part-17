@@ -37,7 +37,6 @@ import {
 import { db, derivCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { decryptPat } from "../lib/pat-crypto";
-import { isPrimaryAdminKeyHash } from "../lib/access-keys";
 
 const router: IRouter = Router();
 class MissingDerivCredentialError extends Error {}
@@ -53,7 +52,6 @@ async function withCredential<T>(
   userId: string,
   operation: () => Promise<T>,
   serialize = true,
-  configuredPat: string | null = null,
 ): Promise<T> {
   const run = async () => {
     let [credential] = await db
@@ -62,47 +60,32 @@ async function withCredential<T>(
       .where(eq(derivCredentialsTable.clerkUserId, userId))
       .limit(1);
     let hasStoredCredential = Boolean(credential);
-    let pat = configuredPat;
     if (credential) {
       try {
-        // The owner session is driven by DERIV_API_TOKEN. This lets a rotated
-        // Replit Secret take effect without waiting for an old session row to
-        // fail or deleting a stored owner credential first.
-        if (!configuredPat) pat = decryptPat(credential.encryptedPat);
+        const pat = decryptPat(credential.encryptedPat);
+        setUserPat(userId, pat);
       } catch {
         await db.delete(derivCredentialsTable).where(eq(derivCredentialsTable.clerkUserId, userId));
         hasStoredCredential = false;
-        if (!configuredPat) {
-          throw new InvalidStoredCredentialError("The saved Deriv token is no longer readable. Enter it again to reconnect.");
-        }
+        throw new InvalidStoredCredentialError("The saved Deriv token is no longer readable. Enter it again to reconnect.");
       }
     }
-    if (!pat) throw new MissingDerivCredentialError("Connect a Deriv token first");
-    setUserPat(userId, pat);
+    if (!hasStoredCredential) throw new MissingDerivCredentialError("Connect a Deriv token first");
     try {
       return await operation();
     } catch (error) {
-      if (!configuredPat || !hasStoredCredential || !(error instanceof DerivCredentialError)) throw error;
-      // A revoked owner PAT may still be in the per-session database row.
-      // Remove it and retry once with the current Replit Secret.
+      if (!(error instanceof DerivCredentialError)) throw error;
       await db.delete(derivCredentialsTable).where(eq(derivCredentialsTable.clerkUserId, userId));
       disposeUser(userId);
-      setUserPat(userId, configuredPat);
-      return operation();
+      throw new InvalidStoredCredentialError("The saved Deriv token was rejected. Enter your PAT again to reconnect.");
     }
   };
   return serialize ? withUserSerialized(userId, run) : withUser(userId, run);
 }
 
-function configuredOwnerPat(accessKey: { keyHash?: string } | undefined) {
-  if (!accessKey?.keyHash || !isPrimaryAdminKeyHash(accessKey.keyHash)) return null;
-  const value = process.env.DERIV_API_TOKEN?.trim();
-  return value || null;
-}
-
 router.get("/deriv/accounts", async (req, res) => {
   try {
-    const accounts = GetDerivAccountsResponse.parse(await withCredential(res.locals.userId, getAccounts, false, configuredOwnerPat(res.locals.accessKey)));
+    const accounts = GetDerivAccountsResponse.parse(await withCredential(res.locals.userId, getAccounts, false));
     res.set("Cache-Control", "no-store");
     res.json(accounts);
   } catch (error) {
@@ -116,7 +99,7 @@ router.get("/deriv/accounts", async (req, res) => {
 });
 
 router.get("/deriv/status", (_req, res) => {
-  void withCredential(res.locals.userId, getLiveStatus, false, configuredOwnerPat(res.locals.accessKey))
+  void withCredential(res.locals.userId, getLiveStatus, false)
     .then((status) => {
       res.set("Cache-Control", "no-store");
       res.json(GetDerivStatusResponse.parse(status));
@@ -131,7 +114,7 @@ router.get("/deriv/status", (_req, res) => {
 
 router.get("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  withCredential(res.locals.userId, async () => getHistory(), false, configuredOwnerPat(res.locals.accessKey))
+  withCredential(res.locals.userId, async () => getHistory(), false)
     .then((history) => res.json(history))
      .catch((error) => {
        const missingCredential = isCredentialError(error);
@@ -143,7 +126,7 @@ router.get("/deriv/history", (_req, res) => {
 
 router.delete("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  withCredential(res.locals.userId, async () => clearHistory(), false, configuredOwnerPat(res.locals.accessKey))
+  withCredential(res.locals.userId, async () => clearHistory(), false)
     .then((result) => res.json(result))
      .catch((error) => {
        const missingCredential = isCredentialError(error);
@@ -155,7 +138,7 @@ router.delete("/deriv/history", (_req, res) => {
 
 router.post("/deriv/test-connection", async (req, res) => {
   try {
-    const result = TestDerivConnectionResponse.parse(await withCredential(res.locals.userId, testConnection, true, configuredOwnerPat(res.locals.accessKey)));
+    const result = TestDerivConnectionResponse.parse(await withCredential(res.locals.userId, testConnection, true));
     res.json(result);
   } catch (error) {
     if (isCredentialError(error)) {
@@ -174,7 +157,7 @@ router.post("/deriv/proposals", async (req, res) => {
   }
 
   try {
-    const result = RequestDerivProposalResponse.parse(await withCredential(res.locals.userId, () => requestProposal(parsed.data), true, configuredOwnerPat(res.locals.accessKey)));
+    const result = RequestDerivProposalResponse.parse(await withCredential(res.locals.userId, () => requestProposal(parsed.data), true));
     return res.status(202).json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv proposal request failed");
@@ -190,7 +173,7 @@ router.post("/deriv/select-account", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid account selection" });
 
   try {
-    const result = SelectDerivAccountResponse.parse(await withCredential(res.locals.userId, () => selectAccount(parsed.data.account_id), true, configuredOwnerPat(res.locals.accessKey)));
+    const result = SelectDerivAccountResponse.parse(await withCredential(res.locals.userId, () => selectAccount(parsed.data.account_id), true));
     return res.json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv account selection failed");
@@ -204,7 +187,7 @@ router.post("/deriv/select-symbol", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid market selection" });
   try {
     const result = SelectDerivSymbolResponse.parse(
-      await withCredential(res.locals.userId, () => selectSymbol(parsed.data.symbol), true, configuredOwnerPat(res.locals.accessKey)),
+      await withCredential(res.locals.userId, () => selectSymbol(parsed.data.symbol), true),
     );
     return res.json(result);
   } catch (error) {
@@ -219,7 +202,7 @@ router.post("/deriv/buy", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Explicit live-trade confirmation is required" });
 
   try {
-    const result = BuyDerivContractResponse.parse(await withCredential(res.locals.userId, () => buyContract(parsed.data), true, configuredOwnerPat(res.locals.accessKey)));
+    const result = BuyDerivContractResponse.parse(await withCredential(res.locals.userId, () => buyContract(parsed.data), true));
     return res.status(202).json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Buy request failed";
@@ -247,7 +230,7 @@ router.post("/deriv/bulk-buy", async (req, res) => {
 
   try {
     const result = BulkBuyDerivContractsResponse.parse(
-      await withCredential(res.locals.userId, () => bulkBuyContracts(parsed.data), true, configuredOwnerPat(res.locals.accessKey)),
+      await withCredential(res.locals.userId, () => bulkBuyContracts(parsed.data), true),
     );
     return res.status(202).json(result);
   } catch (error) {
@@ -274,7 +257,7 @@ router.post("/deriv/dual-buy", async (req, res) => {
 
   try {
     const result = BulkBuyDerivContractsResponse.parse(
-      await withCredential(res.locals.userId, () => dualBuyContracts(parsed.data), true, configuredOwnerPat(res.locals.accessKey)),
+      await withCredential(res.locals.userId, () => dualBuyContracts(parsed.data), true),
     );
     return res.status(202).json(result);
   } catch (error) {

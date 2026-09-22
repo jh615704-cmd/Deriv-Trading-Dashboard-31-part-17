@@ -137,6 +137,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
       // The login response is already the server-verified session. Put it in
       // the cache immediately instead of waiting for a second request that
       // can briefly race the cookie update in the browser.
+      queryClient.clear();
       queryClient.setQueryData(getGetAccessSessionQueryKey(), session);
       setAccessKey("");
       setIsUnlocking(true);

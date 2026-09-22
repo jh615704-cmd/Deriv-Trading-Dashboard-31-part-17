@@ -9,7 +9,6 @@ import {
   useGetDerivStatus,
   useGetDerivTokenStatus,
   useBulkBuyDerivContracts,
-  useDualBuyDerivContracts,
   useBuyDerivContract,
   getDerivHistory,
   useSelectDerivAccount,
@@ -43,7 +42,6 @@ import TradeXPanel, {
   type TradeXDuration,
   type TradeXMarketType,
   type TradeXSymbolOption,
-  type TradeXTradeCount,
 } from "../components/trade-x-panel";
 import DigitFlipPanel, {
   type DigitFlipDuration,
@@ -95,23 +93,19 @@ const guidePages = [
 const tradeXGuidePages = [
   { title: "Welcome to Trade X", body: "Trade X is the Digit Differs workspace. It watches the live digit distribution, ranks the least frequent digits, and lets you decide whether to send one trade or use controlled automation.", points: ["Use a demo account while learning the signal.", "The signal describes observed ticks; it cannot guarantee the next digit.", "The switch pauses every Trade X action without changing EDGE."] },
   { title: "Read the distribution", body: "Each digit shows its observed percentage and current absence streak. The differs candidate list ranks digits with the lowest observed frequency first, because a Differs contract wins when the expiry digit is not the selected barrier.", points: ["Tap any oval digit to make it the active selection.", "The top three list follows the same live ranking.", "Refresh restarts the local sample window from the next market tick."] },
-  { title: "Tick mapping", body: "Trade X can map the Smart Auto tick setting to a ranked candidate. One tick uses rank 1, two ticks uses rank 2, and so on through five ticks.", points: ["Ranked mode follows the live candidate order.", "Tap a digit or turn Manual Select on when you want an exact barrier.", "The active entry is shown before every action."] },
-  { title: "Manual and automated actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit. Trade select sends the exact digit you tapped. Smart Auto waits for the configured observed signal score before entering.", points: ["Check market, stake, duration, and digit before sending.", "Manual digit taps switch to exact-digit selection so the request matches the screen.", "Smart Auto uses the live sample, ranked candidate, and trade count you choose."] },
-  { title: "Smart Auto Trade", body: "Smart Auto Trade is an optional live-percentage gate. It sends as soon as the observed differs signal reaches your selected threshold.", points: ["The percentage is a live sample, not a promise of profit.", "The AI tick setting uses the same ranked tick mapping.", "Disable Smart Auto Trade to stop its loop immediately."] },
+  { title: "Ranked candidates", body: "Trade X can rank observed digits so you can compare the active Digit Differs barrier before sending a contract.", points: ["Ranked mode follows the live candidate order.", "Tap a digit or turn Manual Select on when you want an exact barrier.", "The active entry is shown before every action."] },
+  { title: "Manual actions", body: "Place Trade X Trade sends one Digit Differs contract using the active digit.", points: ["Check market, stake, duration, and digit before sending.", "Manual digit taps switch to exact-digit selection so the request matches the screen.", "The expiry result is decided by Deriv."] },
   { title: "A careful workflow", body: "Start with a small demo stake, wait for a meaningful sample, and treat every signal as descriptive market context rather than certainty.", points: ["Confirm the selected account is the one you intend to use.", "Use the lowest practical stake while evaluating a market.", "Stop automation before changing markets or strategy assumptions."] },
   { title: "Set the stake", body: "Stake controls the amount requested for each Digit Differs contract. Start low while learning how the distribution reacts.", points: ["Keep a reserve in the account.", "The server and account balance remain final guards.", "A higher stake does not make a signal stronger."] },
   { title: "Manual selection", body: "Manual selection lets you choose the exact digit barrier rather than accepting the current ranked candidate.", points: ["Tap a digit to make it active.", "Confirm the selected digit before placing a trade.", "The barrier is sent with the contract request."] },
   { title: "Ranked candidates", body: "The ranked list orders digits from the observed distribution so you can compare the least frequent candidates for a Differs idea.", points: ["Ranking is based on the current sample.", "A low observed frequency is not a guarantee.", "Refresh the sample when the context changes."] },
   { title: "Observed percentages", body: "The distribution percentages summarize the selected sample and update as live ticks arrive.", points: ["Small samples can move sharply.", "Use sample count beside the percentage.", "Treat the number as context, not certainty."] },
-  { title: "Smart confidence", body: "Smart Auto waits for the configured observed confidence floor before sending. The floor is a gate for the local loop, not a guarantee of profit.", points: ["Use a conservative trade count.", "Stop Smart Auto before changing assumptions.", "Demo-test thresholds before real use."] },
-  { title: "Smart trade count", body: "Smart trade count controls how many separate Digit Differs contracts are requested when Smart Auto enters.", points: ["Each returned contract appears independently.", "Check the account balance before increasing count.", "The request is blocked while another action is pending."] },
-  { title: "AI ticks and ranked entry", body: "The AI tick setting maps the next live observations to the ranked candidate used by Smart Auto.", points: ["A longer setting needs more live ticks.", "The selected candidate can change before entry.", "Manual selection overrides ranked selection when enabled."] },
   { title: "Place a manual trade", body: "Place Trade X Trade uses the active market, stake, duration, and selected digit to send one Digit Differs contract.", points: ["Review every control before placing.", "Live accounts require explicit confirmation.", "The expiry result is decided by Deriv."] },
   { title: "Live-money protection", body: "Real accounts require live-funds confirmation and the server's live-trading guard before Trade X can send contracts.", points: ["Switch to demo while learning.", "A disabled action indicates a missing guard.", "Reconfirm after an account switch."] },
   { title: "Reading open contracts", body: "An open row has been bought but does not yet have a final result. It remains visible while Deriv settles the contract.", points: ["Do not treat an open row as a win or loss.", "History refreshes as settlement arrives.", "New actions remain separate from open rows."] },
   { title: "Clearing Trade X history", body: "The Trade X clear control hides the dashboard rows after a second tap. It does not delete contracts or records from Deriv.", points: ["Use the two-step action intentionally.", "The fade confirms the rows were removed from view.", "Clearing does not stop automation."] },
   { title: "Reset the sample", body: "Refreshing analysis starts a new local sample window so the distribution reflects the next stream of ticks.", points: ["Wait for enough observations after refresh.", "Avoid making decisions from an empty sample.", "The account and contract history remain unchanged."] },
-  { title: "Safe first session", body: "Start with one small demo Digit Differs contract, a fresh sample, and manual selection before trying Smart Auto.", points: ["Confirm market, digit, duration, and stake.", "Watch the returned row settle.", "Stop if the signal no longer matches your plan."] },
+  { title: "Safe first session", body: "Start with one small demo Digit Differs contract, a fresh sample, and manual selection.", points: ["Confirm market, digit, duration, and stake.", "Watch the returned row settle.", "Stop if the signal no longer matches your plan."] },
   { title: "Final checklist", body: "Trade X is ready when the market, sample, digit, duration, stake, and automation state are all intentional.", points: ["Start small.", "Keep live confirmation explicit.", "Use observed data as context, never as certainty."] },
 ] as const;
 
@@ -142,18 +136,16 @@ const bulkTraderGuidePages = [
   { title: "Welcome to Bulk Trader", body: "Bulk Trader is the fast multi-contract workspace for reading live digit context and sending one to six separate contracts from a single action.", points: ["Start on a demo account.", "The feature switch pauses the other trading surfaces.", "Percentages describe the current sample and do not guarantee an outcome."] },
   { title: "Connect and choose an account", body: "Connect your Deriv account, then confirm the account shown in the trading account selector before opening Bulk Trader.", points: ["Demo funds are the safest place to learn.", "Real accounts require explicit live-funds confirmation.", "Account changes refresh the live session."] },
   { title: "Choose a market", body: "The market list includes Volatility and Jump pairs. Selecting a pair changes the live Deriv stream used by the current tick and digit sample.", points: ["Use the filter to focus on Volatility or Jump pairs.", "The right-side percentage is live observed context.", "Wait for fresh ticks after switching markets."] },
-  { title: "Select a trade type", body: "Bulk Trader supports Over / Under, Even / Odd, Rise / Fall, and Differs. The rest of the panel changes to match the selected contract family.", points: ["Only the controls for the active type are shown.", "Differs uses one selected digit.", "Dual is available for parity and direction pairs."] },
-  { title: "Analysis tick windows", body: "Choose 100, 300, 500, 800, or 1000 ticks for the visible analysis window. The digit percentages and markers recalculate from that window.", points: ["Short windows react faster.", "Longer windows provide more context.", "The window changes analysis, not contract duration."] },
+  { title: "Select a trade type", body: "Bulk Trader supports Over / Under and Differs. The rest of the panel changes to match the selected contract family.", points: ["Only the controls for the active type are shown.", "Differs uses one selected digit.", "Manual trade buttons remain available regardless of the observed signal."] },
+  { title: "Live analysis", body: "Bulk Trader keeps a running count of observed ticks for the selected market. The digit percentages and markers update as new ticks arrive.", points: ["Refresh starts the counter again at 1.", "The counter has no fixed end value.", "Observed percentages provide context, not certainty."] },
   { title: "Over and Under predictions", body: "Over / Under predictions use digits 1 through 9. The selected digit becomes the barrier sent with the matching contract.", points: ["Over wins above the selected barrier.", "Under wins below the selected barrier.", "The expiry digit decides the contract result."] },
   { title: "Reading O, U, and =", body: "For Over / Under, the digit row marks values above the selected barrier with O, below it with U, and the selected barrier with =.", points: ["The markers follow the selected prediction.", "The current tick is marked separately.", "A marker is descriptive market context only."] },
-  { title: "Even, Odd, and Dual", body: "Even / Odd offers Even, Odd, and Dual actions. The digit row shows E or O to make parity context quick to scan.", points: ["Dual sends one Even and one Odd batch.", "Each returned contract is recorded separately.", "Parity observations can change every tick."] },
-  { title: "Rise, Fall, and Dual", body: "Rise / Fall offers Rise, Fall, and Dual actions. The row shows R or F from the latest tick-to-tick movement.", points: ["Dual sends one Rise and one Fall batch.", "The movement marker is not a prediction.", "The expiry rules still belong to Deriv."] },
   { title: "Differs predictions", body: "Differs uses digits 0 through 9. The selected digit is the barrier that the contract must differ from at expiry.", points: ["The row does not show O or U markers in this mode.", "The selected digit is visibly emphasized.", "A digit absent from the sample is still not guaranteed to be absent next."] },
   { title: "Current tick display", body: "The current tick readout shows the latest live quote's last digit and marks that digit in the ten-digit strip.", points: ["The red pointer identifies the latest digit.", "A quote can move before the next control action.", "The sample trail shows recent context, not a fixed sequence."] },
   { title: "Execution ticks", body: "Execution duration is set separately from the analysis window. Choose 1 through 5 ticks for how long each contract observes before settlement.", points: ["One tick resolves quickly.", "Longer durations are not automatically safer.", "Changing duration does not rewrite past rows."] },
   { title: "Stake", body: "Stake starts at 0.35 and accepts decimals. The server and selected account remain the final authority over whether a contract can be bought.", points: ["Keep a reserve in the account.", "There is no artificial maximum in the control.", "A valid stake does not remove market risk."] },
   { title: "Number of bulk trades", body: "Choose 1 through 6 bulk trades. One action sends that many separate contracts and the history lists each returned contract independently.", points: ["Bulk count is not a single combined contract.", "Watch the account balance before increasing count.", "The request is blocked while another bulk request is pending."] },
-  { title: "Trade buttons", body: "The action buttons change with the active trade type and show the current observed percentage beneath the label.", points: ["Over / Under show two buttons.", "Even / Odd and Rise / Fall include Dual.", "Differs shows one action for the selected digit."] },
+  { title: "Trade buttons", body: "The action buttons change with the active trade type and show the current observed percentage beneath the label.", points: ["Over / Under show two buttons.", "Differs shows one action for the selected digit.", "Manual actions remain available when the observed signal is not ready."] },
   { title: "Live-money confirmation", body: "Real accounts require the live-funds confirmation before Bulk Trader sends anything. The API also enforces its own live-trading guardrails.", points: ["Read the confirmation before enabling a live action.", "Switch to demo when learning.", "A disabled button means a required guard is not satisfied."] },
   { title: "Bulk trade history", body: "Each returned contract is shown with its type, symbol, account, buy amount, status, and settlement result.", points: ["Open contracts show no final result yet.", "Rows update as the Deriv stream settles.", "Bulk history is kept separate from the other feature panels."] },
   { title: "Clearing history", body: "The history bin uses a two-step clear. Tap once to arm it, then tap again within the short window; rows fade from the dashboard without deleting Deriv records.", points: ["The second tap confirms the action.", "The fade gives feedback before rows disappear.", "Clearing does not affect active contracts."] },
@@ -200,6 +192,23 @@ function chooseBestOverThreeSignal(signals: MarketSignal[], excludeSymbol?: stri
   return best ? { symbol: best.signal.symbol, direction: "DIGITOVER", digit: 3, score: best.score, sampleCount: best.signal.sample_count } : null;
 }
 
+function chooseBestAutoOver345Signal(signals: MarketSignal[], excludeSymbol?: string): BestEdgeSignal | null {
+  const candidates = signals
+    .filter((signal) => signal.sample_count >= EDGE_MIN_MARKET_SAMPLE && signal.quote != null && signal.symbol !== excludeSymbol)
+    .flatMap((signal) => (signal.digit_outcomes ?? [])
+      .filter((outcome) => outcome.digit >= 3 && outcome.digit <= 5)
+      .map((outcome) => ({
+        symbol: signal.symbol,
+        direction: "DIGITOVER" as const,
+        digit: outcome.digit,
+        score: Number(outcome.over_percentage),
+        sampleCount: signal.sample_count,
+      })))
+    .filter((candidate) => Number.isFinite(candidate.score))
+    .sort((left, right) => right.score - left.score || right.sampleCount - left.sampleCount);
+  return candidates[0] ?? null;
+}
+
 function chooseBestAnalyzerSignal(signals: MarketSignal[], excludeSymbol?: string): BestEdgeSignal | null {
   const available = signals.filter((signal) =>
     signal.sample_count >= EDGE_MIN_MARKET_SAMPLE
@@ -238,9 +247,10 @@ export default function XTraderPage() {
   const queryClient = useQueryClient();
   const isAdmin = accessSession.data?.is_admin === true;
   const canUseEdge = isAdmin || accessSession.data?.features.includes("edge") === true;
-  const canUseDigitFlip = isAdmin || accessSession.data?.features.includes("digit-flip") === true || canUseEdge;
+  const canUseDigitFlip = isAdmin || accessSession.data?.features.includes("digit-flip") === true;
   const canUseTradeX = isAdmin || accessSession.data?.features.includes("trade-x") === true;
-  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX;
+  const canUseBulkTrader = isAdmin || accessSession.data?.features.includes("bulk-trader") === true;
+  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader;
   const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true;
   const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
@@ -254,7 +264,6 @@ export default function XTraderPage() {
   const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
-  const dualBuyMutation = useDualBuyDerivContracts();
   const digitFlipBuyMutation = useBuyDerivContract();
 
   const [pat, setPat] = useState("");
@@ -271,6 +280,7 @@ export default function XTraderPage() {
   const [edgePercentageMode, setEdgePercentageMode] = useState(false);
   const [edgeRecommendation, setEdgeRecommendation] = useState<BestEdgeSignal | null>(null);
   const [edgeOverThreeSniper, setEdgeOverThreeSniper] = useState(false);
+  const [edgeAutoOverThreeFourFive, setEdgeAutoOverThreeFourFive] = useState(false);
   const [edgeBestPairAnalyzer, setEdgeBestPairAnalyzer] = useState(false);
   const [edgeAutoSelectBest, setEdgeAutoSelectBest] = useState(false);
   const [edgeScannerMessage, setEdgeScannerMessage] = useState<string | null>(null);
@@ -284,21 +294,17 @@ export default function XTraderPage() {
   const [tradeXSelectedDigit, setTradeXSelectedDigit] = useState(5);
   const [tradeXDuration, setTradeXDuration] = useState<TradeXDuration>(1);
   const [tradeXManualSelect, setTradeXManualSelect] = useState(false);
-  const [tradeXSmartAuto, setTradeXSmartAuto] = useState(false);
-  const [tradeXSmartConfidence, setTradeXSmartConfidence] = useState(95);
-  const [tradeXSmartTradeCount, setTradeXSmartTradeCount] = useState<TradeXTradeCount>(1);
-  const [tradeXSmartAiTicks, setTradeXSmartAiTicks] = useState<TradeXDuration>(1);
   const [digitFlipEnabled, setDigitFlipEnabled] = useState(false);
   const [edge2Enabled, setEdge2Enabled] = useState(false);
   const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
   const [bulkTraderType, setBulkTraderType] = useState<BulkTraderType>("over-under");
   const [bulkTraderPrediction, setBulkTraderPrediction] = useState<BulkTraderPrediction>(5);
   const [bulkTraderSymbol, setBulkTraderSymbol] = useState("R_75");
-  const [bulkTraderSampleTicks, setBulkTraderSampleTicks] = useState(100);
   const [bulkTraderDuration, setBulkTraderDuration] = useState(1);
   const [bulkTraderStake, setBulkTraderStake] = useState(.35);
   const [bulkTraderCount, setBulkTraderCount] = useState(1);
   const [bulkTraderClearArmed, setBulkTraderClearArmed] = useState(false);
+  const [bulkTraderAutoSelectBest, setBulkTraderAutoSelectBest] = useState(false);
   const [bulkTraderHiddenHistoryIds, setBulkTraderHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipMarketType, setDigitFlipMarketType] = useState<DigitFlipMarketType>("auto");
   const [digitFlipSymbol, setDigitFlipSymbol] = useState("R_75");
@@ -344,6 +350,7 @@ export default function XTraderPage() {
   const autoSwitchRef = useRef(autoSwitch);
   const edgePercentageModeRef = useRef(edgePercentageMode);
   const edgeOverThreeSniperRef = useRef(edgeOverThreeSniper);
+  const edgeAutoOverThreeFourFiveRef = useRef(edgeAutoOverThreeFourFive);
   const edgeBestPairAnalyzerRef = useRef(edgeBestPairAnalyzer);
   const edgeAutoSelectBestRef = useRef(edgeAutoSelectBest);
   const edgeAutoSelectionKeyRef = useRef("");
@@ -354,8 +361,8 @@ export default function XTraderPage() {
   const nextStakeRef = useRef(stake);
   const martingaleWatchRef = useRef<MartingaleSettlementWatch | null>(null);
   const analysisEpochRef = useRef<number | null>(null);
-  const tradeXSmartRef = useRef(false);
   const tradeXActionLockRef = useRef(false);
+  const edgeActionLockRef = useRef(false);
   const bulkActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
   const digitFlipActionLockRef = useRef(false);
@@ -365,9 +372,6 @@ export default function XTraderPage() {
   const digitFlipAutoSelectionKeyRef = useRef("");
   const digitFlipMarketSignalsRef = useRef<DigitFlipMarketSignal[]>([]);
   const digitFlipRatesRef = useRef({ even: 50, odd: 50 });
-  const tradeXLastDigitRef = useRef<number | null>(null);
-  const tradeXObservedTickWindowRef = useRef<number[]>([]);
-  const tradeXAnalysisDigitsRef = useRef<number[]>([]);
   const digitFlipConfigRef = useRef({
     marketType: digitFlipMarketType,
     symbol: digitFlipSymbol,
@@ -377,8 +381,6 @@ export default function XTraderPage() {
     stakeMode: digitFlipStakeMode,
     multiplier: digitFlipMultiplier,
   });
-  const tradeXAnalysisRef = useRef({ tickCount: 0, confidence: 50 });
-  const tradeXDistributionRef = useRef<TradeXDigitDistribution[]>([]);
   const edgeAnalysisRef = useRef({ sample: 0, overPercent: 50, underPercent: 50 });
   const liveTickSequenceRef = useRef(0);
   const digitFlipNextStakeRef = useRef(digitFlipStake);
@@ -391,6 +393,11 @@ export default function XTraderPage() {
   const sessionAccountIdRef = useRef<string | null>(null);
   const edgeSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const digitFlipSessionKnownIdsRef = useRef<Set<string> | null>(null);
+  const bulkSessionKnownIdsRef = useRef<Set<string> | null>(null);
+  const edgeClaimedHistoryIdsRef = useRef(new Set<string>());
+  const tradeXClaimedHistoryIdsRef = useRef(new Set<string>());
+  const digitFlipClaimedHistoryIdsRef = useRef(new Set<string>());
+  const bulkClaimedHistoryIdsRef = useRef(new Set<string>());
   const configRef = useRef({
     direction,
     barrier,
@@ -408,9 +415,7 @@ export default function XTraderPage() {
     selectedDigit: tradeXSelectedDigit,
     duration: tradeXDuration,
     manualSelect: tradeXManualSelect,
-    smartConfidence: tradeXSmartConfidence,
-    smartTradeCount: tradeXSmartTradeCount,
-    smartAiTicks: tradeXSmartAiTicks,
+    frameworkSignalReady: false,
     rankedDigits: [] as number[],
   });
 
@@ -430,15 +435,18 @@ export default function XTraderPage() {
     || trade.contract_type === "CALL"
     || trade.contract_type === "PUT"
   ));
-  const edgeRows = edgeAllRows.filter((trade) => !edgeHiddenHistoryIds.has(trade.contract_id));
-  const tradeXRows = tradeXAllRows.filter((trade) => !tradeXHiddenHistoryIds.has(trade.contract_id));
-  const digitFlipRows = digitFlipAllRows.filter((trade) => !digitFlipHiddenHistoryIds.has(trade.contract_id));
-  const bulkRows = bulkAllRows.filter((trade) => !bulkTraderHiddenHistoryIds.has(trade.contract_id));
+  const edgeRows = edgeAllRows.filter((trade) => edgeClaimedHistoryIdsRef.current.has(trade.contract_id) && !edgeHiddenHistoryIds.has(trade.contract_id));
+  const tradeXRows = tradeXAllRows.filter((trade) => tradeXClaimedHistoryIdsRef.current.has(trade.contract_id) && !tradeXHiddenHistoryIds.has(trade.contract_id));
+  const digitFlipRows = digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipHiddenHistoryIds.has(trade.contract_id));
+  const bulkRows = bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkTraderHiddenHistoryIds.has(trade.contract_id));
+  const bulkSessionRows = bulkSessionKnownIdsRef.current
+    ? bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkSessionKnownIdsRef.current?.has(trade.contract_id))
+    : [];
   const edgeSessionRows = edgeSessionKnownIdsRef.current
-    ? edgeAllRows.filter((trade) => !edgeSessionKnownIdsRef.current?.has(trade.contract_id))
+    ? edgeAllRows.filter((trade) => edgeClaimedHistoryIdsRef.current.has(trade.contract_id) && !edgeSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
   const digitFlipSessionRows = digitFlipSessionKnownIdsRef.current
-    ? digitFlipAllRows.filter((trade) => !digitFlipSessionKnownIdsRef.current?.has(trade.contract_id))
+    ? digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
   const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
@@ -446,10 +454,11 @@ export default function XTraderPage() {
   const settledPnl = edgeSessionRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const liveContract = status.data?.last_contract;
   const liveContractRow = liveContract
-    ? edgeAllRows.find((trade) => trade.contract_id === liveContract.contract_id)
+    ? edgeRows.find((trade) => trade.contract_id === liveContract.contract_id)
     : undefined;
   const liveUnsettledPnl = liveContract
     && edgeSessionKnownIdsRef.current
+    && edgeClaimedHistoryIdsRef.current.has(liveContract.contract_id)
     && !edgeSessionKnownIdsRef.current.has(liveContract.contract_id)
     && (!liveContractRow || liveContractRow.status === "open")
     ? liveContract.profit
@@ -475,15 +484,9 @@ export default function XTraderPage() {
       const differsRate = selectedOutcome
         ? Number(selectedOutcome.over_percentage) + Number(selectedOutcome.under_percentage)
         : 50;
-      const parityRate = Math.max(signal.digit_even_percentage, signal.digit_odd_percentage);
-      const movementRate = Math.max(signal.rise_percentage, signal.fall_percentage);
       const observedPercentage = bulkTraderType === "over-under"
         ? Number((selectedOutcome ? Math.max(Number(selectedOutcome.over_percentage), Number(selectedOutcome.under_percentage)) : 50).toFixed(1))
-        : bulkTraderType === "differs"
-          ? Number(differsRate.toFixed(1))
-          : bulkTraderType === "even-odd"
-            ? Number(parityRate.toFixed(1))
-            : Number(movementRate.toFixed(1));
+         : Number(differsRate.toFixed(1));
       return {
         symbol: signal.symbol,
         sampleCount: signal.sample_count,
@@ -492,12 +495,18 @@ export default function XTraderPage() {
     }),
     [bulkTraderPrediction, bulkTraderType, status.data?.market_signals],
   );
+  const bulkTraderBestSymbol = useMemo(
+    () => [...bulkTraderMarketSignals]
+      .sort((left, right) => right.observedPercentage - left.observedPercentage || right.sampleCount - left.sampleCount)[0]?.symbol ?? null,
+    [bulkTraderMarketSignals],
+  );
 
   useEffect(() => {
     if (sessionAccountIdRef.current === currentAccount?.id) return;
     sessionAccountIdRef.current = currentAccount?.id ?? null;
     edgeSessionKnownIdsRef.current = null;
     digitFlipSessionKnownIdsRef.current = null;
+    bulkSessionKnownIdsRef.current = null;
     setEdgeOutcomeSynced(false);
     setEdgeAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
     setDigitFlipOutcomeSynced(false);
@@ -524,7 +533,10 @@ export default function XTraderPage() {
     if (digitFlipSessionKnownIdsRef.current == null) {
       digitFlipSessionKnownIdsRef.current = new Set(digitFlipAllRows.map((trade) => trade.contract_id));
     }
-  }, [history.data, edgeAllRows, digitFlipAllRows]);
+    if (bulkSessionKnownIdsRef.current == null) {
+      bulkSessionKnownIdsRef.current = new Set(bulkAllRows.map((trade) => trade.contract_id));
+    }
+  }, [history.data, edgeAllRows, digitFlipAllRows, bulkAllRows]);
 
   const analysis = useMemo(() => {
     const counts = Array.from({ length: 10 }, (_, digit) => analysisDigits.filter((value) => value === digit).length);
@@ -600,20 +612,22 @@ export default function XTraderPage() {
   );
   const tradeXRankedEntryDigit = digitForTick(tradeXDuration, tradeXRankedDigits, tradeXSelectedDigit);
   const tradeXEntryDigit = tradeXManualSelect ? tradeXSelectedDigit : tradeXRankedEntryDigit;
-  const tradeXConfidence = tradeXDistribution.length
-    ? Math.min(99, Math.max(50, Math.round(100 - (tradeXDistribution[tradeXEntryDigit]?.percentage ?? 0))))
-    : 50;
+  const tradeXFrameworkSignalReady = useMemo(() => {
+    const selectedSignal = tradeXDistribution[tradeXEntryDigit];
+    return Boolean(
+      selectedSignal
+      && selectedSignal.percentage < 7
+      && (selectedSignal.streak === 3 || selectedSignal.streak === 4)
+      && lastDigit === tradeXEntryDigit,
+    );
+  }, [lastDigit, tradeXDistribution, tradeXEntryDigit]);
   useEffect(() => {
-    tradeXAnalysisRef.current = { tickCount: analysisTickCount, confidence: tradeXConfidence };
-    tradeXDistributionRef.current = tradeXDistribution;
-    tradeXLastDigitRef.current = lastDigit ?? null;
-    tradeXAnalysisDigitsRef.current = analysisDigits;
     edgeAnalysisRef.current = {
       sample: analysisDigits.length,
       overPercent: analysis.overPercent,
       underPercent: analysis.underPercent,
     };
-  }, [analysis, analysisDigits, analysisTickCount, lastDigit, tradeXConfidence, tradeXDistribution]);
+  }, [analysis, analysisDigits, analysisTickCount, lastDigit, tradeXDistribution]);
   const rankedDigits = useMemo(
     () => analysisTickCount > 0 ? rankDigitsByDistribution(analysis.counts) : [],
     [analysis.counts, analysisTickCount],
@@ -630,9 +644,7 @@ export default function XTraderPage() {
       selectedDigit: tradeXEntryDigit,
       duration: tradeXDuration,
       manualSelect: tradeXManualSelect,
-      smartConfidence: tradeXSmartConfidence,
-      smartTradeCount: tradeXSmartTradeCount,
-      smartAiTicks: tradeXSmartAiTicks,
+      frameworkSignalReady: tradeXFrameworkSignalReady,
       rankedDigits: tradeXRankedDigits,
     };
   }, [
@@ -641,9 +653,7 @@ export default function XTraderPage() {
     tradeXEntryDigit,
     tradeXDuration,
     tradeXManualSelect,
-    tradeXSmartConfidence,
-    tradeXSmartTradeCount,
-    tradeXSmartAiTicks,
+    tradeXFrameworkSignalReady,
     tradeXRankedDigits,
   ]);
 
@@ -661,9 +671,10 @@ export default function XTraderPage() {
 
   useEffect(() => {
     edgeOverThreeSniperRef.current = edgeOverThreeSniper;
+    edgeAutoOverThreeFourFiveRef.current = edgeAutoOverThreeFourFive;
     edgeBestPairAnalyzerRef.current = edgeBestPairAnalyzer;
     edgeAutoSelectBestRef.current = edgeAutoSelectBest;
-  }, [edgeAutoSelectBest, edgeBestPairAnalyzer, edgeOverThreeSniper]);
+  }, [edgeAutoOverThreeFourFive, edgeAutoSelectBest, edgeBestPairAnalyzer, edgeOverThreeSniper]);
 
   useEffect(() => {
     nextStakeRef.current = stake;
@@ -701,7 +712,6 @@ export default function XTraderPage() {
     setAnalysisDigits((current) => [...current, digit].slice(-1000));
     setAnalysisTickCount((current) => current + 1);
     if (tradeXEnabled && status.data?.last_tick?.symbol === tradeXSymbol) {
-      tradeXObservedTickWindowRef.current = [...tradeXObservedTickWindowRef.current, digit].slice(-5);
     }
     if (digitFlipEnabled) {
       setDigitFlipSampleCount((current) => current + 1);
@@ -754,7 +764,6 @@ export default function XTraderPage() {
 
   useEffect(() => () => {
     runningRef.current = false;
-    tradeXSmartRef.current = false;
     digitFlipRunningRef.current = false;
   }, []);
 
@@ -778,9 +787,7 @@ export default function XTraderPage() {
 
   const disconnect = async () => {
     runningRef.current = false;
-    tradeXSmartRef.current = false;
     setRunning(false);
-    setTradeXSmartAuto(false);
     await deleteTokenMutation.mutateAsync();
     queryClient.clear();
     void tokenStatus.refetch();
@@ -860,7 +867,9 @@ export default function XTraderPage() {
 
   const selectEdgeAutomation = async (excludeSymbol?: string) => {
     const signals = (status.data?.market_signals ?? []) as MarketSignal[];
-    const recommendation = edgeOverThreeSniperRef.current
+    const recommendation = edgeAutoOverThreeFourFiveRef.current
+      ? chooseBestAutoOver345Signal(signals, excludeSymbol)
+      : edgeOverThreeSniperRef.current
       ? chooseBestOverThreeSignal(signals, excludeSymbol)
       : (edgeBestPairAnalyzerRef.current || edgeAutoSelectBestRef.current)
         ? chooseBestAnalyzerSignal(signals, excludeSymbol)
@@ -886,7 +895,9 @@ export default function XTraderPage() {
       barrier: recommendation.digit,
     });
     setEdgeScannerMessage(
-      edgeOverThreeSniperRef.current
+      edgeAutoOverThreeFourFiveRef.current
+        ? `Hunting all Volatility and Jump pairs for the best observed Over ${recommendation.digit} · ${recommendation.symbol}`
+        : edgeOverThreeSniperRef.current
         ? `Hunting all Volatility and Jump pairs for the best observed Over 3 · ${recommendation.symbol}`
         : `Hunting all Volatility and Jump pairs for the best observed ${recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} · ${recommendation.symbol}`,
     );
@@ -899,9 +910,11 @@ export default function XTraderPage() {
   }, [barrier, direction, duration, isConnected, stake, symbol, xTraderEnabled]);
 
   useEffect(() => {
-    if (!isConnected || (!edgeOverThreeSniper && !edgeBestPairAnalyzer && !edgeAutoSelectBest)) return;
+    if (!isConnected || (!edgeAutoOverThreeFourFive && !edgeOverThreeSniper && !edgeBestPairAnalyzer && !edgeAutoSelectBest)) return;
     const signals = (status.data?.market_signals ?? []) as MarketSignal[];
-    const recommendation = edgeOverThreeSniper
+    const recommendation = edgeAutoOverThreeFourFive
+      ? chooseBestAutoOver345Signal(signals)
+      : edgeOverThreeSniper
       ? chooseBestOverThreeSignal(signals)
       : chooseBestAnalyzerSignal(signals);
     if (!recommendation) return;
@@ -911,6 +924,7 @@ export default function XTraderPage() {
     void selectEdgeAutomation();
   }, [
     edgeAutoSelectBest,
+    edgeAutoOverThreeFourFive,
     edgeBestPairAnalyzer,
     edgeOverThreeSniper,
     isConnected,
@@ -944,6 +958,25 @@ export default function XTraderPage() {
       void queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: "active" });
       void queryClient.refetchQueries({ queryKey: getGetDerivAccountsQueryKey(), type: "active" });
     }, 180);
+  };
+
+  const claimFeatureRows = async (
+    target: Set<string>,
+    beforeRows: readonly { contract_id: string; contract_type: string }[],
+    types: readonly string[],
+  ) => {
+    const beforeIds = new Set(beforeRows.map((trade) => trade.contract_id));
+    let latestRows = beforeRows;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      latestRows = await getDerivHistory();
+      latestRows
+        .filter((trade) => types.includes(trade.contract_type) && !beforeIds.has(trade.contract_id))
+        .forEach((trade) => target.add(trade.contract_id));
+      if (latestRows.some((trade) => target.has(trade.contract_id))) break;
+      await sleep(180);
+    }
+    queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+    return latestRows;
   };
 
   const executeBatch = async () => {
@@ -987,42 +1020,28 @@ export default function XTraderPage() {
         confirm_live_trade: true,
       },
     });
+    await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
     setSessionTrades((value) => value + 1);
     refreshTradeResults();
   };
 
   const executeDualBatch = async () => {
-    const config = configRef.current;
-    let latestRows = await getDerivHistory();
-    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
-      await sleep(500);
-      latestRows = await getDerivHistory();
+    const originalDirection = configRef.current.direction;
+    try {
+      for (const nextDirection of ["DIGITOVER", "DIGITUNDER"] as const) {
+        if (!runningRef.current) return;
+        configRef.current = { ...configRef.current, direction: nextDirection };
+        await executeBatch();
+      }
+    } finally {
+      configRef.current = { ...configRef.current, direction: originalDirection };
     }
-    if (latestRows.some((trade) => trade.status === "open")) {
-      throw new Error("The previous contract is still settling. EDGE stopped without sending another trade.");
-    }
-    queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-    if (!runningRef.current) return;
-    const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
-    armMartingaleWatch(latestRows, amount, 2);
-    await dualBuyMutation.mutateAsync({
-      data: {
-        amount,
-        duration: config.duration,
-        duration_unit: "t",
-        barrier: config.barrier,
-        symbol: config.symbol,
-        confirm_live_trade: true,
-      },
-    });
-    setSessionTrades((value) => value + 2);
-    refreshTradeResults();
   };
 
   const runLoop = async () => {
     while (runningRef.current) {
       try {
-        if (edgeOverThreeSniperRef.current || edgeBestPairAnalyzerRef.current || edgeAutoSelectBestRef.current) {
+        if (edgeAutoOverThreeFourFiveRef.current || edgeOverThreeSniperRef.current || edgeBestPairAnalyzerRef.current || edgeAutoSelectBestRef.current) {
           const recommendation = await selectEdgeAutomation();
           if (!recommendation) {
             await sleep(1500);
@@ -1124,8 +1143,6 @@ export default function XTraderPage() {
     setDigitFlipRunning(false);
     setTradeXEnabled(false);
     setBulkTraderEnabled(false);
-    tradeXSmartRef.current = false;
-    setTradeXSmartAuto(false);
   };
 
   const reset = () => {
@@ -1193,7 +1210,6 @@ export default function XTraderPage() {
   const selectMarket = async (next: string) => {
     setSymbol(next);
     analysisEpochRef.current = null;
-    tradeXObservedTickWindowRef.current = [];
     setAnalysisDigits([]);
     setAnalysisTickCount(0);
     if (digitFlipEnabled) resetDigitFlipScanner();
@@ -1213,7 +1229,9 @@ export default function XTraderPage() {
     const config = tradeXConfigRef.current;
     const entryDigit = digitOverride ?? (config.manualSelect
       ? config.selectedDigit
-      : digitForTick(durationOverride, config.rankedDigits, config.selectedDigit));
+      : config.frameworkSignalReady
+        ? config.selectedDigit
+        : digitForTick(durationOverride, config.rankedDigits, config.selectedDigit));
     if (!isConnected) {
       setTradeXMessage("Connect Deriv before sending a Trade X contract.");
       return false;
@@ -1228,27 +1246,6 @@ export default function XTraderPage() {
     }
     if (currentAccount && config.stake * count > currentAccount.balance) {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
-      return false;
-    }
-    const selectedSignal = tradeXDistributionRef.current[entryDigit];
-    const selectedConfidence = selectedSignal ? 100 - selectedSignal.percentage : 0;
-    const selectedDigitIsAwayFromMarket = tradeXLastDigitRef.current == null || tradeXLastDigitRef.current !== entryDigit;
-    const observedEntryReady = Boolean(
-      selectedSignal
-      && selectedSignal.percentage < 7
-      && selectedSignal.streak >= 1
-      && selectedDigitIsAwayFromMarket,
-    );
-    if (
-      tradeXSmartRef.current
-      && (!observedEntryReady || selectedConfidence < config.smartConfidence)
-    ) {
-      setTradeXMessage(`Trade X is waiting for a sub-7% observed digit signal after the market moves away from digit ${entryDigit}.`);
-      return false;
-    }
-    if (tradeXLastDigitRef.current === entryDigit) {
-      setTradeXMessage(`Trade X delayed because digit ${entryDigit} is the current market digit. Waiting for it to move away.`);
-      await waitForMarketTicks(Math.max(1, durationOverride), () => isConnected);
       return false;
     }
     const latestRows = await getDerivHistory();
@@ -1270,6 +1267,7 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+       await claimFeatureRows(tradeXClaimedHistoryIdsRef.current, latestRows, ["DIGITDIFF"]);
       setTradeXTradesSent((value) => value + count);
       setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
       refreshTradeResults();
@@ -1282,20 +1280,6 @@ export default function XTraderPage() {
     }
   };
 
-  const waitForTradeXSettlements = async (
-    knownIds: ReadonlySet<string>,
-    expectedCount: number,
-    isActive: () => boolean,
-  ) => {
-    for (let attempt = 0; attempt < 120 && isActive(); attempt += 1) {
-      const latestRows = await getDerivHistory();
-      const newRows = latestRows.filter(
-        (trade) => trade.contract_type === "DIGITDIFF" && !knownIds.has(trade.contract_id),
-      );
-      if (newRows.length >= expectedCount && newRows.every((trade) => trade.status !== "open")) return;
-      await sleep(250);
-    }
-  };
 
   const chooseDigitFlipSetup = async (requireThreshold = false) => {
     const currentRows = await getDerivHistory();
@@ -1437,6 +1421,7 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+      await claimFeatureRows(digitFlipClaimedHistoryIdsRef.current, latestRows, [config.parity]);
       setDigitFlipTradeCount((value) => value + 1);
       refreshTradeResults();
       return true;
@@ -1492,10 +1477,8 @@ export default function XTraderPage() {
     setTradeXEnabled(false);
     setBulkTraderEnabled(false);
     runningRef.current = false;
-    tradeXSmartRef.current = false;
     setRunning(false);
     setAutoSwitch(false);
-    setTradeXSmartAuto(false);
     void chooseDigitFlipMarket();
   };
 
@@ -1602,63 +1585,6 @@ export default function XTraderPage() {
     setHistoryFading(false);
   };
 
-  const runTradeXSmartLoop = async () => {
-    while (tradeXSmartRef.current) {
-      const config = tradeXConfigRef.current;
-      await waitForMarketTicks(config.smartAiTicks, () => tradeXSmartRef.current);
-      if (!tradeXSmartRef.current) break;
-      const observedTicks = tradeXObservedTickWindowRef.current.slice(-config.smartAiTicks);
-      if (observedTicks.length < config.smartAiTicks) {
-        setTradeXMessage(`Trade X is collecting the next ${config.smartAiTicks} live tick${config.smartAiTicks === 1 ? "" : "s"} before evaluating the entry.`);
-        continue;
-      }
-      const observedCounts = Array.from({ length: 10 }, (_, digit) => observedTicks.filter((value) => value === digit).length);
-      const observedRankedDigits = rankDigitsForDiffers(observedCounts);
-      const rankedDigit = config.manualSelect
-        ? config.selectedDigit
-        : observedRankedDigits[0] ?? digitForTick(config.smartAiTicks, config.rankedDigits, config.selectedDigit);
-      const confidence = tradeXDistributionRef.current.length
-        ? Math.min(99, Math.max(50, Math.round(100 - (tradeXDistributionRef.current[rankedDigit]?.percentage ?? 0))))
-        : tradeXAnalysisRef.current.confidence;
-      if (confidence < config.smartConfidence) {
-        setTradeXMessage(`Smart Auto Trade observed the next ${config.smartAiTicks} live tick${config.smartAiTicks === 1 ? "" : "s"}; current signal is ${confidence}% against the ${config.smartConfidence}% floor.`);
-        await waitForMarketTicks(1, () => tradeXSmartRef.current);
-        continue;
-      }
-      const knownIds = new Set(
-        (await getDerivHistory())
-          .filter((trade) => trade.contract_type === "DIGITDIFF")
-          .map((trade) => trade.contract_id),
-      );
-      const didTrade = await executeTradeX(config.smartTradeCount, config.duration, rankedDigit);
-      if (tradeXSmartRef.current && didTrade) {
-        await waitForTradeXSettlements(knownIds, config.smartTradeCount, () => tradeXSmartRef.current);
-      } else if (tradeXSmartRef.current && !didTrade) {
-        await waitForMarketTicks(1, () => tradeXSmartRef.current);
-      }
-    }
-  };
-
-  const toggleTradeXSmart = (enabled: boolean) => {
-    if (!enabled) {
-      tradeXSmartRef.current = false;
-      setTradeXSmartAuto(false);
-      setTradeXMessage("Smart Auto Trade stopped.");
-      return;
-    }
-    if (!isConnected) {
-      setTradeXMessage("Connect Deriv before enabling Smart Auto Trade.");
-      return;
-    }
-    if (isReal && !liveConfirmed) {
-      setTradeXMessage("Confirm live funds before enabling Smart Auto Trade.");
-      return;
-    }
-    tradeXSmartRef.current = true;
-    setTradeXSmartAuto(true);
-    void runTradeXSmartLoop();
-  };
-
   const toggleTradeX = (enabled: boolean) => {
     setTradeXEnabled(enabled);
     if (enabled) {
@@ -1672,8 +1598,6 @@ export default function XTraderPage() {
       setAutoSwitch(false);
       return;
     }
-    tradeXSmartRef.current = false;
-    setTradeXSmartAuto(false);
     setTradeXMessage("Trade X paused.");
   };
 
@@ -1684,10 +1608,8 @@ export default function XTraderPage() {
     setTradeXEnabled(false);
     setDigitFlipEnabled(false);
     runningRef.current = false;
-    tradeXSmartRef.current = false;
     digitFlipRunningRef.current = false;
     setRunning(false);
-    setTradeXSmartAuto(false);
     setDigitFlipRunning(false);
   };
 
@@ -1704,6 +1626,7 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a Bulk Trader contract." });
       return;
     }
+    const beforeRows = await getDerivHistory();
     const send = (type: BulkTraderContractType) => bulkBuyMutation.mutateAsync({
       data: {
         amount: bulkTraderStake,
@@ -1716,18 +1639,10 @@ export default function XTraderPage() {
         confirm_live_trade: true,
       },
     });
-    const isDual = bulkTraderPrediction === "dual";
     bulkActionLockRef.current = true;
     try {
-      if (isDual && bulkTraderType === "even-odd") {
-        await send("DIGITEVEN");
-        await send("DIGITODD");
-      } else if (isDual && bulkTraderType === "rise-fall") {
-        await send("CALL");
-        await send("PUT");
-      } else {
-        await send(contractType);
-      }
+      await send(contractType);
+      await claimFeatureRows(bulkClaimedHistoryIdsRef.current, beforeRows, [contractType]);
       refreshTradeResults();
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -1740,7 +1655,8 @@ export default function XTraderPage() {
     setDuration(next);
   };
 
-  const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
+  const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER", internalDual = false) => {
+    if (edgeActionLockRef.current && !internalDual) return;
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
@@ -1763,8 +1679,13 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
       return;
     }
+    if (!internalDual) edgeActionLockRef.current = true;
     try {
       const latestRows = await getDerivHistory();
+      if (latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) {
+        setConnectionMessage({ kind: "info", text: "The previous EDGE contract is still settling. Wait before sending another trade." });
+        return;
+      }
       queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
       armMartingaleWatch(latestRows, amount, 1);
       await bulkBuyMutation.mutateAsync({
@@ -1779,16 +1700,20 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+      await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
       setDirection(contractType);
       setSessionTrades((value) => value + 1);
       await queryClient.invalidateQueries();
     } catch (error) {
       martingaleWatchRef.current = null;
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    } finally {
+      if (!internalDual) edgeActionLockRef.current = false;
     }
   };
 
   const fireDualTrade = async () => {
+    if (edgeActionLockRef.current) return;
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
@@ -1806,30 +1731,30 @@ export default function XTraderPage() {
       }
     }
     const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-    const entryDigit = configRef.current.barrier;
     if (currentAccount && amount * 2 > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The dual stake is higher than the available balance." });
       return;
     }
+    edgeActionLockRef.current = true;
     try {
-      const latestRows = await getDerivHistory();
-      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-      armMartingaleWatch(latestRows, amount, 2);
-      await dualBuyMutation.mutateAsync({
-        data: {
-          amount,
-          duration,
-          duration_unit: "t",
-          barrier: entryDigit,
-          symbol: configRef.current.symbol,
-          confirm_live_trade: true,
-        },
-      });
-      setSessionTrades((value) => value + 2);
-      await queryClient.invalidateQueries();
+      const originalDirection = configRef.current.direction;
+      try {
+        await fireTrade("DIGITOVER", true);
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const latestRows = await getDerivHistory();
+          if (!latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) break;
+          await sleep(500);
+        }
+        configRef.current = { ...configRef.current, direction: "DIGITUNDER" };
+        await fireTrade("DIGITUNDER", true);
+      } finally {
+        configRef.current = { ...configRef.current, direction: originalDirection };
+      }
     } catch (error) {
       martingaleWatchRef.current = null;
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    } finally {
+      edgeActionLockRef.current = false;
     }
   };
   const clearHistory = async () => {
@@ -1933,7 +1858,7 @@ export default function XTraderPage() {
           <strong><span>{currentAccount?.currency ?? "USD"}</span>{(currentAccount?.balance ?? 0).toFixed(2)}</strong>
           <div>{currentAccount?.id ?? "No account connected"} <b className={isReal ? "real" : ""}>{currentAccount?.type ?? "—"}</b></div>
         </div>
-        <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running || digitFlipRunning || tradeXSmartAuto || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || accountMutation.isPending}>
+        <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running || digitFlipRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || accountMutation.isPending}>
           {!accountOptions.length && <option value="">Connect PAT first</option>}
           {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
         </select><ChevronDown size={15} /></div></label>
@@ -1958,11 +1883,12 @@ export default function XTraderPage() {
       <section className="xt-feature-card xt-feature-card-digit-flip">
         <div><Activity size={18} /><span><b>Bulk Trader</b><small>Send 1–6 contracts instantly across four trade types</small></span></div>
         <div className="xt-feature-actions">
-          <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("bulk-trader"); setGuidePage(0); setGuideOpen(true); }}>
+          {!canUseBulkTrader && <span className="xt-feature-locked">RESTRICTED</span>}
+          {canUseBulkTrader && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("bulk-trader"); setGuidePage(0); setGuideOpen(true); }}>
             <BookOpen size={14} />Guide
-          </button>
+          </button>}
           <label className="xt-switch">
-            <input type="checkbox" checked={bulkTraderEnabled} onChange={(event) => toggleBulkTrader(event.target.checked)} aria-label="Toggle Bulk Trader" disabled={!isConnected} />
+            <input type="checkbox" checked={bulkTraderEnabled} onChange={(event) => toggleBulkTrader(event.target.checked)} aria-label="Toggle Bulk Trader" disabled={!canUseBulkTrader || !isConnected} />
             <span />
           </label>
         </div>
@@ -2020,7 +1946,7 @@ export default function XTraderPage() {
         </div>
       </section>
 
-      {bulkTraderEnabled && (
+      {bulkTraderEnabled && canUseBulkTrader && (
         <BulkTraderPanel
           symbol={bulkTraderSymbol}
           symbols={tradeXSymbols}
@@ -2031,10 +1957,11 @@ export default function XTraderPage() {
           digitHistory={analysisDigits}
           type={bulkTraderType}
           prediction={bulkTraderPrediction}
-          sampleTicks={bulkTraderSampleTicks}
           duration={bulkTraderDuration}
           stake={bulkTraderStake}
           tradeCount={bulkTraderCount}
+           analysisTickCount={analysisTickCount}
+           autoSelectBest={bulkTraderAutoSelectBest}
           recentTrades={bulkRows}
           isConnected={isConnected}
           isReal={Boolean(isReal)}
@@ -2042,13 +1969,19 @@ export default function XTraderPage() {
           isPlacingTrade={bulkBuyMutation.isPending}
           historyFading={historyFading}
           clearArmed={bulkTraderClearArmed}
-          onSymbolChange={(next) => { setBulkTraderSymbol(next); void selectMarket(next); }}
+           onSymbolChange={(next) => { setBulkTraderAutoSelectBest(false); setBulkTraderSymbol(next); void selectMarket(next); }}
           onTypeChange={(next) => {
             setBulkTraderType(next);
-            setBulkTraderPrediction(next === "over-under" ? 5 : next === "differs" ? 0 : next === "even-odd" ? "even" : "rise");
+             setBulkTraderPrediction(next === "over-under" ? 5 : 0);
           }}
           onPredictionChange={setBulkTraderPrediction}
-          onSampleTicksChange={setBulkTraderSampleTicks}
+           onAutoSelectBestChange={(enabled) => {
+             setBulkTraderAutoSelectBest(enabled);
+             if (enabled && bulkTraderBestSymbol) {
+               setBulkTraderSymbol(bulkTraderBestSymbol);
+               void selectMarket(bulkTraderBestSymbol);
+             }
+           }}
           onDurationChange={setBulkTraderDuration}
           onStakeChange={setBulkTraderStake}
           onTradeCountChange={setBulkTraderCount}
@@ -2165,6 +2098,7 @@ export default function XTraderPage() {
           sessionPnl={sessionPnl}
           sessionTrades={sessionTrades}
           overThreeSniper={edgeOverThreeSniper}
+           autoOverThreeFourFive={edgeAutoOverThreeFourFive}
           bestPairAnalyzer={edgeBestPairAnalyzer}
           autoSelectBest={edgeAutoSelectBest}
           scannerMessage={edgeScannerMessage}
@@ -2178,18 +2112,38 @@ export default function XTraderPage() {
             setEdgeOverThreeSniper(enabled);
             edgeOverThreeSniperRef.current = enabled;
             if (enabled) {
+               setEdgeAutoOverThreeFourFive(false);
+               edgeAutoOverThreeFourFiveRef.current = false;
               setEdgeAutoSelectBest(true);
               edgeAutoSelectBestRef.current = true;
               setEdgeBestPairAnalyzer(false);
               edgeBestPairAnalyzerRef.current = false;
               setEdgeScannerMessage("Hunting all Volatility and Jump pairs for the best observed Over 3 signal…");
               void selectEdgeAutomation();
-            } else if (!edgeBestPairAnalyzerRef.current) {
+            } else if (!edgeBestPairAnalyzerRef.current && !edgeAutoOverThreeFourFiveRef.current) {
               setEdgeAutoSelectBest(false);
               edgeAutoSelectBestRef.current = false;
               setEdgeScannerMessage(null);
             }
           }}
+           onAutoOverThreeFourFiveChange={(enabled) => {
+             setEdgeAutoOverThreeFourFive(enabled);
+             edgeAutoOverThreeFourFiveRef.current = enabled;
+             if (enabled) {
+               setEdgeAutoSelectBest(true);
+               edgeAutoSelectBestRef.current = true;
+               setEdgeOverThreeSniper(false);
+               edgeOverThreeSniperRef.current = false;
+               setEdgeBestPairAnalyzer(false);
+               edgeBestPairAnalyzerRef.current = false;
+               setEdgeScannerMessage("Hunting the strongest observed Over signal across barriers 3, 4, and 5…");
+               void selectEdgeAutomation();
+             } else if (!edgeOverThreeSniperRef.current && !edgeBestPairAnalyzerRef.current) {
+               setEdgeAutoSelectBest(false);
+               edgeAutoSelectBestRef.current = false;
+               setEdgeScannerMessage(null);
+             }
+           }}
           onBestPairAnalyzerChange={(enabled) => {
             setEdgeBestPairAnalyzer(enabled);
             edgeBestPairAnalyzerRef.current = enabled;
@@ -2198,9 +2152,11 @@ export default function XTraderPage() {
               edgeAutoSelectBestRef.current = true;
               setEdgeOverThreeSniper(false);
               edgeOverThreeSniperRef.current = false;
+               setEdgeAutoOverThreeFourFive(false);
+               edgeAutoOverThreeFourFiveRef.current = false;
               setEdgeScannerMessage("Hunting all Volatility and Jump pairs for the best observed Over or Under digit…");
               void selectEdgeAutomation();
-            } else if (!edgeOverThreeSniperRef.current) {
+            } else if (!edgeOverThreeSniperRef.current && !edgeAutoOverThreeFourFiveRef.current) {
               setEdgeAutoSelectBest(false);
               edgeAutoSelectBestRef.current = false;
               setEdgeScannerMessage(null);
@@ -2212,7 +2168,7 @@ export default function XTraderPage() {
             if (enabled) {
               setEdgeScannerMessage("Following the live best observed market and barrier…");
               void selectEdgeAutomation();
-            } else if (!edgeOverThreeSniperRef.current && !edgeBestPairAnalyzerRef.current) {
+            } else if (!edgeOverThreeSniperRef.current && !edgeAutoOverThreeFourFiveRef.current && !edgeBestPairAnalyzerRef.current) {
               setEdgeRecommendation(null);
               setEdgeScannerMessage(null);
             }
@@ -2339,10 +2295,6 @@ export default function XTraderPage() {
             selectedDigit={tradeXEntryDigit}
             duration={tradeXDuration}
             manualSelectMode={tradeXManualSelect}
-            smartAutoEnabled={tradeXSmartAuto}
-            smartConfidence={tradeXSmartConfidence}
-            smartTradeCount={tradeXSmartTradeCount}
-            smartAiTicks={tradeXSmartAiTicks}
             distribution={tradeXDistribution}
             rankedSafestDigits={tradeXRankedDigits}
             symbols={tradeXSymbols}
@@ -2368,10 +2320,6 @@ export default function XTraderPage() {
                void executeTradeX(1, tradeXDuration, digit);
              }}
             onPlaceTrade={() => void executeTradeX(1)}
-            onSmartAutoChange={toggleTradeXSmart}
-            onSmartConfidenceChange={setTradeXSmartConfidence}
-            onSmartTradeCountChange={setTradeXSmartTradeCount}
-            onSmartAiTicksChange={(next) => setTradeXSmartAiTicks(next as TradeXDuration)}
             onRefreshAnalysis={refreshAnalysis}
           />
           {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}

@@ -57,6 +57,7 @@ type EdgeReferencePanelProps = {
   sessionPnl: number;
   sessionTrades: number;
   overThreeSniper: boolean;
+  autoOverThreeFourFive: boolean;
   bestPairAnalyzer: boolean;
   autoSelectBest: boolean;
   scannerMessage?: string | null;
@@ -67,6 +68,7 @@ type EdgeReferencePanelProps = {
   onStop: () => void;
   onReset: () => void;
   onOverThreeSniperChange: (value: boolean) => void;
+  onAutoOverThreeFourFiveChange: (value: boolean) => void;
   onBestPairAnalyzerChange: (value: boolean) => void;
   onAutoSelectBestChange: (value: boolean) => void;
   onAccountBalanceChange: (value: string) => void;
@@ -207,6 +209,7 @@ export default function EdgeReferencePanel({
   sessionPnl,
   sessionTrades,
   overThreeSniper,
+  autoOverThreeFourFive,
   bestPairAnalyzer,
   autoSelectBest,
   scannerMessage = null,
@@ -217,6 +220,7 @@ export default function EdgeReferencePanel({
   onStop,
   onReset,
   onOverThreeSniperChange,
+  onAutoOverThreeFourFiveChange,
   onBestPairAnalyzerChange,
   onAutoSelectBestChange,
   onAccountBalanceChange,
@@ -249,7 +253,7 @@ export default function EdgeReferencePanel({
   const bestBarrier = bestSignal?.digit ?? barrier;
   const bestRate = bestSignal?.score ?? null;
   const bestMarket = markets.find(([value]) => value === (bestSignal?.symbol ?? symbol))?.[1] ?? "Volatility 100 Index";
-  const autoMarketEnabled = autoSelectBest || overThreeSniper || bestPairAnalyzer;
+  const autoMarketEnabled = autoSelectBest || autoOverThreeFourFive || overThreeSniper || bestPairAnalyzer;
   const displayedSymbol = autoMarketEnabled ? (bestSignal?.symbol ?? symbol) : symbol;
   const marketLabel = markets.find(([value]) => value === displayedSymbol)?.[1] ?? "Volatility 100 Index";
   const rankedMarkets = useMemo(() => {
@@ -258,7 +262,9 @@ export default function EdgeReferencePanel({
       const signal = signalMap.get(value);
       const outcomes = signal?.digit_outcomes?.filter((outcome) => outcome.digit > 0 && outcome.digit < 9) ?? [];
       const score = signal
-        ? overThreeSniper
+          ? autoOverThreeFourFive
+            ? Math.max(...[3, 4, 5].map((digit) => Number(outcomes.find((outcome) => outcome.digit === digit)?.over_percentage ?? 0)))
+            : overThreeSniper
           ? Number(outcomes.find((outcome) => outcome.digit === 3)?.over_percentage ?? 0)
           : Math.max(...outcomes.flatMap((outcome) => [
             Number(outcome.over_percentage),
@@ -267,7 +273,7 @@ export default function EdgeReferencePanel({
         : 0;
       return { value, label, score };
     }).sort((left, right) => right.score - left.score || left.label.localeCompare(right.label));
-  }, [autoSelectBest, bestPairAnalyzer, marketSignals, markets, overThreeSniper]);
+  }, [autoOverThreeFourFive, autoSelectBest, bestPairAnalyzer, marketSignals, markets, overThreeSniper]);
   const quoteText = quote == null ? "—" : Number.isInteger(quote) ? String(quote) : quote.toFixed(2);
   const payoutText = payoutPercent == null || !Number.isFinite(payoutPercent) ? "waiting" : `${payoutPercent.toFixed(1)}%`;
   const currency = currentAccount?.currency ?? "USD";
@@ -311,7 +317,7 @@ export default function EdgeReferencePanel({
         <p>{marketPickerOpen ? "Choose a market or let the scanner pick the strongest pair." : "Choose Over or Under — the best-performing pair is picked automatically."}</p>
         {marketPickerOpen && (
           <div className="edge-ref-market-menu">
-            <button type="button" className={`edge-ref-market-option edge-ref-market-smart ${autoMarketEnabled ? "selected" : ""}`} onClick={() => { onAutoSelectBestChange(!autoMarketEnabled); setMarketPickerOpen(false); }}>
+             <button type="button" className={`edge-ref-market-option edge-ref-market-smart ${autoMarketEnabled ? "selected" : ""}`} onClick={() => { onAutoSelectBestChange(!autoMarketEnabled); setMarketPickerOpen(false); }}>
               <span>ϟ Auto-select best (smart)<em>{autoMarketEnabled ? "tap to use manual market" : "tap to follow the live best pair"}</em></span><b>{autoMarketEnabled ? "✓" : ""}</b>
             </button>
             {rankedMarkets.map((option, index) => (
@@ -325,7 +331,11 @@ export default function EdgeReferencePanel({
       </section>
 
       <div className="edge-ref-feature-list">
-          <div className={`edge-ref-feature ${overThreeSniper ? "active" : ""}`}>
+           <div className={`edge-ref-feature ${autoOverThreeFourFive ? "active" : ""}`}>
+           <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Auto over 3 4 and 5</span><EdgeToggle checked={autoOverThreeFourFive} onChange={onAutoOverThreeFourFiveChange} disabled={false} label="Auto over 3 4 and 5" /></div>
+           {autoOverThreeFourFive && <small className="edge-ref-feature-status">{scannerMessage ?? "Hunting the strongest observed Over signal across barriers 3, 4, and 5…"}</small>}
+         </div>
+         <div className={`edge-ref-feature ${overThreeSniper ? "active" : ""}`}>
           <div className="edge-ref-feature-main"><span><i aria-hidden="true" /> Over 3 Best Pair</span><EdgeToggle checked={overThreeSniper} onChange={onOverThreeSniperChange} disabled={false} label="Over 3 Best Pair" /></div>
           {overThreeSniper && <small className="edge-ref-feature-status">{scannerMessage ?? "Hunting all Volatility and Jump pairs for the best observed Over 3 signal…"}</small>}
         </div>

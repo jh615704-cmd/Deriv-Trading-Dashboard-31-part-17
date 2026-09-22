@@ -36,6 +36,7 @@ const featureOptions: Array<{ value: AccessFeature; label: string; description: 
   { value: "edge", label: "EDGE trading", description: "PAT connection, live telemetry, and trades" },
   { value: "digit-flip", label: "DigitFlip", description: "Even / Odd parity trading and automation" },
   { value: "trade-x", label: "Trade X", description: "Digit Differs trading and automation" },
+  { value: "bulk-trader", label: "Bulk Trader", description: "Send 1–6 contracts across four trade types" },
   { value: "settings", label: "Settings", description: "View and manage the Deriv connection" },
   { value: "history", label: "History", description: "Read recent trading activity" },
 ];
@@ -138,12 +139,11 @@ function KeyRow({
             />
           </label>
           <div className="key-edit-features">
-            {featureOptions.filter((feature) => feature.value !== "admin" || item.kind === "admin").map((feature) => (
-              <label className={draftFeatures.includes(feature.value) || item.kind === "admin" ? "key-edit-feature selected" : "key-edit-feature"} key={feature.value}>
+             {featureOptions.map((feature) => (
+               <label className={draftFeatures.includes(feature.value) ? "key-edit-feature selected" : "key-edit-feature"} key={feature.value}>
                 <input
                   type="checkbox"
-                  checked={item.kind === "admin" || draftFeatures.includes(feature.value)}
-                  disabled={item.kind === "admin"}
+                   checked={draftFeatures.includes(feature.value)}
                   onChange={() => toggleDraftFeature(feature.value)}
                 />
                 <span>{feature.label}</span>
@@ -204,7 +204,7 @@ export default function AdminUsersPage() {
     event.preventDefault();
     setFormError("");
     createKey.mutate(
-       { data: { label: label.trim(), kind, max_devices: kind === "admin" && unlimitedDevices ? 0 : maxDevices, features: kind === "admin" ? ["edge", "trade-x", "settings", "history", "admin"] : features } },
+       { data: { label: label.trim(), kind, max_devices: kind === "admin" && unlimitedDevices ? 0 : maxDevices, features } },
       {
         onSuccess: (created) => {
            setNewKey({ value: created.access_key, kind: created.kind, label: created.label });
