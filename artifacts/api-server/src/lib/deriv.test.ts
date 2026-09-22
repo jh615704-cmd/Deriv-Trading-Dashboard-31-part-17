@@ -103,9 +103,13 @@ function handleClientMessage(socket: FakeWebSocket, message: SocketMessage) {
 
   emitMessage(socket, {
     msg_type: "buy",
-    echo_req: { buy: message.buy },
+    ...(message.req_id == null ? {} : { req_id: message.req_id }),
+    echo_req: {
+      buy: message.buy,
+      ...(message.req_id == null ? {} : { req_id: message.req_id }),
+    },
     buy: {
-      contract_id: `contract-${message.buy}`,
+      contract_id: `contract-${message.buy === "1" ? message.req_id ?? message.buy : message.buy}`,
       buy_price: message.price,
       payout: 4.5,
       start_time: 1_700_000_000,

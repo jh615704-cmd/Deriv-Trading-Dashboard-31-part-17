@@ -168,6 +168,7 @@ return {
   lastProposalInput: null as ProposalInput | null,
   lastProposalRefreshAt: 0,
   proposalSequence: 0,
+  buySequence: 0,
   proposalWaiters: new Map<number, { resolve: (proposal: DerivProposal) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>(),
   lastBuyAt: 0,
   contractInputs: new Map<string, ProposalInput>(),
@@ -599,18 +600,54 @@ function sendProposalRequest(input: ProposalInput) {
 }
 
 async function sendProposalBuy(proposal: DerivProposal, input: ProposalInput): Promise<DerivBuy> {
+  const requestKey = proposal.id;
   return new Promise<DerivBuy>((resolve, reject) => {
     const timer = setTimeout(() => {
-      getState().buyWaiters.delete(proposal.id);
-      getState().pendingBuyInputs.delete(proposal.id);
+      getState().buyWaiters.delete(requestKey);
+      getState().pendingBuyInputs.delete(requestKey);
       reject(new Error("Deriv did not confirm the contract purchase in time"));
     }, buyAckTimeoutMs);
-    getState().pendingBuyInputs.set(proposal.id, input);
-    getState().buyWaiters.set(proposal.id, { resolve, reject, timer });
+    getState().pendingBuyInputs.set(requestKey, input);
+    getState().buyWaiters.set(requestKey, { resolve, reject, timer });
     if (!send({ buy: proposal.id, price: proposal.ask_price })) {
       clearTimeout(timer);
-      getState().buyWaiters.delete(proposal.id);
-      getState().pendingBuyInputs.delete(proposal.id);
+      getState().buyWaiters.delete(requestKey);
+      getState().pendingBuyInputs.delete(requestKey);
+      reject(new Error("Deriv WebSocket is not ready"));
+    }
+  });
+}
+
+async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Promise<DerivBuy> {
+  const reqId = ++getState().buySequence;
+  const requestKey = `req:${reqId}`;
+  return new Promise<DerivBuy>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      getState().buyWaiters.delete(requestKey);
+      getState().pendingBuyInputs.delete(requestKey);
+      reject(new Error("Deriv did not confirm the contract purchase in time"));
+    }, buyAckTimeoutMs);
+    getState().pendingBuyInputs.set(requestKey, input);
+    getState().buyWaiters.set(requestKey, { resolve, reject, timer });
+    const sent = send({
+      buy: "1",
+      parameters: {
+        amount: input.amount,
+        basis: "stake",
+        contract_type: input.contract_type,
+        currency: defaultCurrency,
+        duration: input.duration,
+        duration_unit: input.duration_unit,
+        underlying_symbol: input.symbol ?? defaultSymbol,
+        ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
+      },
+      price: proposal.ask_price,
+      req_id: reqId,
+    });
+    if (!sent) {
+      clearTimeout(timer);
+      getState().buyWaiters.delete(requestKey);
+      getState().pendingBuyInputs.delete(requestKey);
       reject(new Error("Deriv WebSocket is not ready"));
     }
   });
@@ -697,15 +734,17 @@ async function connectInternal() {
           getState().proposalWaiters.delete(reqId);
           proposalWaiter.reject(new Error(errorMessage));
         }
-        const rejectedProposalId = typeof message.echo_req?.buy === "string"
+        const echoedBuyRequestId = Number(message.req_id ?? message.echo_req?.req_id);
+        const rejectedProposalId = typeof message.echo_req?.buy === "string" && message.echo_req.buy !== "1"
           ? message.echo_req.buy
           : null;
-        if (rejectedProposalId) {
-          getState().pendingBuyInputs.delete(rejectedProposalId);
-          const buyWaiter = getState().buyWaiters.get(rejectedProposalId);
+        const rejectedBuyKey = echoedBuyRequestId > 0 ? `req:${echoedBuyRequestId}` : rejectedProposalId;
+        if (rejectedBuyKey) {
+          getState().pendingBuyInputs.delete(rejectedBuyKey);
+          const buyWaiter = getState().buyWaiters.get(rejectedBuyKey);
           if (buyWaiter) {
             clearTimeout(buyWaiter.timer);
-            getState().buyWaiters.delete(rejectedProposalId);
+            getState().buyWaiters.delete(rejectedBuyKey);
             buyWaiter.reject(new Error(errorMessage));
           }
         }
@@ -744,12 +783,13 @@ async function connectInternal() {
           }
         }
       } else if (message.msg_type === "buy") {
-        const echoedProposalId = typeof message.echo_req?.buy === "string"
+          const echoedProposalId = typeof message.echo_req?.buy === "string" && message.echo_req.buy !== "1"
           ? message.echo_req.buy
           : null;
-        const proposalId = echoedProposalId;
-        const buyInput = proposalId ? getState().pendingBuyInputs.get(proposalId) : undefined;
-        if (proposalId) getState().pendingBuyInputs.delete(proposalId);
+          const buyRequestId = Number(message.req_id ?? message.echo_req?.req_id);
+          const buyKey = buyRequestId > 0 ? `req:${buyRequestId}` : echoedProposalId;
+          const buyInput = buyKey ? getState().pendingBuyInputs.get(buyKey) : undefined;
+          if (buyKey) getState().pendingBuyInputs.delete(buyKey);
         getState().lastBuy = {
           contract_id: String(message.buy?.contract_id ?? ""),
           buy_price: Number(message.buy?.buy_price ?? 0),
@@ -777,11 +817,11 @@ async function connectInternal() {
             subscribe: 1,
           });
         }
-        if (proposalId) {
-          const buyWaiter = getState().buyWaiters.get(proposalId);
+        if (buyKey) {
+          const buyWaiter = getState().buyWaiters.get(buyKey);
           if (buyWaiter) {
             clearTimeout(buyWaiter.timer);
-            getState().buyWaiters.delete(proposalId);
+            getState().buyWaiters.delete(buyKey);
             buyWaiter.resolve(getState().lastBuy);
           }
         }
@@ -1118,7 +1158,10 @@ export async function bulkBuyContracts(input: {
   const connected = await connect();
   if (!connected) throw new Error("Deriv WebSocket is not ready");
 
-  await Promise.all(proposals.map((proposal) => sendProposalBuy(proposal, proposalInput)));
+  // Direct parameter buys use the fresh quote as the maximum price and avoid
+  // holding temporary proposal IDs until the whole batch is ready. Deriv can
+  // invalidate those IDs between the proposal response and a later buy.
+  await Promise.all(proposals.map((proposal) => sendDirectBuy(proposal, proposalInput)));
 
   return {
     ok: true,
