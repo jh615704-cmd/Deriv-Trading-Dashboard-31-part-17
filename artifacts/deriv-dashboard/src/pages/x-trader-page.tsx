@@ -56,13 +56,20 @@ import BulkTraderPanel, {
   type BulkTraderType,
 } from "../components/bulk-trader-panel";
 import EdgeReferencePanel from "../components/edge-reference-panel";
+import {
+  MoneyBankPanel,
+  calculateRecoveryLadder,
+  type MoneyBankStartConfig,
+  type MoneyBankStrategy,
+} from "../components/money-bank-panel";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
   ["R_50", "Volatility 50 Index"], ["R_75", "Volatility 75 Index"],
   ["R_100", "Volatility 100 Index"], ["1HZ10V", "Volatility 10 (1s)"],
   ["1HZ25V", "Volatility 25 (1s)"], ["1HZ50V", "Volatility 50 (1s)"],
-  ["1HZ75V", "Volatility 75 (1s)"], ["1HZ100V", "Volatility 100 (1s)"],
+  ["1HZ75V", "Volatility 75 (1s)"], ["1HZ90V", "Volatility 90 (1s)"],
+  ["1HZ100V", "Volatility 100 (1s)"],
   ["JD10", "Jump 10 Index"], ["JD25", "Jump 25 Index"], ["JD50", "Jump 50 Index"],
   ["JD75", "Jump 75 Index"], ["JD100", "Jump 100 Index"],
 ] as const;
@@ -265,6 +272,7 @@ export default function XTraderPage() {
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
   const digitFlipBuyMutation = useBuyDerivContract();
+  const moneyBankBuyMutation = useBuyDerivContract();
 
   const [pat, setPat] = useState("");
   const [symbol, setSymbol] = useState("R_75");
@@ -296,6 +304,21 @@ export default function XTraderPage() {
   const [tradeXManualSelect, setTradeXManualSelect] = useState(false);
   const [digitFlipEnabled, setDigitFlipEnabled] = useState(false);
   const [edge2Enabled, setEdge2Enabled] = useState(false);
+  const [moneyBankSymbol, setMoneyBankSymbol] = useState("1HZ90V");
+  const [moneyBankGrowthRate, setMoneyBankGrowthRate] = useState(4);
+  const [moneyBankTakeProfitTicks, setMoneyBankTakeProfitTicks] = useState(3);
+  const [moneyBankStrategy, setMoneyBankStrategy] = useState<MoneyBankStrategy>("budget");
+  const [moneyBankBudget, setMoneyBankBudget] = useState(500);
+  const [moneyBankManualBase, setMoneyBankManualBase] = useState(1);
+  const [moneyBankMaxStake, setMoneyBankMaxStake] = useState(50);
+  const [moneyBankAutoCycle, setMoneyBankAutoCycle] = useState(true);
+  const [moneyBankReinvestProfit, setMoneyBankReinvestProfit] = useState(false);
+  const [moneyBankProfitTarget, setMoneyBankProfitTarget] = useState(50);
+  const [moneyBankLossLimit, setMoneyBankLossLimit] = useState(50);
+  const [moneyBankCooldown, setMoneyBankCooldown] = useState(true);
+  const [moneyBankRunning, setMoneyBankRunning] = useState(false);
+  const [moneyBankSessionPnl, setMoneyBankSessionPnl] = useState(0);
+  const [moneyBankTradeCount, setMoneyBankTradeCount] = useState(0);
   const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
   const [bulkTraderType, setBulkTraderType] = useState<BulkTraderType>("over-under");
   const [bulkTraderPrediction, setBulkTraderPrediction] = useState<BulkTraderPrediction>(5);
@@ -365,6 +388,13 @@ export default function XTraderPage() {
   const edgeActionLockRef = useRef(false);
   const bulkActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
+  const moneyBankRunningRef = useRef(false);
+  const moneyBankActionLockRef = useRef(false);
+  const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
+  const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
+  const moneyBankLevelRef = useRef(0);
+  const moneyBankConfigRef = useRef<MoneyBankStartConfig | null>(null);
+  const moneyBankSessionPnlRef = useRef(0);
   const digitFlipActionLockRef = useRef(false);
   const digitFlipAssaultRef = useRef(false);
   const digitFlipMagicRef = useRef(false);
@@ -422,6 +452,7 @@ export default function XTraderPage() {
   const currentAccount = status.data?.account;
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
+  const volatilityMarkets = markets.filter(([market]) => !market.startsWith("JD"));
   const rows = history.data ?? [];
   const edgeAllRows = rows.filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER");
   const tradeXAllRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF");
@@ -1086,6 +1117,146 @@ export default function XTraderPage() {
     }
   };
 
+  const stopMoneyBank = () => {
+    moneyBankRunningRef.current = false;
+    setMoneyBankRunning(false);
+  };
+
+  const executeMoneyBankTrade = async () => {
+    const config = moneyBankConfigRef.current;
+    if (!config || !moneyBankRunningRef.current || moneyBankActionLockRef.current) return;
+
+    let latestRows = await getDerivHistory();
+    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 100; attempt += 1) {
+      await sleep(500);
+      latestRows = await getDerivHistory();
+    }
+    if (latestRows.some((trade) => trade.status === "open")) {
+      throw new Error("Money Bank stopped while the previous contract was still settling.");
+    }
+
+    const settledAccumulator = latestRows
+      .filter((trade) => trade.contract_type === "ACCU" && trade.status !== "open")
+      .find((trade) => !moneyBankProcessedSettlementIdsRef.current.has(trade.contract_id));
+    if (settledAccumulator) {
+      moneyBankProcessedSettlementIdsRef.current.add(settledAccumulator.contract_id);
+      const nextSessionPnl = moneyBankSessionPnlRef.current + settledAccumulator.profit;
+      moneyBankSessionPnlRef.current = nextSessionPnl;
+      setMoneyBankSessionPnl(nextSessionPnl);
+      if (settledAccumulator.profit > 0) {
+        moneyBankLevelRef.current = 0;
+        if (config.reinvestProfit) {
+          const nextBase = Math.min(config.maxStake, config.ladder[0].stake + settledAccumulator.profit);
+          moneyBankConfigRef.current = {
+            ...config,
+            ladder: calculateRecoveryLadder({
+              strategy: "manual",
+              budget: config.ladder.at(-1)?.cumulative ?? 0,
+              manualBase: nextBase,
+              maxStake: config.maxStake,
+              growthRate: config.growthRate,
+              takeProfitTicks: config.takeProfitTicks,
+            }),
+          };
+        }
+      } else if (moneyBankLevelRef.current >= 6) {
+        throw new Error("Money Bank stopped at L6 after a losing settlement.");
+      } else {
+        moneyBankLevelRef.current += 1;
+        if (config.cooldown) await sleep(2_000);
+      }
+      if (config.profitTarget > 0 && nextSessionPnl >= config.profitTarget) {
+        throw new Error("Money Bank reached the session Profit target.");
+      }
+      if (config.lossLimit > 0 && nextSessionPnl <= -config.lossLimit) {
+        throw new Error("Money Bank reached the session Loss limit.");
+      }
+    }
+
+    if (!moneyBankRunningRef.current) return;
+    const currentConfig = moneyBankConfigRef.current ?? config;
+    const level = currentConfig.ladder[Math.min(6, moneyBankLevelRef.current)];
+    if (!level) throw new Error("Money Bank could not calculate the next recovery level.");
+    const accountBalance = currentAccount?.balance ?? 0;
+    if (!accountBalance || level.stake > accountBalance) {
+      throw new Error(`Money Bank stopped because ${level.stake.toFixed(2)} ${currentAccount?.currency ?? "USD"} exceeds the connected balance.`);
+    }
+
+    moneyBankActionLockRef.current = true;
+    try {
+      await moneyBankBuyMutation.mutateAsync({
+        data: {
+          amount: level.stake,
+          duration: currentConfig.takeProfitTicks,
+          duration_unit: "t",
+          contract_type: "ACCU",
+          growth_rate: currentConfig.growthRate / 100,
+          symbol: currentConfig.symbol,
+          confirm_live_trade: true,
+        },
+      });
+      setMoneyBankTradeCount((value) => value + 1);
+      refreshTradeResults();
+    } finally {
+      moneyBankActionLockRef.current = false;
+    }
+  };
+
+  const runMoneyBankLoop = async () => {
+    while (moneyBankRunningRef.current) {
+      try {
+        await executeMoneyBankTrade();
+        if (!moneyBankRunningRef.current) return;
+        if (!moneyBankConfigRef.current?.autoCycle) {
+          stopMoneyBank();
+          return;
+        }
+        await sleep(250);
+      } catch (error) {
+        stopMoneyBank();
+        setConnectionMessage({ kind: "error", text: errorMessage(error) });
+      }
+    }
+  };
+
+  const startMoneyBank = async (config: MoneyBankStartConfig) => {
+    if (!isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before starting Money Bank." });
+      return;
+    }
+    if (isReal && !liveConfirmed) {
+      setConnectionMessage({ kind: "error", text: "Confirm live funds before starting Money Bank." });
+      return;
+    }
+    if (!currentAccount) {
+      setConnectionMessage({ kind: "error", text: "Select a Deriv account before starting Money Bank." });
+      return;
+    }
+    if (config.ladder[0].stake > currentAccount.balance) {
+      setConnectionMessage({ kind: "error", text: "The calculated BASE is higher than the connected account balance." });
+      return;
+    }
+
+    try {
+      const latestRows = await getDerivHistory();
+      const accumulatorIds = latestRows
+        .filter((trade) => trade.contract_type === "ACCU")
+        .map((trade) => trade.contract_id);
+      moneyBankSessionKnownIdsRef.current = new Set(accumulatorIds);
+      moneyBankProcessedSettlementIdsRef.current = new Set(accumulatorIds);
+      moneyBankLevelRef.current = 0;
+      moneyBankConfigRef.current = config;
+      moneyBankSessionPnlRef.current = 0;
+      setMoneyBankSessionPnl(0);
+      setMoneyBankTradeCount(0);
+      moneyBankRunningRef.current = true;
+      setMoneyBankRunning(true);
+      void runMoneyBankLoop();
+    } catch (error) {
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    }
+  };
+
   const start = async () => {
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
@@ -1138,6 +1309,22 @@ export default function XTraderPage() {
       stop();
       return;
     }
+    setDigitFlipEnabled(false);
+    digitFlipRunningRef.current = false;
+    setDigitFlipRunning(false);
+    setTradeXEnabled(false);
+    setBulkTraderEnabled(false);
+    void selectMarket(moneyBankSymbol);
+  };
+
+  const toggleMoneyBank = (enabled: boolean) => {
+    setEdge2Enabled(enabled);
+    if (!enabled) {
+      stopMoneyBank();
+      return;
+    }
+    stop();
+    setXTraderEnabled(false);
     setDigitFlipEnabled(false);
     digitFlipRunningRef.current = false;
     setDigitFlipRunning(false);
@@ -1858,27 +2045,72 @@ export default function XTraderPage() {
           <strong><span>{currentAccount?.currency ?? "USD"}</span>{(currentAccount?.balance ?? 0).toFixed(2)}</strong>
           <div>{currentAccount?.id ?? "No account connected"} <b className={isReal ? "real" : ""}>{currentAccount?.type ?? "—"}</b></div>
         </div>
-        <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running || digitFlipRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || accountMutation.isPending}>
+         <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running || moneyBankRunning || digitFlipRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending || accountMutation.isPending}>
           {!accountOptions.length && <option value="">Connect PAT first</option>}
           {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
         </select><ChevronDown size={15} /></div></label>
       </section>
 
       <section className="xt-feature-card xt-feature-card-edge2">
-        <div><Bot size={18} /><span><b>EDGE 2.0</b><small>OVER / UNDER ADVANCED</small></span></div>
+        <div><Bot size={18} /><span><b>Money Bank</b><small>Accumulator</small></span></div>
         <div className="xt-feature-actions">
           <label className="xt-switch">
             <input
               type="checkbox"
               checked={edge2Enabled}
-              onChange={(event) => setEdge2Enabled(event.target.checked)}
-              aria-label="Toggle EDGE 2.0"
+              onChange={(event) => toggleMoneyBank(event.target.checked)}
+              aria-label="Toggle Money Bank"
               disabled={!isConnected}
             />
             <span />
           </label>
         </div>
       </section>
+
+      {edge2Enabled && (
+        <MoneyBankPanel
+          isConnected={isConnected}
+          running={moneyBankRunning}
+          isReal={isReal}
+          liveConfirmed={liveConfirmed}
+          onLiveConfirm={setLiveConfirmed}
+          symbol={moneyBankSymbol}
+          markets={volatilityMarkets}
+          onSymbolChange={(next) => {
+            setMoneyBankSymbol(next);
+            void selectMarket(next);
+          }}
+          accountBalance={currentAccount?.balance}
+          currency={currentAccount?.currency ?? "USD"}
+          quote={status.data?.last_tick?.quote}
+          growthRate={moneyBankGrowthRate}
+          onGrowthRateChange={setMoneyBankGrowthRate}
+          takeProfitTicks={moneyBankTakeProfitTicks}
+          onTakeProfitTicksChange={setMoneyBankTakeProfitTicks}
+          strategy={moneyBankStrategy}
+          onStrategyChange={setMoneyBankStrategy}
+          budget={moneyBankBudget}
+          onBudgetChange={setMoneyBankBudget}
+          manualBase={moneyBankManualBase}
+          onManualBaseChange={setMoneyBankManualBase}
+          maxStake={moneyBankMaxStake}
+          onMaxStakeChange={setMoneyBankMaxStake}
+          autoCycle={moneyBankAutoCycle}
+          onAutoCycleChange={setMoneyBankAutoCycle}
+          reinvestProfit={moneyBankReinvestProfit}
+          onReinvestProfitChange={setMoneyBankReinvestProfit}
+          profitTarget={moneyBankProfitTarget}
+          onProfitTargetChange={setMoneyBankProfitTarget}
+          lossLimit={moneyBankLossLimit}
+          onLossLimitChange={setMoneyBankLossLimit}
+          cooldown={moneyBankCooldown}
+          onCooldownChange={setMoneyBankCooldown}
+          sessionPnl={moneyBankSessionPnl}
+          tradeCount={moneyBankTradeCount}
+          onStart={(config) => void startMoneyBank(config)}
+          onStop={stopMoneyBank}
+        />
+      )}
 
       <section className="xt-feature-card xt-feature-card-digit-flip">
         <div><Activity size={18} /><span><b>Bulk Trader</b><small>Send 1–6 contracts instantly across four trade types</small></span></div>

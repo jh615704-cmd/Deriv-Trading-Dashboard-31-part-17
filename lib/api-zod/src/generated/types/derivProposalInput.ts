@@ -23,5 +23,10 @@ export interface DerivProposalInput {
      * @maximum 9
      */
   barrier?: number;
+  /**
+     * @minimum 0.01
+     * @maximum 0.05
+     */
+  growth_rate?: number;
   symbol?: string;
 }

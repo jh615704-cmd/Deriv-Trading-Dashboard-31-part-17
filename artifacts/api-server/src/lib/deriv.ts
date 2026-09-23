@@ -13,10 +13,10 @@ const proposalAttempts = 3;
 const buyAckTimeoutMs = 12_000;
 const supportedSymbols = new Set([
   "R_10", "R_25", "R_50", "R_75", "R_100",
-  "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V",
+  "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ90V", "1HZ100V",
   "JD10", "JD25", "JD50", "JD75", "JD100",
 ]);
-type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF" | "CALL" | "PUT";
+type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF" | "CALL" | "PUT" | "ACCU";
 
 export type DerivAccount = {
   id: string;
@@ -113,6 +113,7 @@ type ProposalInput = {
   duration_unit: "t" | "s" | "m";
   contract_type: DigitContractType;
   barrier?: number;
+  growth_rate?: number;
   symbol?: string;
 };
 
@@ -122,6 +123,7 @@ type BuyInput = {
   duration_unit: "t";
   contract_type: DigitContractType;
   barrier?: number;
+  growth_rate?: number;
   symbol?: string;
   confirm_live_trade: true;
 };
@@ -589,6 +591,7 @@ function sendStakeProposal(input: ProposalInput, reqId: number) {
     duration_unit: input.duration_unit,
     underlying_symbol: input.symbol ?? defaultSymbol,
     ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
+    ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
     req_id: reqId,
   });
 }
@@ -640,6 +643,7 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
         duration_unit: input.duration_unit,
         underlying_symbol: input.symbol ?? defaultSymbol,
         ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
+        ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
       },
       price: proposal.ask_price,
       req_id: reqId,

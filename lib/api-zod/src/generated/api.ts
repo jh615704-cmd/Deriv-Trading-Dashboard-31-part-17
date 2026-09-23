@@ -597,14 +597,18 @@ export const requestDerivProposalBodyDurationMax = 1000;
 export const requestDerivProposalBodyBarrierMin = 0;
 export const requestDerivProposalBodyBarrierMax = 9;
 
+export const requestDerivProposalBodyGrowthRateMin = 0.01;
+export const requestDerivProposalBodyGrowthRateMax = 0.05;
+
 
 
 export const RequestDerivProposalBody = zod.object({
   "amount": zod.number().gt(requestDerivProposalBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(requestDerivProposalBodyDurationMax),
   "duration_unit": zod.enum(['t', 's', 'm']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT', 'ACCU']),
   "barrier": zod.number().int().min(requestDerivProposalBodyBarrierMin).max(requestDerivProposalBodyBarrierMax).optional(),
+  "growth_rate": zod.number().min(requestDerivProposalBodyGrowthRateMin).max(requestDerivProposalBodyGrowthRateMax).optional(),
   "symbol": zod.string().optional()
 })
 
@@ -896,10 +900,13 @@ export const SelectDerivSymbolResponse = zod.object({
  */
 export const buyDerivContractBodyAmountExclusiveMin = 0;
 
-export const buyDerivContractBodyDurationMax = 5;
+export const buyDerivContractBodyDurationMax = 50;
 
 export const buyDerivContractBodyBarrierMin = 0;
 export const buyDerivContractBodyBarrierMax = 9;
+
+export const buyDerivContractBodyGrowthRateMin = 0.01;
+export const buyDerivContractBodyGrowthRateMax = 0.05;
 
 
 
@@ -907,8 +914,9 @@ export const BuyDerivContractBody = zod.object({
   "amount": zod.number().gt(buyDerivContractBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(buyDerivContractBodyDurationMax),
   "duration_unit": zod.enum(['t']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT', 'ACCU']),
   "barrier": zod.number().int().min(buyDerivContractBodyBarrierMin).max(buyDerivContractBodyBarrierMax).optional(),
+  "growth_rate": zod.number().min(buyDerivContractBodyGrowthRateMin).max(buyDerivContractBodyGrowthRateMax).optional(),
   "symbol": zod.string().optional(),
   "confirm_live_trade": zod.literal(true)
 })

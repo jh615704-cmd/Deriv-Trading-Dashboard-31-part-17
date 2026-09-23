@@ -13,7 +13,7 @@ export interface DerivBuyInput {
   amount: number;
   /**
      * @minimum 1
-     * @maximum 5
+     * @maximum 50
      */
   duration: number;
   duration_unit: DerivBuyInputDurationUnit;
@@ -23,6 +23,11 @@ export interface DerivBuyInput {
      * @maximum 9
      */
   barrier?: number;
+  /**
+     * @minimum 0.01
+     * @maximum 0.05
+     */
+  growth_rate?: number;
   symbol?: string;
   confirm_live_trade: true;
 }
