@@ -1295,7 +1295,7 @@ components:
           type: [integer, "null"]
     DerivHistoryItem:
       type: object
-      required: [contract_id, account_id, account_type, contract_type, barrier, symbol, buy_price, payout, profit, status]
+      required: [contract_id, account_id, account_type, contract_type, barrier, symbol, buy_price, current_value, payout, profit, status]
       properties:
         contract_id:
           type: string
@@ -1314,6 +1314,9 @@ components:
           type: string
         buy_price:
           type: number
+        current_value:
+          type: number
+          description: Current contract value from Deriv, or buy price plus floating profit when no live bid is available.
         payout:
           type: number
         profit:

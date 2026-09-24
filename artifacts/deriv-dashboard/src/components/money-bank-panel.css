@@ -857,17 +857,21 @@
 .money-bank-stat-grid small { color: #70a88a; font-size: .55rem; font-weight: 800; letter-spacing: .08em; }
 .money-bank-stat-grid b { color: #e3ffeb; font-size: .78rem; font-variant-numeric: tabular-nums; }
 .money-bank-stat-grid b.positive,
-.money-bank-history-row strong.positive,
+.money-bank-history-row .positive,
 .money-bank-history-total b.positive { color: #8df0b7; }
 .money-bank-stat-grid b.negative,
-.money-bank-history-row strong.negative,
+.money-bank-history-row .negative,
 .money-bank-history-total b.negative { color: #ff9a8c; }
+.money-bank-history-row .neutral { color: #c4ddd0; }
 .money-bank-history-actions button:last-child:hover { border-color: #ff9a8c; color: #ffc0b8; }
 .money-bank-history-rows { display: grid; gap: 6px; }
 .money-bank-history-rows.fading { opacity: 0; transform: translateX(12px); transition: opacity .35s ease, transform .35s ease; }
-.money-bank-history-row { display: grid; grid-template-columns: minmax(0, 1.5fr) auto auto auto; align-items: center; gap: 10px; min-height: 38px; padding: 7px 9px; border: 1px solid rgba(66, 213, 142, .14); border-radius: 8px; background: rgba(2, 20, 13, .4); color: #d9f8e1; font-size: .7rem; }
+.money-bank-history-row { display: grid; grid-template-columns: minmax(0, 1.35fr) auto auto auto auto; align-items: center; gap: 10px; min-height: 44px; padding: 7px 9px; border: 1px solid rgba(66, 213, 142, .14); border-radius: 8px; background: rgba(2, 20, 13, .4); color: #d9f8e1; font-size: .7rem; }
+.money-bank-history-row.live { border-color: rgba(129, 244, 177, .42); }
 .money-bank-history-row > span:first-child { display: grid; gap: 3px; }
+.money-bank-history-row > span:not(:first-child) { display: grid; gap: 3px; justify-items: end; font-variant-numeric: tabular-nums; }
 .money-bank-history-row small { display: block; color: #6fa586; font-size: .55rem; }
+.money-bank-history-outcome b { font-size: .66rem; letter-spacing: .04em; }
 .money-bank-empty-history { margin: 0; padding: 14px; border: 1px dashed rgba(66, 213, 142, .22); color: #75aa8c; font-size: .68rem; text-align: center; }
 .money-bank-history-total { margin: 10px 0 0; color: #74aa8c; font-size: .65rem; text-align: right; }
 .money-bank-history-total b { margin-left: 5px; }
@@ -881,8 +885,8 @@
   .money-bank-snapshot-actions { align-items: flex-end; flex-direction: column; }
   .money-bank-snapshot-grid,
   .money-bank-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .money-bank-history-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .money-bank-history-row > span:nth-child(2),
+  .money-bank-history-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
   .money-bank-history-row > span:nth-child(3) { display: none; }
-  .money-bank-history-row > strong { grid-column: 2; grid-row: 1; }
+  .money-bank-history-row > span:nth-child(4) { grid-column: 3; grid-row: 1; }
+  .money-bank-history-row > span:nth-child(5) { grid-column: 4; grid-row: 1; }
 }

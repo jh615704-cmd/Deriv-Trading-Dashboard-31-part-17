@@ -580,6 +580,8 @@ export interface DerivHistoryItem {
   barrier: number | null;
   symbol: string;
   buy_price: number;
+  /** Current contract value from Deriv, or buy price plus floating profit when no live bid is available. */
+  current_value: number;
   payout: number;
   profit: number;
   status: string;

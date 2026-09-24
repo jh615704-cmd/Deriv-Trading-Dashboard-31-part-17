@@ -15,6 +15,18 @@ import { PatOnboarding } from '@/components/pat-onboarding';
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const time = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+function tradeOutcome(status: string, profit: number) {
+  const normalizedStatus = status.toLowerCase();
+  if (normalizedStatus === 'open') {
+    if (profit > 0) return 'WINNING';
+    if (profit < 0) return 'LOSING';
+    return 'OPEN';
+  }
+  if (normalizedStatus.includes('won') || profit > 0) return 'WON';
+  if (normalizedStatus.includes('lost') || profit < 0) return 'LOST';
+  return 'CLOSED';
+}
+
 function StatusDot({ active, amber = false }: { active: boolean; amber?: boolean }) {
   return <span className={`status-dot ${active ? (amber ? 'status-dot-amber' : 'status-dot-live') : 'status-dot-off'} `} aria-hidden="true" />;
 }
@@ -29,7 +41,7 @@ export default function AppPage() {
 
   const accountsQuery = useGetDerivAccounts({ query: { queryKey: getGetDerivAccountsQueryKey(), refetchInterval: 5000, enabled: hasToken } });
   const statusQuery = useGetDerivStatus({ query: { queryKey: getGetDerivStatusQueryKey(), refetchInterval: 1500, enabled: hasToken } });
-  const historyQuery = useGetDerivHistory({ query: { queryKey: getGetDerivHistoryQueryKey(), refetchInterval: 5000, enabled: hasToken } });
+   const historyQuery = useGetDerivHistory({ query: { queryKey: getGetDerivHistoryQueryKey(), refetchInterval: 1000, enabled: hasToken } });
   
   const testConnection = useTestDerivConnection();
   const selectAccount = useSelectDerivAccount();
@@ -337,7 +349,7 @@ export default function AppPage() {
 
       <section className="history-panel panel">
         <div className="response-heading"><div><span className="panel-overline">DERIV ACCOUNT ACTIVITY</span><h3>Trading history</h3></div><div className="history-actions"><span className="response-state"><span />{history.length} recorded</span><button type="button" className={`clear-history-button ${clearHistoryArmed ? 'clear-history-armed' : ''}`} onClick={handleClearHistory} disabled={clearHistory.isPending} title={clearHistoryArmed ? 'Press again to clear recent trades' : 'Press twice to clear recent dashboard rows'} aria-label={clearHistoryArmed ? 'Press again to clear recent trades' : 'Clear recent trades'} data-testid="button-clear-history"><Trash2 size={14} />{clearHistoryArmed ? 'Press again' : 'Clear'}</button></div></div>
-        {history.length ? <div className="history-table-wrap"><table className="history-table"><thead><tr><th>ACCOUNT</th><th>CONTRACT</th><th>SYMBOL</th><th>STAKE</th><th>PROFIT / LOSS</th><th>STATUS</th><th>TIME</th></tr></thead><tbody>{history.map((trade) => <tr key={`${trade.account_id}-${trade.contract_id}`}><td><span className={`history-account ${trade.account_type}`}>{trade.account_type === 'real' ? 'LIVE' : 'DEMO'}</span><small>{trade.account_id}</small></td><td>{trade.contract_type}</td><td>{trade.symbol}</td><td>{money.format(trade.buy_price)}</td><td className={trade.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(trade.profit)}</td><td><span className="history-status">{trade.status}</span></td><td>{trade.buy_time ? time.format(new Date(trade.buy_time * 1000)) : '—'}</td></tr>)}</tbody></table></div> : <div className="response-empty history-empty"><div className="empty-marker"><span /></div><div><strong>No Deriv trades recorded yet</strong><p>Buy a demo or live proposal and the actual Deriv contract will appear here.</p></div></div>}
+         {history.length ? <div className="history-table-wrap"><table className="history-table"><thead><tr><th>ACCOUNT</th><th>CONTRACT</th><th>SYMBOL</th><th>STAKE</th><th>VALUE NOW</th><th>PROFIT / LOSS</th><th>STATUS</th><th>TIME</th></tr></thead><tbody>{history.map((trade) => <tr key={`${trade.account_id}-${trade.contract_id}`}><td><span className={`history-account ${trade.account_type}`}>{trade.account_type === 'real' ? 'LIVE' : 'DEMO'}</span><small>{trade.account_id}</small></td><td>{trade.contract_type}</td><td>{trade.symbol}</td><td>{money.format(trade.buy_price)}</td><td>{money.format(trade.current_value)}</td><td className={trade.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{trade.profit >= 0 ? '+' : ''}{money.format(trade.profit)}</td><td><span className="history-status">{tradeOutcome(trade.status, trade.profit)}</span></td><td>{trade.buy_time ? time.format(new Date(trade.buy_time * 1000)) : '—'}</td></tr>)}</tbody></table></div> : <div className="response-empty history-empty"><div className="empty-marker"><span /></div><div><strong>No Deriv trades recorded yet</strong><p>Buy a demo or live proposal and the actual Deriv contract will appear here.</p></div></div>}
       </section>
 
     </AppShell>

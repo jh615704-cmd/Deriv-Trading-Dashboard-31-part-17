@@ -36,6 +36,7 @@ export type MoneyBankTrade = {
   symbol: string;
   account_type: string;
   buy_price: number;
+  current_value: number;
   profit: number;
   status: string;
   sell_time?: number | null;
@@ -125,6 +126,18 @@ export function calculateRecoveryLadder(input: {
 const money = (value: number, currency = "USD") =>
   `${currency === "USD" ? "$" : `${currency} `}${value.toFixed(2)}`;
 
+function tradeOutcome(trade: Pick<MoneyBankTrade, "status" | "profit">) {
+  const status = trade.status.toLowerCase();
+  if (status === "open") {
+    if (trade.profit > 0) return { label: "WINNING", tone: "positive" };
+    if (trade.profit < 0) return { label: "LOSING", tone: "negative" };
+    return { label: "OPEN", tone: "neutral" };
+  }
+  if (status.includes("won") || trade.profit > 0) return { label: "WON", tone: "positive" };
+  if (status.includes("lost") || trade.profit < 0) return { label: "LOST", tone: "negative" };
+  return { label: "CLOSED", tone: "neutral" };
+}
+
 export function MoneyBankPanel({
   isConnected,
   running,
@@ -195,7 +208,7 @@ export function MoneyBankPanel({
   }), [growthRate, marketSignals, snapshotVersion, takeProfitTicks]);
   const safestPair = snapshot.reduce((best, entry) => entry.winRate > best.winRate ? entry : best, snapshot[0]);
   const visibleTrades = recentTrades.filter((trade) => !historyHidden.has(trade.contract_id));
-  const historyPnl = visibleTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
+  const historyPnl = visibleTrades.reduce((sum, trade) => sum + trade.profit, 0);
 
   useEffect(() => {
     if (safestPair?.symbol) onSafestPairChange?.(safestPair.symbol);
@@ -466,7 +479,16 @@ export function MoneyBankPanel({
            <div className="money-bank-history-actions"><button type="button" onClick={downloadHistory} disabled={!visibleTrades.length}><Download size={13} />Download</button><button type="button" onClick={clearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={13} />{historyClearArmed ? "Tap again to reset" : "Reset"}</button></div>
          </div>
          <div className={historyFading ? "money-bank-history-rows fading" : "money-bank-history-rows"}>
-           {!visibleTrades.length ? <p className="money-bank-empty-history">Trades will appear here after the first Accumulator contract.</p> : visibleTrades.slice(0, 12).map((trade) => <div className="money-bank-history-row" key={trade.contract_id}><span><b>{trade.contract_type}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>STAKE</small>{money(trade.buy_price, currency)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.status !== "open" && trade.profit < 0 ? "negative" : "positive"}>{trade.status === "open" ? "—" : `${trade.profit >= 0 ? "+" : ""}${money(trade.profit, currency)}`}</strong></div>)}
+            {!visibleTrades.length ? <p className="money-bank-empty-history">Trades will appear here after the first Accumulator contract.</p> : visibleTrades.slice(0, 12).map((trade) => {
+              const outcome = tradeOutcome(trade);
+              return <div className={`money-bank-history-row ${trade.status === "open" ? "live" : ""}`} key={trade.contract_id}>
+                <span><b>{trade.contract_type}</b><small>{trade.symbol} · {trade.account_type}</small></span>
+                <span><small>STAKE</small>{money(trade.buy_price, currency)}</span>
+                <span><small>VALUE NOW</small>{money(trade.current_value, currency)}</span>
+                <span className={outcome.tone}><small>{trade.status === "open" ? "LIVE P/L" : "RESULT"}</small>{trade.profit >= 0 ? "+" : ""}{money(trade.profit, currency)}</span>
+                <span className={`money-bank-history-outcome ${outcome.tone}`}><small>STATUS</small><b>{outcome.label}</b></span>
+              </div>;
+            })}
          </div>
          <p className="money-bank-history-total">Visible history P/L <b className={historyPnl < 0 ? "negative" : "positive"}>{historyPnl >= 0 ? "+" : ""}{money(historyPnl, currency)}</b></p>
        </section>

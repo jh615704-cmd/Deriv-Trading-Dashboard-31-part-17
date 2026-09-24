@@ -1053,6 +1053,7 @@ export const GetDerivHistoryResponseItem = zod.object({
   "barrier": zod.number().int().min(getDerivHistoryResponseBarrierMin).max(getDerivHistoryResponseBarrierMax).nullable(),
   "symbol": zod.string(),
   "buy_price": zod.number(),
+  "current_value": zod.number().describe('Current contract value from Deriv, or buy price plus floating profit when no live bid is available.'),
   "payout": zod.number(),
   "profit": zod.number(),
   "status": zod.string(),

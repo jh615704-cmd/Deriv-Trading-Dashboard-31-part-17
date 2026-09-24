@@ -268,12 +268,30 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
         barrier: 5,
         symbol: "R_75",
         buy_price: 2.25,
+         current_value: 2.25,
         payout: 4.5,
         profit: 0,
         status: "open",
         buy_time: 1_700_000_000,
         sell_time: null,
       }]);
+
+       emitMessage(socket, {
+         msg_type: "proposal_open_contract",
+         proposal_open_contract: {
+           contract_id: "contract-proposal-1",
+           status: "open",
+           is_sold: false,
+           buy_price: 2.25,
+           bid_price: 2.8,
+           payout: 4.5,
+           profit: 0.55,
+         },
+       });
+
+       assert.equal(deriv.getHistory()[0].status, "open");
+       assert.equal(deriv.getHistory()[0].current_value, 2.8);
+       assert.equal(deriv.getHistory()[0].profit, 0.55);
 
       emitMessage(socket, {
         msg_type: "proposal_open_contract",
@@ -294,6 +312,7 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
 
       assert.equal(deriv.getHistory()[0].status, "won");
       assert.equal(deriv.getHistory()[0].profit, 2.25);
+       assert.equal(deriv.getHistory()[0].current_value, 4.5);
       assert.equal(deriv.getHistory()[0].sell_time, 1_700_000_001);
     });
   });

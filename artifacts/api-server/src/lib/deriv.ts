@@ -68,6 +68,7 @@ export type DerivHistoryItem = {
   barrier: number | null;
   symbol: string;
   buy_price: number;
+  current_value: number;
   payout: number;
   profit: number;
   status: string;
@@ -488,6 +489,15 @@ function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistory
   const contractId = record.contract_id ?? record.id;
   if (typeof contractId !== "string" || !contractId) return null;
 
+  const buyPrice = Number(record.buy_price ?? record.purchase_price ?? 0);
+  const profit = Number(record.profit ?? 0);
+  const reportedCurrentValue = record.bid_price
+    ?? record.current_value
+    ?? (record.is_sold ? record.sell_price : undefined);
+  const currentValue = reportedCurrentValue == null
+    ? buyPrice + profit
+    : Number(reportedCurrentValue);
+
   return {
     contract_id: contractId,
     account_id: getState().account.id,
@@ -497,9 +507,10 @@ function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistory
       ? (getState().contractInputs.get(contractId)?.barrier ?? null)
       : Number(record.barrier),
     symbol: String(record.underlying_symbol ?? record.symbol ?? getState().lastProposalSymbol),
-    buy_price: Number(record.buy_price ?? record.purchase_price ?? 0),
+    buy_price: buyPrice,
+    current_value: Number.isFinite(currentValue) ? currentValue : buyPrice + profit,
     payout: Number(record.payout ?? 0),
-    profit: Number(record.profit ?? 0),
+    profit,
     status: String(record.status ?? (record.is_sold ? "closed" : fallbackStatus)),
     buy_time: record.purchase_time == null && record.buy_time == null
       ? null
