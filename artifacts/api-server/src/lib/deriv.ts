@@ -128,6 +128,8 @@ type BuyInput = {
   confirm_live_trade: true;
 };
 
+type AccumulatorExpiryMode = "date_expiry" | "duration";
+
 export type SellResult = {
   contract_id: string;
   sold_for: number;
@@ -180,9 +182,11 @@ return {
   lastProposalSymbol: defaultSymbol,
   lastProposalInput: null as ProposalInput | null,
   lastProposalRefreshAt: 0,
+  lastProposalExpiryMode: "date_expiry" as AccumulatorExpiryMode,
   proposalSequence: 0,
   buySequence: 0,
   proposalWaiters: new Map<number, { resolve: (proposal: DerivProposal) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>(),
+  proposalExpiryModes: new Map<string, AccumulatorExpiryMode>(),
   lastBuyAt: 0,
   contractInputs: new Map<string, ProposalInput>(),
   digitEvenCount: 0,
