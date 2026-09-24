@@ -6,6 +6,8 @@ import {
   RequestDerivProposalResponse,
   BuyDerivContractBody,
   BuyDerivContractResponse,
+  SellDerivContractBody,
+  SellDerivContractResponse,
   BulkBuyDerivContractsBody,
   BulkBuyDerivContractsResponse,
   DualBuyDerivContractsBody,
@@ -23,6 +25,7 @@ import {
   clearHistory,
   requestProposal,
   buyContract,
+  sellContract,
   bulkBuyContracts,
   dualBuyContracts,
   selectAccount,
@@ -219,6 +222,27 @@ router.post("/deriv/buy", async (req, res) => {
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
           ? 504
+        : 502;
+    return res.status(status).json({ error: message });
+  }
+});
+
+router.post("/deriv/sell", async (req, res) => {
+  const parsed = SellDerivContractBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid contract close request" });
+
+  try {
+    const result = SellDerivContractResponse.parse(
+      await withCredential(res.locals.userId, () => sellContract(parsed.data.contract_id), true),
+    );
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Contract close request failed";
+    req.log.error({ err: error }, "Deriv contract close request failed");
+    const status = isCredentialError(error)
+      ? 401
+      : message.includes("WebSocket is not ready")
+        ? 504
         : 502;
     return res.status(status).json({ error: message });
   }

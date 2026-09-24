@@ -1,4 +1,5 @@
-import { ChevronDown, Info, Play, RotateCcw, ShieldCheck, Square, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Download, Info, Play, RefreshCw, RotateCcw, ShieldCheck, Square, TrendingUp, Trash2 } from "lucide-react";
 import "./money-bank-panel.css";
 
 export type MoneyBankStrategy = "budget" | "manual";
@@ -15,12 +16,29 @@ export type MoneyBankStartConfig = {
   growthRate: number;
   takeProfitTicks: number;
   ladder: MoneyBankLadderLevel[];
-  maxStake: number;
-  autoCycle: boolean;
+  autoSwitch: boolean;
   reinvestProfit: boolean;
-  profitTarget: number;
-  lossLimit: number;
-  cooldown: boolean;
+  profitTarget: number | null;
+  lossLimit: number | null;
+};
+
+export type MoneyBankMarketSignal = {
+  symbol: string;
+  sample_count: number;
+  quote?: number | null;
+  rise_percentage?: number;
+  fall_percentage?: number;
+};
+
+export type MoneyBankTrade = {
+  contract_id: string;
+  contract_type: string;
+  symbol: string;
+  account_type: string;
+  buy_price: number;
+  profit: number;
+  status: string;
+  sell_time?: number | null;
 };
 
 type MoneyBankPanelProps = {
@@ -45,18 +63,22 @@ type MoneyBankPanelProps = {
   onBudgetChange: (value: number) => void;
   manualBase: number;
   onManualBaseChange: (value: number) => void;
-  maxStake: number;
-  onMaxStakeChange: (value: number) => void;
-  autoCycle: boolean;
-  onAutoCycleChange: (value: boolean) => void;
+  autoSwitch: boolean;
+  onAutoSwitchChange: (value: boolean) => void;
   reinvestProfit: boolean;
   onReinvestProfitChange: (value: boolean) => void;
-  profitTarget: number;
-  onProfitTargetChange: (value: number) => void;
-  lossLimit: number;
-  onLossLimitChange: (value: number) => void;
-  cooldown: boolean;
-  onCooldownChange: (value: boolean) => void;
+  profitTarget: number | null;
+  onProfitTargetChange: (value: number | null) => void;
+  lossLimit: number | null;
+  onLossLimitChange: (value: number | null) => void;
+  closing?: boolean;
+  marketSignals: readonly MoneyBankMarketSignal[];
+  recentTrades: readonly MoneyBankTrade[];
+  sessionWins: number;
+  currentStreak: number;
+  peakStreak: number;
+  nextStake: number;
+  onSafestPairChange?: (symbol: string) => void;
   onStart: (config: MoneyBankStartConfig) => void;
   onStop: () => void;
   sessionPnl: number;
@@ -65,6 +87,7 @@ type MoneyBankPanelProps = {
 
 const LEVEL_NAMES = ["BASE", "L1", "L2", "L3", "L4", "L5", "L6"];
 const GROWTH_RATES = [1, 2, 3, 4, 5];
+export const MONEY_BANK_AUTO_SYMBOLS = ["1HZ10V", "1HZ15V", "1HZ25V", "1HZ30V", "1HZ50V", "1HZ75V", "1HZ90V", "1HZ100V"] as const;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -72,25 +95,23 @@ export function calculateRecoveryLadder(input: {
   strategy: MoneyBankStrategy;
   budget: number;
   manualBase: number;
-  maxStake: number;
   growthRate: number;
   takeProfitTicks: number;
 }): MoneyBankLadderLevel[] {
   const growth = clamp(input.growthRate, 1, 5) / 100;
-  const ticks = clamp(input.takeProfitTicks, 3, 50);
+  const ticks = clamp(input.takeProfitTicks, 5, 50);
   const payout = Math.max(0.08, Math.pow(1 + growth, ticks) - 1);
   const ratio = clamp(1.12 + (0.08 / (payout + 0.16)), 1.14, 1.42);
   const factors = LEVEL_NAMES.map((_, index) => Math.pow(ratio, index));
   const requestedBase = input.strategy === "budget"
     ? Math.max(0.01, input.budget) / factors.reduce((sum, factor) => sum + factor, 0)
     : Math.max(0.01, input.manualBase);
-  const base = Math.min(Math.max(0.01, requestedBase), Math.max(0.01, input.maxStake));
-  const maxStake = Math.max(0.01, input.maxStake);
+  const base = Math.max(0.01, requestedBase);
 
   return LEVEL_NAMES.map((name, index) => {
-    const stake = Math.min(maxStake, Math.max(0.01, base * factors[index]));
+    const stake = Math.max(0.01, base * factors[index]);
     const cumulative = LEVEL_NAMES.slice(0, index + 1)
-      .reduce((sum, _, levelIndex) => sum + Math.min(maxStake, Math.max(0.01, base * factors[levelIndex])), 0);
+      .reduce((sum, _, levelIndex) => sum + Math.max(0.01, base * factors[levelIndex]), 0);
     return {
       name,
       stake,
@@ -125,18 +146,22 @@ export function MoneyBankPanel({
   onBudgetChange,
   manualBase,
   onManualBaseChange,
-  maxStake,
-  onMaxStakeChange,
-  autoCycle,
-  onAutoCycleChange,
+  autoSwitch,
+  onAutoSwitchChange,
   reinvestProfit,
   onReinvestProfitChange,
   profitTarget,
   onProfitTargetChange,
   lossLimit,
   onLossLimitChange,
-  cooldown,
-  onCooldownChange,
+  closing = false,
+  marketSignals,
+  recentTrades,
+  sessionWins,
+  currentStreak,
+  peakStreak,
+  nextStake,
+  onSafestPairChange,
   onStart,
   onStop,
   sessionPnl,
@@ -146,15 +171,34 @@ export function MoneyBankPanel({
     strategy,
     budget,
     manualBase,
-    maxStake,
     growthRate,
     takeProfitTicks,
   });
   const estimatedReturn = (Math.pow(1 + growthRate / 100, takeProfitTicks) - 1) * 100;
-  const recoveryStart = Math.max(3, Math.round(takeProfitTicks * 0.16));
+  const recoveryStart = Math.max(5, Math.round(takeProfitTicks * 0.16));
   const selectedMarket = markets.find(([market]) => market === symbol)?.[1] ?? symbol;
   const totalCycleRisk = ladder.at(-1)?.cumulative ?? 0;
   const selectedStake = ladder[0]?.stake ?? 0;
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
+  const [capturedAt, setCapturedAt] = useState(() => new Date());
+  const [historyHidden, setHistoryHidden] = useState<Set<string>>(new Set());
+  const [historyClearArmed, setHistoryClearArmed] = useState(false);
+  const [historyFading, setHistoryFading] = useState(false);
+  const snapshot = useMemo(() => MONEY_BANK_AUTO_SYMBOLS.map((marketSymbol) => {
+    const signal = marketSignals.find((entry) => entry.symbol === marketSymbol);
+    const balance = 100 - Math.abs((signal?.rise_percentage ?? 50) - (signal?.fall_percentage ?? 50));
+    const estimate = clamp(85 - (takeProfitTicks * .95) - (balance * .23) + (growthRate * 1.2), 2, 92);
+    const total = signal?.sample_count ? 100 : 0;
+    const wins = total ? Math.round(total * estimate / 100) : 0;
+    return { symbol: marketSymbol, wins, total, winRate: total ? (wins / total) * 100 : 0 };
+  }), [growthRate, marketSignals, snapshotVersion, takeProfitTicks]);
+  const safestPair = snapshot.reduce((best, entry) => entry.winRate > best.winRate ? entry : best, snapshot[0]);
+  const visibleTrades = recentTrades.filter((trade) => !historyHidden.has(trade.contract_id));
+  const historyPnl = visibleTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
+
+  useEffect(() => {
+    if (safestPair?.symbol) onSafestPairChange?.(safestPair.symbol);
+  }, [onSafestPairChange, safestPair?.symbol, snapshotVersion]);
 
   const submitStart = () => {
     if (running) {
@@ -166,13 +210,37 @@ export function MoneyBankPanel({
       growthRate,
       takeProfitTicks,
       ladder,
-      maxStake,
-      autoCycle,
+      autoSwitch,
       reinvestProfit,
       profitTarget,
       lossLimit,
-      cooldown,
     });
+  };
+
+  const downloadHistory = () => {
+    const header = ["contract_id", "symbol", "status", "buy_price", "profit", "account_type"];
+    const rows = visibleTrades.map((trade) => [trade.contract_id, trade.symbol, trade.status, trade.buy_price.toFixed(2), trade.profit.toFixed(2), trade.account_type]);
+    const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `money-bank-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearHistory = () => {
+    if (!historyClearArmed) {
+      setHistoryClearArmed(true);
+      window.setTimeout(() => setHistoryClearArmed(false), 3000);
+      return;
+    }
+    setHistoryFading(true);
+    window.setTimeout(() => {
+      setHistoryHidden(new Set(recentTrades.map((trade) => trade.contract_id)));
+      setHistoryFading(false);
+      setHistoryClearArmed(false);
+    }, 350);
   };
 
   return (
@@ -245,7 +313,7 @@ export function MoneyBankPanel({
                 </button>
               ))}
             </div>
-            <p className="money-bank-helper"><Info size={14} /> Higher growth increases theoretical payout but tightens risk. <b>4% is the common balance setting.</b></p>
+             <p className="money-bank-helper"><Info size={14} /> Higher growth increases theoretical payout but tightens risk. <b>4% is a common balance setting.</b></p>
           </section>
 
           <section className="money-bank-card money-bank-ticks-card">
@@ -259,7 +327,7 @@ export function MoneyBankPanel({
             <input
               className="money-bank-range"
               type="range"
-              min="3"
+               min="5"
               max="50"
               step="1"
               value={takeProfitTicks}
@@ -338,7 +406,7 @@ export function MoneyBankPanel({
                 </div>
               ))}
             </div>
-            <p className="money-bank-helper"><Info size={14} /> Levels cap at Max Stake. A win resets to BASE unless Reinvest Profit is enabled.</p>
+             <p className="money-bank-helper"><Info size={14} /> The ladder has seven bounded levels. A win resets to BASE unless Reinvest Profit is enabled.</p>
           </section>
 
           <section className="money-bank-card money-bank-risk-card">
@@ -349,24 +417,63 @@ export function MoneyBankPanel({
               </div>
               <span className="money-bank-account-balance">{accountBalance != null ? money(accountBalance, currency) : "—"}</span>
             </div>
-            <div className="money-bank-risk-grid">
-              <label><span>Max Stake</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0.01" step="0.01" value={maxStake} onChange={(event) => onMaxStakeChange(Math.max(0.01, Number(event.target.value) || 0.01))} disabled={running} /></div></label>
-              <label><span>Profit target</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0" step="1" value={profitTarget} onChange={(event) => onProfitTargetChange(Math.max(0, Number(event.target.value) || 0))} disabled={running} /></div></label>
-              <label><span>Loss limit</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0" step="1" value={lossLimit} onChange={(event) => onLossLimitChange(Math.max(0, Number(event.target.value) || 0))} disabled={running} /></div></label>
+             <div className="money-bank-risk-grid">
+               <label><span>Profit Target ($)</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0" step="1" placeholder="Optional" value={profitTarget ?? ""} onChange={(event) => onProfitTargetChange(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} disabled={running} /></div></label>
+               <label><span>Loss Limit ($)</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0" step="1" placeholder="Optional" value={lossLimit ?? ""} onChange={(event) => onLossLimitChange(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} disabled={running} /></div></label>
             </div>
             <div className="money-bank-toggle-list">
-              <label><span><b>Auto cycle</b><small>Continue after each settlement</small></span><input type="checkbox" checked={autoCycle} onChange={(event) => onAutoCycleChange(event.target.checked)} disabled={running} /><i /></label>
               <label><span><b>Reinvest profit</b><small>Keep wins in the next BASE</small></span><input type="checkbox" checked={reinvestProfit} onChange={(event) => onReinvestProfitChange(event.target.checked)} disabled={running} /><i /></label>
-              <label><span><b>Cooldown after loss</b><small>Pause before the next level</small></span><input type="checkbox" checked={cooldown} onChange={(event) => onCooldownChange(event.target.checked)} disabled={running} /><i /></label>
+               <label><span><b>Auto-switch safest pair</b><small>Use the highest current snapshot win rate</small></span><input type="checkbox" checked={autoSwitch} onChange={(event) => onAutoSwitchChange(event.target.checked)} disabled={running} /><i /></label>
             </div>
           </section>
+
+           <section className="money-bank-card money-bank-stats-card">
+             <div className="money-bank-card-head">
+               <div><small>ACCOUNT & SESSION</small><h3>Balance snapshot</h3></div>
+               <span className="money-bank-account-balance">{accountBalance != null ? money(accountBalance, currency) : "—"}</span>
+             </div>
+             <div className="money-bank-stat-grid">
+               <span><small>SESSION P/L</small><b className={sessionPnl < 0 ? "negative" : "positive"}>{sessionPnl >= 0 ? "+" : ""}{money(sessionPnl, currency)}</b></span>
+               <span><small>WIN RATE</small><b>{tradeCount ? `${((sessionWins / tradeCount) * 100).toFixed(0)}%` : "0%"}</b></span>
+               <span><small>COMPLETED</small><b>{tradeCount}</b></span>
+               <span><small>STREAK</small><b>{currentStreak}</b></span>
+               <span><small>PEAK STREAK</small><b>{peakStreak}</b></span>
+               <span><small>NEXT STAKE</small><b>{money(nextStake, currency)}</b></span>
+             </div>
+           </section>
         </aside>
       </div>
+
+       <section className="money-bank-card money-bank-snapshot-card">
+         <div className="money-bank-card-head">
+           <div><small>STATS SNAPSHOT · VIRTUAL SESSIONS</small><h3>Safest pair analysis</h3></div>
+           <div className="money-bank-snapshot-actions"><span>Captured {capturedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span><button type="button" onClick={() => { setSnapshotVersion((version) => version + 1); setCapturedAt(new Date()); }} disabled={running}><RefreshCw size={13} />Refresh</button></div>
+         </div>
+         <p className="money-bank-helper"><Info size={14} /> Background analysis models 100 finished sessions from the live Volatility sample using {growthRate}% growth and {takeProfitTicks} ticks. It does not open contracts.</p>
+         <div className="money-bank-snapshot-grid">
+           {snapshot.map((entry, index) => {
+             const label = markets.find(([market]) => market === entry.symbol)?.[1]?.replace("Volatility ", "V") ?? entry.symbol;
+             return <div className={`money-bank-snapshot-row ${entry.symbol === safestPair?.symbol ? "best" : ""}`} key={entry.symbol}><b>#{index + 1}</b><span>{label}</span><strong>{entry.wins}/{entry.total || 100}</strong><em>{entry.total ? `${entry.winRate.toFixed(0)}% win rate` : "collecting sample"}</em></div>;
+           })}
+         </div>
+         <p className="money-bank-safest-copy">Safest current pair: <b>{markets.find(([market]) => market === safestPair?.symbol)?.[1] ?? safestPair?.symbol ?? "Waiting for live samples"}</b></p>
+       </section>
+
+       <section className="money-bank-card money-bank-history-card">
+         <div className="money-bank-card-head">
+           <div><small>TRADE HISTORY</small><h3>Money Bank trades</h3></div>
+           <div className="money-bank-history-actions"><button type="button" onClick={downloadHistory} disabled={!visibleTrades.length}><Download size={13} />Download</button><button type="button" onClick={clearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={13} />{historyClearArmed ? "Tap again to reset" : "Reset"}</button></div>
+         </div>
+         <div className={historyFading ? "money-bank-history-rows fading" : "money-bank-history-rows"}>
+           {!visibleTrades.length ? <p className="money-bank-empty-history">Trades will appear here after the first Accumulator contract.</p> : visibleTrades.slice(0, 12).map((trade) => <div className="money-bank-history-row" key={trade.contract_id}><span><b>{trade.contract_type}</b><small>{trade.symbol} · {trade.account_type}</small></span><span><small>STAKE</small>{money(trade.buy_price, currency)}</span><span><small>STATUS</small>{trade.status}</span><strong className={trade.status !== "open" && trade.profit < 0 ? "negative" : "positive"}>{trade.status === "open" ? "—" : `${trade.profit >= 0 ? "+" : ""}${money(trade.profit, currency)}`}</strong></div>)}
+         </div>
+         <p className="money-bank-history-total">Visible history P/L <b className={historyPnl < 0 ? "negative" : "positive"}>{historyPnl >= 0 ? "+" : ""}{money(historyPnl, currency)}</b></p>
+       </section>
 
       <footer className="money-bank-footer">
         <div className="money-bank-safety-copy">
           <ShieldCheck size={17} />
-          <span><b>Recovery bot is bounded</b><small>It stops at L6, Max Stake, Profit target, or Loss limit.</small></span>
+           <span><b>Accumulator is bounded</b><small>It stops at L6, optional session limits, or Stop Accumulator.</small></span>
         </div>
         <div className="money-bank-session-stats">
           <span><small>SESSION P/L</small><b className={sessionPnl >= 0 ? "positive" : "negative"}>{sessionPnl >= 0 ? "+" : ""}{money(sessionPnl, currency)}</b></span>
@@ -376,9 +483,9 @@ export function MoneyBankPanel({
           <label className="money-bank-live-confirm"><input type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirm(event.target.checked)} /><span>Confirm live funds</span></label>
         )}
         <button type="button" className={`money-bank-start ${running ? "stop" : ""}`} onClick={submitStart} disabled={!isConnected || (isReal && !liveConfirmed)}>
-          {running ? <><Square size={15} /> Stop bot</> : <><Play size={15} /> Start accumulator</>}
+           {closing ? <><RefreshCw size={15} className="money-bank-spin" /> Closing contracts…</> : running ? <><Square size={15} /> Stop Accumulator</> : <><Play size={15} /> Start Accumulator</>}
         </button>
-        <button type="button" className="money-bank-reset" onClick={() => { onGrowthRateChange(4); onTakeProfitTicksChange(3); onStrategyChange("budget"); }} disabled={running} title="Reset core settings">
+        <button type="button" className="money-bank-reset" onClick={() => { onGrowthRateChange(4); onTakeProfitTicksChange(5); onStrategyChange("budget"); }} disabled={running} title="Reset core settings">
           <RotateCcw size={15} />
         </button>
       </footer>

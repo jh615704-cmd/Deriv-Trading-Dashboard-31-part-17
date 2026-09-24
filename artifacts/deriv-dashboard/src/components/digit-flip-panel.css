@@ -2,12 +2,12 @@
   --df-text: #eef5ff;
   --df-muted: #93a1b4;
   --df-subtle: #6f7f95;
-  --df-card: #19283a;
-  --df-card-deep: #152337;
-  --df-line: rgba(133, 158, 188, .13);
-  --df-teal: #20d5bd;
-  --df-teal-deep: #15aeb0;
-  --df-lime: #a4ed31;
+  --df-card: #8d3907;
+  --df-card-deep: #5a2105;
+  --df-line: rgba(255, 179, 93, .25);
+  --df-teal: #ff9d2e;
+  --df-teal-deep: #e87513;
+  --df-lime: #ffd166;
   --df-purple: #805be8;
   display: grid;
   gap: 13px;

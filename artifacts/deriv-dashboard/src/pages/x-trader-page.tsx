@@ -10,6 +10,7 @@ import {
   useGetDerivTokenStatus,
   useBulkBuyDerivContracts,
   useBuyDerivContract,
+  useSellDerivContract,
   getDerivHistory,
   useSelectDerivAccount,
   useSelectDerivSymbol,
@@ -60,14 +61,18 @@ import {
   MoneyBankPanel,
   calculateRecoveryLadder,
   type MoneyBankStartConfig,
+  type MoneyBankMarketSignal,
+  type MoneyBankTrade,
   type MoneyBankStrategy,
+  MONEY_BANK_AUTO_SYMBOLS,
 } from "../components/money-bank-panel";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
   ["R_50", "Volatility 50 Index"], ["R_75", "Volatility 75 Index"],
   ["R_100", "Volatility 100 Index"], ["1HZ10V", "Volatility 10 (1s)"],
-  ["1HZ25V", "Volatility 25 (1s)"], ["1HZ50V", "Volatility 50 (1s)"],
+  ["1HZ15V", "Volatility 15 (1s)"], ["1HZ25V", "Volatility 25 (1s)"],
+  ["1HZ30V", "Volatility 30 (1s)"], ["1HZ50V", "Volatility 50 (1s)"],
   ["1HZ75V", "Volatility 75 (1s)"], ["1HZ90V", "Volatility 90 (1s)"],
   ["1HZ100V", "Volatility 100 (1s)"],
   ["JD10", "Jump 10 Index"], ["JD25", "Jump 25 Index"], ["JD50", "Jump 50 Index"],
@@ -158,6 +163,29 @@ const bulkTraderGuidePages = [
   { title: "Clearing history", body: "The history bin uses a two-step clear. Tap once to arm it, then tap again within the short window; rows fade from the dashboard without deleting Deriv records.", points: ["The second tap confirms the action.", "The fade gives feedback before rows disappear.", "Clearing does not affect active contracts."] },
   { title: "A safe first bulk session", body: "Use one demo contract, one tick, a small stake, and a fresh sample before increasing the bulk count or duration.", points: ["Confirm market, type, prediction, ticks, and stake.", "Watch the first returned row settle.", "Treat every percentage and streak as observed context, never certainty."] },
   { title: "Final checklist", body: "Bulk Trader is ready when the account, market, trade type, prediction, analysis window, execution duration, stake, and bulk count are intentional.", points: ["Start with a small demo batch.", "Keep the clear control available for dashboard hygiene.", "Use the guide again whenever you change contract family."] },
+] as const;
+
+const moneyBankGuidePages = [
+  { title: "Welcome to Money Bank", body: "Money Bank is the Accumulator workspace for structured Volatility-index growth. It uses one open contract at a time and keeps the recovery state visible.", points: ["Start with a demo account while learning.", "Accumulator outcomes are not guaranteed.", "Read the full guide before using live funds."] },
+  { title: "Connect your Deriv account", body: "Connect your own PAT and select the account that Money Bank should use. The server validates the credential and the account balance before every entry.", points: ["Use a demo account first.", "Real accounts require explicit confirmation.", "Keep your PAT private."] },
+  { title: "Choose a Volatility pair", body: "The market selector contains Volatility indices only, including 1-second V10, V15, V25, V30, V50, V75, V90, and V100 streams.", points: ["Switch markets before starting.", "Live quotes show the selected stream.", "Changing markets does not change the recovery ladder."] },
+  { title: "Growth rate", body: "Growth rate is the Accumulator growth applied to each tick. Higher rates can increase the theoretical return while also changing the contract risk.", points: ["Available rates are 1% through 5%.", "The exact decimal rate is sent to Deriv.", "The rate is not a win probability."] },
+  { title: "Take-profit ticks", body: "Take Profit ticks is the exact contract duration target used by Money Bank. The panel keeps it between 5 and 50 ticks because Deriv Accumulator contracts require at least five ticks.", points: ["Shorter contracts settle sooner.", "Longer contracts expose the position for more ticks.", "The selected tick target is sent unchanged to Deriv."] },
+  { title: "Auto Budget BASE", body: "Auto Budget divides the entered budget across the seven recovery levels and calculates the first BASE stake for you.", points: ["The budget is a planning amount, not a guaranteed loss cap.", "Review the calculated BASE before starting.", "The account balance remains the final guard."] },
+  { title: "Manual BASE", body: "Manual BASE lets you choose the first stake directly. Each recovery level is calculated from that BASE and the selected growth and tick settings.", points: ["Use a small stake while testing.", "The next level can be larger after a loss.", "Keep enough balance for the full ladder."] },
+  { title: "Recovery ladder", body: "BASE through L6 are explicit recovery levels. A losing settlement advances one level; a profitable settlement resets the level.", points: ["L6 is the final level.", "Money Bank stops instead of silently extending the ladder.", "The ladder is always visible before entry."] },
+  { title: "Reinvest Profit", body: "Reinvest Profit is off by default. When it is off, every win resets to the original BASE; when it is on, the win is added to the next BASE.", points: ["The switch changes the next cycle only.", "Compounding can increase exposure quickly.", "Review the next-stake value after every win."] },
+  { title: "Profit Target", body: "Profit Target is an optional session limit in account currency. Leave it blank to run without a positive P/L stop.", points: ["The limit is checked after settlement.", "It does not close a contract early.", "Blank means no profit target is applied."] },
+  { title: "Loss Limit", body: "Loss Limit is an optional session guard. Leave it blank to run without a negative P/L stop.", points: ["The limit is checked after settlement.", "It is a guardrail, not a loss guarantee.", "Blank means no loss limit is applied."] },
+  { title: "Auto-switch safest pair", body: "Auto-switch continuously ranks the supported Volatility 1-second pairs using the current growth rate, exact tick target, and live sample context.", points: ["The top pair is selected on start.", "The selected pair can change during recovery.", "The analysis is a selection aid, not a prediction."] },
+  { title: "Stats Snapshot", body: "Stats Snapshot models 100 completed virtual sessions for every supported pair. It never opens background contracts and refreshes from the live sample.", points: ["Each row shows wins, total sessions, and win rate.", "Refresh captures a new analysis time.", "Settings changes update the model inputs."] },
+  { title: "Reading account stats", body: "The balance snapshot shows account balance, session P/L, win rate, completed trades, current streak, peak streak, and next stake.", points: ["Open contracts are not counted as completed.", "Session values reset when a new Money Bank run starts.", "The account balance is supplied by Deriv."] },
+  { title: "Start Accumulator", body: "Start Accumulator validates the connection, account, balance, live confirmation, and calculated BASE before starting the guarded loop.", points: ["Check the selected pair and ladder first.", "The loop waits for settlement before its next entry.", "Only one Money Bank action runs at a time."] },
+  { title: "Stop Accumulator", body: "Stop Accumulator immediately prevents another pending entry and then sends a close request for every open Accumulator contract found in the session history.", points: ["Wait for the closing state to finish.", "A pending buy is closed when Deriv acknowledges it.", "Stopping does not delete trade history."] },
+  { title: "Trade history", body: "Money Bank history lists Accumulator contracts with symbol, account, stake, status, and P/L.", points: ["Open rows have no final P/L yet.", "Rows update as Deriv settles or closes them.", "History is scoped visually to Accumulator contracts."] },
+  { title: "Download and Reset", body: "Download exports the visible Money Bank rows as a CSV file. Reset uses a two-tap confirmation and fades the visible rows before clearing them from this panel.", points: ["Download does not alter account records.", "Reset does not cancel open contracts.", "A fresh run can add new rows again."] },
+  { title: "Live-money protection", body: "Real-money use requires the live-funds confirmation and the server's own live-trading guard. Never treat the snapshot as a guarantee.", points: ["Demo testing is strongly recommended.", "A disabled action means a required guard is missing.", "Keep an acceptable reserve in the account."] },
+  { title: "Final checklist", body: "Money Bank is ready when the account, Volatility pair, growth rate, ticks, BASE strategy, optional limits, reinvest state, and auto-switch state are intentional.", points: ["Start small.", "Watch every settlement.", "Stop if the session no longer matches your plan."] },
 ] as const;
 
 const tradeXSymbols: readonly TradeXSymbolOption[] = markets.map(([value, label]) => ({
@@ -273,6 +301,7 @@ export default function XTraderPage() {
   const bulkBuyMutation = useBulkBuyDerivContracts();
   const digitFlipBuyMutation = useBuyDerivContract();
   const moneyBankBuyMutation = useBuyDerivContract();
+  const moneyBankSellMutation = useSellDerivContract();
 
   const [pat, setPat] = useState("");
   const [symbol, setSymbol] = useState("R_75");
@@ -306,17 +335,17 @@ export default function XTraderPage() {
   const [edge2Enabled, setEdge2Enabled] = useState(false);
   const [moneyBankSymbol, setMoneyBankSymbol] = useState("1HZ90V");
   const [moneyBankGrowthRate, setMoneyBankGrowthRate] = useState(4);
-  const [moneyBankTakeProfitTicks, setMoneyBankTakeProfitTicks] = useState(3);
+  const [moneyBankTakeProfitTicks, setMoneyBankTakeProfitTicks] = useState(5);
   const [moneyBankStrategy, setMoneyBankStrategy] = useState<MoneyBankStrategy>("budget");
   const [moneyBankBudget, setMoneyBankBudget] = useState(500);
   const [moneyBankManualBase, setMoneyBankManualBase] = useState(1);
-  const [moneyBankMaxStake, setMoneyBankMaxStake] = useState(50);
-  const [moneyBankAutoCycle, setMoneyBankAutoCycle] = useState(true);
+  const [moneyBankAutoSwitch, setMoneyBankAutoSwitch] = useState(false);
   const [moneyBankReinvestProfit, setMoneyBankReinvestProfit] = useState(false);
-  const [moneyBankProfitTarget, setMoneyBankProfitTarget] = useState(50);
-  const [moneyBankLossLimit, setMoneyBankLossLimit] = useState(50);
-  const [moneyBankCooldown, setMoneyBankCooldown] = useState(true);
+  const [moneyBankProfitTarget, setMoneyBankProfitTarget] = useState<number | null>(null);
+  const [moneyBankLossLimit, setMoneyBankLossLimit] = useState<number | null>(null);
   const [moneyBankRunning, setMoneyBankRunning] = useState(false);
+  const [moneyBankClosing, setMoneyBankClosing] = useState(false);
+  const [moneyBankSafestSymbol, setMoneyBankSafestSymbol] = useState("1HZ90V");
   const [moneyBankSessionPnl, setMoneyBankSessionPnl] = useState(0);
   const [moneyBankTradeCount, setMoneyBankTradeCount] = useState(0);
   const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
@@ -357,7 +386,7 @@ export default function XTraderPage() {
   const [running, setRunning] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guidePage, setGuidePage] = useState(0);
-  const [guideMode, setGuideMode] = useState<"edge" | "trade-x" | "digit-flip" | "bulk-trader">("edge");
+  const [guideMode, setGuideMode] = useState<"edge" | "trade-x" | "digit-flip" | "bulk-trader" | "money-bank">("edge");
   const [clearHistoryArmed, setClearHistoryArmed] = useState(false);
   const [historyFading, setHistoryFading] = useState(false);
   const [tradeXHistoryClearArmed, setTradeXHistoryClearArmed] = useState(false);
@@ -389,7 +418,9 @@ export default function XTraderPage() {
   const bulkActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
   const moneyBankRunningRef = useRef(false);
+  const moneyBankSafestSymbolRef = useRef("1HZ90V");
   const moneyBankActionLockRef = useRef(false);
+  const moneyBankClosePromiseRef = useRef<Promise<void> | null>(null);
   const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
   const moneyBankLevelRef = useRef(0);
@@ -466,10 +497,12 @@ export default function XTraderPage() {
     || trade.contract_type === "CALL"
     || trade.contract_type === "PUT"
   ));
+  const moneyBankAllRows = rows.filter((trade) => trade.contract_type === "ACCU");
   const edgeRows = edgeAllRows.filter((trade) => edgeClaimedHistoryIdsRef.current.has(trade.contract_id) && !edgeHiddenHistoryIds.has(trade.contract_id));
   const tradeXRows = tradeXAllRows.filter((trade) => tradeXClaimedHistoryIdsRef.current.has(trade.contract_id) && !tradeXHiddenHistoryIds.has(trade.contract_id));
   const digitFlipRows = digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipHiddenHistoryIds.has(trade.contract_id));
   const bulkRows = bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkTraderHiddenHistoryIds.has(trade.contract_id));
+  const moneyBankRows = moneyBankAllRows as MoneyBankTrade[];
   const bulkSessionRows = bulkSessionKnownIdsRef.current
     ? bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
@@ -479,6 +512,16 @@ export default function XTraderPage() {
   const digitFlipSessionRows = digitFlipSessionKnownIdsRef.current
     ? digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
+  const moneyBankSessionRows = moneyBankSessionKnownIdsRef.current
+    ? moneyBankAllRows.filter((trade) => !moneyBankSessionKnownIdsRef.current?.has(trade.contract_id))
+    : [];
+  const moneyBankCompletedRows = moneyBankSessionRows.filter((trade) => trade.status !== "open");
+  const moneyBankWins = moneyBankCompletedRows.filter((trade) => trade.profit > 0).length;
+  const moneyBankStreaks = moneyBankCompletedRows.reduce(({ current, peak }, trade) => {
+    const next = trade.profit > 0 ? current + 1 : 0;
+    return { current: next, peak: Math.max(peak, next) };
+  }, { current: 0, peak: 0 });
+  const moneyBankSignals = (status.data?.market_signals ?? []) as MoneyBankMarketSignal[];
   const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
   const tradeXLosses = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit < 0).length;
@@ -1117,9 +1160,32 @@ export default function XTraderPage() {
     }
   };
 
+  const closeMoneyBankContracts = async () => {
+    if (moneyBankClosePromiseRef.current) return moneyBankClosePromiseRef.current;
+    const operation = (async () => {
+      setMoneyBankClosing(true);
+      try {
+        let latestRows = await getDerivHistory();
+        const openIds = new Set(latestRows.filter((trade) => trade.contract_type === "ACCU" && trade.status === "open").map((trade) => trade.contract_id));
+        for (const contractId of openIds) {
+          await moneyBankSellMutation.mutateAsync({ data: { contract_id: contractId } });
+        }
+        await queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: "active" });
+      } finally {
+        setMoneyBankClosing(false);
+        moneyBankClosePromiseRef.current = null;
+      }
+    })();
+    moneyBankClosePromiseRef.current = operation;
+    return operation;
+  };
+
   const stopMoneyBank = () => {
     moneyBankRunningRef.current = false;
     setMoneyBankRunning(false);
+    void closeMoneyBankContracts().catch((error) => {
+      setConnectionMessage({ kind: "error", text: `Money Bank could not close every open contract: ${errorMessage(error)}` });
+    });
   };
 
   const executeMoneyBankTrade = async () => {
@@ -1127,11 +1193,11 @@ export default function XTraderPage() {
     if (!config || !moneyBankRunningRef.current || moneyBankActionLockRef.current) return;
 
     let latestRows = await getDerivHistory();
-    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 100; attempt += 1) {
+    for (let attempt = 0; latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open") && attempt < 100; attempt += 1) {
       await sleep(500);
       latestRows = await getDerivHistory();
     }
-    if (latestRows.some((trade) => trade.status === "open")) {
+    if (latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open")) {
       throw new Error("Money Bank stopped while the previous contract was still settling.");
     }
 
@@ -1146,14 +1212,13 @@ export default function XTraderPage() {
       if (settledAccumulator.profit > 0) {
         moneyBankLevelRef.current = 0;
         if (config.reinvestProfit) {
-          const nextBase = Math.min(config.maxStake, config.ladder[0].stake + settledAccumulator.profit);
+          const nextBase = Math.max(0.01, config.ladder[0].stake + settledAccumulator.profit);
           moneyBankConfigRef.current = {
             ...config,
             ladder: calculateRecoveryLadder({
               strategy: "manual",
               budget: config.ladder.at(-1)?.cumulative ?? 0,
               manualBase: nextBase,
-              maxStake: config.maxStake,
               growthRate: config.growthRate,
               takeProfitTicks: config.takeProfitTicks,
             }),
@@ -1163,12 +1228,11 @@ export default function XTraderPage() {
         throw new Error("Money Bank stopped at L6 after a losing settlement.");
       } else {
         moneyBankLevelRef.current += 1;
-        if (config.cooldown) await sleep(2_000);
       }
-      if (config.profitTarget > 0 && nextSessionPnl >= config.profitTarget) {
+      if (config.profitTarget != null && config.profitTarget > 0 && nextSessionPnl >= config.profitTarget) {
         throw new Error("Money Bank reached the session Profit target.");
       }
-      if (config.lossLimit > 0 && nextSessionPnl <= -config.lossLimit) {
+      if (config.lossLimit != null && config.lossLimit > 0 && nextSessionPnl <= -config.lossLimit) {
         throw new Error("Money Bank reached the session Loss limit.");
       }
     }
@@ -1182,6 +1246,12 @@ export default function XTraderPage() {
       throw new Error(`Money Bank stopped because ${level.stake.toFixed(2)} ${currentAccount?.currency ?? "USD"} exceeds the connected balance.`);
     }
 
+    const tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
+    if (tradeSymbol !== moneyBankSymbol) {
+      setMoneyBankSymbol(tradeSymbol);
+      await selectMarket(tradeSymbol);
+    }
+
     moneyBankActionLockRef.current = true;
     try {
       await moneyBankBuyMutation.mutateAsync({
@@ -1191,7 +1261,7 @@ export default function XTraderPage() {
           duration_unit: "t",
           contract_type: "ACCU",
           growth_rate: currentConfig.growthRate / 100,
-          symbol: currentConfig.symbol,
+           symbol: currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol,
           confirm_live_trade: true,
         },
       });
@@ -1199,6 +1269,7 @@ export default function XTraderPage() {
       refreshTradeResults();
     } finally {
       moneyBankActionLockRef.current = false;
+      if (!moneyBankRunningRef.current) await closeMoneyBankContracts();
     }
   };
 
@@ -1207,10 +1278,6 @@ export default function XTraderPage() {
       try {
         await executeMoneyBankTrade();
         if (!moneyBankRunningRef.current) return;
-        if (!moneyBankConfigRef.current?.autoCycle) {
-          stopMoneyBank();
-          return;
-        }
         await sleep(250);
       } catch (error) {
         stopMoneyBank();
@@ -1246,6 +1313,7 @@ export default function XTraderPage() {
       moneyBankProcessedSettlementIdsRef.current = new Set(accumulatorIds);
       moneyBankLevelRef.current = 0;
       moneyBankConfigRef.current = config;
+      moneyBankSafestSymbolRef.current = moneyBankSafestSymbol;
       moneyBankSessionPnlRef.current = 0;
       setMoneyBankSessionPnl(0);
       setMoneyBankTradeCount(0);
@@ -2003,6 +2071,8 @@ export default function XTraderPage() {
       ? digitFlipGuidePages
       : guideMode === "bulk-trader"
         ? bulkTraderGuidePages
+        : guideMode === "money-bank"
+          ? moneyBankGuidePages
         : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
@@ -2054,6 +2124,9 @@ export default function XTraderPage() {
       <section className="xt-feature-card xt-feature-card-edge2">
         <div><Bot size={18} /><span><b>Money Bank</b><small>Accumulator</small></span></div>
         <div className="xt-feature-actions">
+          <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("money-bank"); setGuidePage(0); setGuideOpen(true); }}>
+            <BookOpen size={14} />Guide
+          </button>
           <label className="xt-switch">
             <input
               type="checkbox"
@@ -2067,52 +2140,7 @@ export default function XTraderPage() {
         </div>
       </section>
 
-      {edge2Enabled && (
-        <MoneyBankPanel
-          isConnected={isConnected}
-          running={moneyBankRunning}
-          isReal={isReal}
-          liveConfirmed={liveConfirmed}
-          onLiveConfirm={setLiveConfirmed}
-          symbol={moneyBankSymbol}
-          markets={volatilityMarkets}
-          onSymbolChange={(next) => {
-            setMoneyBankSymbol(next);
-            void selectMarket(next);
-          }}
-          accountBalance={currentAccount?.balance}
-          currency={currentAccount?.currency ?? "USD"}
-          quote={status.data?.last_tick?.quote}
-          growthRate={moneyBankGrowthRate}
-          onGrowthRateChange={setMoneyBankGrowthRate}
-          takeProfitTicks={moneyBankTakeProfitTicks}
-          onTakeProfitTicksChange={setMoneyBankTakeProfitTicks}
-          strategy={moneyBankStrategy}
-          onStrategyChange={setMoneyBankStrategy}
-          budget={moneyBankBudget}
-          onBudgetChange={setMoneyBankBudget}
-          manualBase={moneyBankManualBase}
-          onManualBaseChange={setMoneyBankManualBase}
-          maxStake={moneyBankMaxStake}
-          onMaxStakeChange={setMoneyBankMaxStake}
-          autoCycle={moneyBankAutoCycle}
-          onAutoCycleChange={setMoneyBankAutoCycle}
-          reinvestProfit={moneyBankReinvestProfit}
-          onReinvestProfitChange={setMoneyBankReinvestProfit}
-          profitTarget={moneyBankProfitTarget}
-          onProfitTargetChange={setMoneyBankProfitTarget}
-          lossLimit={moneyBankLossLimit}
-          onLossLimitChange={setMoneyBankLossLimit}
-          cooldown={moneyBankCooldown}
-          onCooldownChange={setMoneyBankCooldown}
-          sessionPnl={moneyBankSessionPnl}
-          tradeCount={moneyBankTradeCount}
-          onStart={(config) => void startMoneyBank(config)}
-          onStop={stopMoneyBank}
-        />
-      )}
-
-      <section className="xt-feature-card xt-feature-card-digit-flip">
+      <section className="xt-feature-card xt-feature-card-bulk">
         <div><Activity size={18} /><span><b>Bulk Trader</b><small>Send 1–6 contracts instantly across four trade types</small></span></div>
         <div className="xt-feature-actions">
           {!canUseBulkTrader && <span className="xt-feature-locked">RESTRICTED</span>}
@@ -2158,7 +2186,7 @@ export default function XTraderPage() {
         </div>
       </section>
 
-      <section className="xt-feature-card">
+      <section className="xt-feature-card xt-feature-card-edge">
         <div><Bot size={18} /><span><b>EDGE 🏔️</b><small>Over / Under digit automation</small></span></div>
         <div className="xt-feature-actions">
           {!canUseEdge && <span className="xt-feature-locked">RESTRICTED</span>}
@@ -2575,16 +2603,68 @@ export default function XTraderPage() {
         </section>
       )}
 
+      {edge2Enabled && (
+        <MoneyBankPanel
+          isConnected={isConnected}
+          running={moneyBankRunning}
+          closing={moneyBankClosing}
+          isReal={isReal}
+          liveConfirmed={liveConfirmed}
+          onLiveConfirm={setLiveConfirmed}
+          symbol={moneyBankSymbol}
+          markets={volatilityMarkets}
+          onSymbolChange={(next) => {
+            setMoneyBankSymbol(next);
+            void selectMarket(next);
+          }}
+          accountBalance={currentAccount?.balance}
+          currency={currentAccount?.currency ?? "USD"}
+          quote={status.data?.last_tick?.quote}
+          growthRate={moneyBankGrowthRate}
+          onGrowthRateChange={setMoneyBankGrowthRate}
+          takeProfitTicks={moneyBankTakeProfitTicks}
+          onTakeProfitTicksChange={setMoneyBankTakeProfitTicks}
+          strategy={moneyBankStrategy}
+          onStrategyChange={setMoneyBankStrategy}
+          budget={moneyBankBudget}
+          onBudgetChange={setMoneyBankBudget}
+          manualBase={moneyBankManualBase}
+          onManualBaseChange={setMoneyBankManualBase}
+          autoSwitch={moneyBankAutoSwitch}
+          onAutoSwitchChange={setMoneyBankAutoSwitch}
+          reinvestProfit={moneyBankReinvestProfit}
+          onReinvestProfitChange={setMoneyBankReinvestProfit}
+          profitTarget={moneyBankProfitTarget}
+          onProfitTargetChange={setMoneyBankProfitTarget}
+          lossLimit={moneyBankLossLimit}
+          onLossLimitChange={setMoneyBankLossLimit}
+          marketSignals={moneyBankSignals}
+          recentTrades={moneyBankRows}
+          sessionWins={moneyBankWins}
+          currentStreak={moneyBankStreaks.current}
+          peakStreak={moneyBankStreaks.peak}
+          nextStake={(moneyBankConfigRef.current?.ladder[Math.min(6, moneyBankLevelRef.current)] ?? calculateRecoveryLadder({ strategy: moneyBankStrategy, budget: moneyBankBudget, manualBase: moneyBankManualBase, growthRate: moneyBankGrowthRate, takeProfitTicks: moneyBankTakeProfitTicks })[Math.min(6, moneyBankLevelRef.current)])?.stake ?? 0}
+          onSafestPairChange={(next) => {
+            moneyBankSafestSymbolRef.current = next;
+            setMoneyBankSafestSymbol(next);
+          }}
+          sessionPnl={moneyBankSessionPnl}
+          tradeCount={moneyBankCompletedRows.length}
+          onStart={(config) => void startMoneyBank(config)}
+          onStop={stopMoneyBank}
+        />
+      )}
+
       {guideOpen && (
         <div className="xt-guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideOpen(false); }}>
           <section className="xt-guide" role="dialog" aria-modal="true" aria-labelledby="xt-guide-title">
             <header className="xt-guide-header">
-              <div><BookOpen size={18} /><span><b>{guideMode === "trade-x" ? "Trade X Guide" : guideMode === "digit-flip" ? "DigitFlip Guide" : guideMode === "bulk-trader" ? "Bulk Trader Guide" : "EDGE Guide"}</b><small>Page {guidePage + 1} of {activeGuidePages.length}</small></span></div>
+              <div><BookOpen size={18} /><span><b>{guideMode === "trade-x" ? "Trade X Guide" : guideMode === "digit-flip" ? "DigitFlip Guide" : guideMode === "bulk-trader" ? "Bulk Trader Guide" : guideMode === "money-bank" ? "Money Bank Guide" : "EDGE Guide"}</b><small>Page {guidePage + 1} of {activeGuidePages.length}</small></span></div>
               <button type="button" aria-label="Close guide" onClick={() => setGuideOpen(false)}><X size={17} /></button>
             </header>
             <div className="xt-guide-progress"><span style={{ width: `${((guidePage + 1) / activeGuidePages.length) * 100}%` }} /></div>
             <article className="xt-guide-page">
-               <small className="xt-guide-kicker">{guideMode === "trade-x" ? "TRADE X FIELD GUIDE" : guideMode === "digit-flip" ? "DIGITFLIP FIELD GUIDE" : guideMode === "bulk-trader" ? "BULK TRADER FIELD GUIDE" : "EDGE FIELD GUIDE"}</small>
+               <small className="xt-guide-kicker">{guideMode === "trade-x" ? "TRADE X FIELD GUIDE" : guideMode === "digit-flip" ? "DIGITFLIP FIELD GUIDE" : guideMode === "bulk-trader" ? "BULK TRADER FIELD GUIDE" : guideMode === "money-bank" ? "MONEY BANK FIELD GUIDE" : "EDGE FIELD GUIDE"}</small>
               <h2 id="xt-guide-title">{activeGuidePages[guidePage].title}</h2>
               <p>{activeGuidePages[guidePage].body}</p>
               <ul>{activeGuidePages[guidePage].points.map((point) => <li key={point}>{point}</li>)}</ul>
@@ -2593,7 +2673,7 @@ export default function XTraderPage() {
               <button type="button" className="xt-guide-nav" onClick={() => setGuidePage((page) => Math.max(0, page - 1))} disabled={guidePage === 0}><ChevronLeft size={15} />Back</button>
               <span>{guidePage + 1} / {activeGuidePages.length}</span>
               {guidePage === activeGuidePages.length - 1 ? (
-                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? toggleTradeX(true) : guideMode === "digit-flip" ? toggleDigitFlip(true) : guideMode === "bulk-trader" ? toggleBulkTrader(true) : toggleXTrader(true); }}>Let's start trading</button>
+                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? toggleTradeX(true) : guideMode === "digit-flip" ? toggleDigitFlip(true) : guideMode === "bulk-trader" ? toggleBulkTrader(true) : guideMode === "money-bank" ? toggleMoneyBank(true) : toggleXTrader(true); }}>Let's start trading</button>
               ) : (
                 <button type="button" className="xt-guide-nav next" onClick={() => setGuidePage((page) => Math.min(activeGuidePages.length - 1, page + 1))}>Next<ChevronRight size={15} /></button>
               )}

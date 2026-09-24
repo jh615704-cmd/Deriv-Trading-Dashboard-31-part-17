@@ -535,6 +535,17 @@ export interface DerivBuyResponse {
   buy?: DerivBuy | null;
 }
 
+export interface DerivSellInput {
+  /** @minLength 1 */
+  contract_id: string;
+}
+
+export interface DerivSellResponse {
+  ok: boolean;
+  contract_id: string;
+  sold_for: number;
+}
+
 export interface DerivBulkBuyResponse {
   ok: boolean;
   message: string;

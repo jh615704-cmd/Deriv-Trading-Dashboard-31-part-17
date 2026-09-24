@@ -797,3 +797,92 @@
     display: none;
   }
 }
+
+/* Money Bank uses a green banking palette and keeps every secondary surface
+   readable on narrow screens. */
+.money-bank-panel {
+  --mb-bg: #061a14;
+  --mb-panel: #0b2b20;
+  --mb-panel-soft: #103b2a;
+  --mb-line: rgba(75, 213, 142, .2);
+  --mb-line-strong: rgba(75, 213, 142, .48);
+  --mb-accent: #42d58e;
+  --mb-accent-soft: rgba(66, 213, 142, .14);
+  border-color: rgba(66, 213, 142, .42);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(22, 132, 84, .25), transparent 32%),
+    linear-gradient(135deg, #09261b 0%, #061a14 55%, #0b2a1d 100%);
+}
+.money-bank-header { border-bottom-color: rgba(66, 213, 142, .23); background: rgba(8, 50, 34, .6); }
+.money-bank-mark { border-color: rgba(100, 231, 163, .55); background: linear-gradient(145deg, #16754d, #0b3927); color: #c8ffe0; }
+.money-bank-title-row span,
+.money-bank-filter-badge,
+.money-bank-risk-pill { border-color: rgba(66, 213, 142, .34); background: rgba(66, 213, 142, .11); color: #8ff0bb; }
+.money-bank-card,
+.money-bank-return-card { border-color: var(--mb-line); background: linear-gradient(140deg, rgba(13, 56, 39, .94), rgba(7, 33, 24, .94)); }
+.money-bank-select-wrap,
+.money-bank-input-wrap,
+.money-bank-ticks-box { border-color: rgba(66, 213, 142, .34); background: #061c15; }
+.money-bank-rate-grid button,
+.money-bank-segmented button { border-color: rgba(66, 213, 142, .24); background: rgba(4, 25, 18, .72); }
+.money-bank-rate-grid button.active,
+.money-bank-segmented button.active { border-color: rgba(95, 232, 161, .82); background: linear-gradient(145deg, rgba(19, 126, 78, .84), rgba(8, 74, 46, .9)); box-shadow: 0 5px 18px rgba(10, 98, 57, .24); }
+.money-bank-return-card { background: radial-gradient(circle at 95% 5%, rgba(40, 181, 106, .24), transparent 34%), linear-gradient(140deg, #116442, #082e20 76%); }
+.money-bank-return-bar i { background: linear-gradient(90deg, #22a96c, #90f3bd); }
+.money-bank-level.base { border-color: rgba(85, 226, 149, .48); background: rgba(66, 213, 142, .12); }
+.money-bank-toggle-list label { border-bottom-color: rgba(66, 213, 142, .14); }
+.money-bank-toggle-list label > i { background: #173e2b; }
+.money-bank-toggle-list input:checked + i { background: #21935c; }
+.money-bank-footer { border-top-color: rgba(66, 213, 142, .23); background: rgba(5, 29, 20, .78); }
+.money-bank-start { background: linear-gradient(135deg, #38c982, #168454); box-shadow: 0 7px 18px rgba(13, 117, 68, .3); }
+.money-bank-start.stop { background: linear-gradient(135deg, #db665b, #9c2f34); }
+.money-bank-snapshot-actions,
+.money-bank-history-actions { display: flex; align-items: center; gap: 7px; }
+.money-bank-snapshot-actions > span { color: #78ac91; font-size: .62rem; }
+.money-bank-snapshot-actions button,
+.money-bank-history-actions button { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1px solid rgba(66, 213, 142, .3); border-radius: 7px; background: rgba(4, 25, 18, .55); color: #9deec0; cursor: pointer; font-size: .62rem; font-weight: 800; }
+.money-bank-snapshot-actions button:disabled,
+.money-bank-history-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.money-bank-snapshot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.money-bank-snapshot-row { display: grid; grid-template-columns: auto 1fr; gap: 3px 6px; padding: 9px; border: 1px solid rgba(66, 213, 142, .14); border-radius: 8px; background: rgba(2, 20, 13, .46); }
+.money-bank-snapshot-row.best { border-color: rgba(129, 244, 177, .7); background: rgba(31, 126, 77, .28); }
+.money-bank-snapshot-row > b { color: #7cebb0; font-size: .65rem; }
+.money-bank-snapshot-row > span { color: #d3f9df; font-size: .7rem; font-weight: 700; }
+.money-bank-snapshot-row > strong { grid-column: 2; color: #f0fff5; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.money-bank-snapshot-row > em { grid-column: 2; color: #78b393; font-size: .6rem; font-style: normal; }
+.money-bank-safest-copy { margin: 10px 0 0; color: #91c5a5; font-size: .68rem; }
+.money-bank-safest-copy b { color: #c8f9d7; }
+.money-bank-stat-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
+.money-bank-stat-grid span { display: grid; gap: 4px; padding: 8px; border: 1px solid rgba(66, 213, 142, .13); border-radius: 7px; background: rgba(3, 24, 16, .42); }
+.money-bank-stat-grid small { color: #70a88a; font-size: .55rem; font-weight: 800; letter-spacing: .08em; }
+.money-bank-stat-grid b { color: #e3ffeb; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.money-bank-stat-grid b.positive,
+.money-bank-history-row strong.positive,
+.money-bank-history-total b.positive { color: #8df0b7; }
+.money-bank-stat-grid b.negative,
+.money-bank-history-row strong.negative,
+.money-bank-history-total b.negative { color: #ff9a8c; }
+.money-bank-history-actions button:last-child:hover { border-color: #ff9a8c; color: #ffc0b8; }
+.money-bank-history-rows { display: grid; gap: 6px; }
+.money-bank-history-rows.fading { opacity: 0; transform: translateX(12px); transition: opacity .35s ease, transform .35s ease; }
+.money-bank-history-row { display: grid; grid-template-columns: minmax(0, 1.5fr) auto auto auto; align-items: center; gap: 10px; min-height: 38px; padding: 7px 9px; border: 1px solid rgba(66, 213, 142, .14); border-radius: 8px; background: rgba(2, 20, 13, .4); color: #d9f8e1; font-size: .7rem; }
+.money-bank-history-row > span:first-child { display: grid; gap: 3px; }
+.money-bank-history-row small { display: block; color: #6fa586; font-size: .55rem; }
+.money-bank-empty-history { margin: 0; padding: 14px; border: 1px dashed rgba(66, 213, 142, .22); color: #75aa8c; font-size: .68rem; text-align: center; }
+.money-bank-history-total { margin: 10px 0 0; color: #74aa8c; font-size: .65rem; text-align: right; }
+.money-bank-history-total b { margin-left: 5px; }
+.money-bank-spin { animation: money-bank-spin .8s linear infinite; }
+@keyframes money-bank-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .money-bank-snapshot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .money-bank-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .money-bank-snapshot-actions { align-items: flex-end; flex-direction: column; }
+  .money-bank-snapshot-grid,
+  .money-bank-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .money-bank-history-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .money-bank-history-row > span:nth-child(2),
+  .money-bank-history-row > span:nth-child(3) { display: none; }
+  .money-bank-history-row > strong { grid-column: 2; grid-row: 1; }
+}

@@ -13,7 +13,7 @@ const proposalAttempts = 3;
 const buyAckTimeoutMs = 12_000;
 const supportedSymbols = new Set([
   "R_10", "R_25", "R_50", "R_75", "R_100",
-  "1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ90V", "1HZ100V",
+  "1HZ10V", "1HZ15V", "1HZ25V", "1HZ30V", "1HZ50V", "1HZ75V", "1HZ90V", "1HZ100V",
   "JD10", "JD25", "JD50", "JD75", "JD100",
 ]);
 type DigitContractType = "DIGITEVEN" | "DIGITODD" | "DIGITOVER" | "DIGITUNDER" | "DIGITDIFF" | "CALL" | "PUT" | "ACCU";
@@ -128,6 +128,11 @@ type BuyInput = {
   confirm_live_trade: true;
 };
 
+export type SellResult = {
+  contract_id: string;
+  sold_for: number;
+};
+
 type DerivResponse = {
   data?: unknown;
   errors?: Array<{ message?: string }>;
@@ -160,6 +165,12 @@ return {
   pendingBuyInputs: new Map<string, ProposalInput>(),
   buyWaiters: new Map<string, {
     resolve: (buy: DerivBuy) => void;
+    reject: (error: Error) => void;
+    timer: NodeJS.Timeout;
+  }>(),
+  sellSequence: 0,
+  sellWaiters: new Map<number, {
+    resolve: (result: SellResult) => void;
     reject: (error: Error) => void;
     timer: NodeJS.Timeout;
   }>(),
@@ -275,6 +286,11 @@ export function disposeUser(userId: string) {
     waiter.reject(new Error("Deriv runtime disposed"));
   }
   runtime.buyWaiters.clear();
+  for (const waiter of runtime.sellWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error("Deriv runtime disposed"));
+  }
+  runtime.sellWaiters.clear();
   if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
   runtime.socket?.close();
   runtimes.delete(userId);
@@ -295,6 +311,14 @@ function rejectBuyWaiters(message: string) {
   }
   getState().buyWaiters.clear();
   getState().pendingBuyInputs.clear();
+}
+
+function rejectSellWaiters(message: string) {
+  for (const waiter of getState().sellWaiters.values()) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error(message));
+  }
+  getState().sellWaiters.clear();
 }
 
 function hasActiveContract() {
@@ -581,14 +605,16 @@ function sendStakeProposal(input: ProposalInput, reqId: number) {
   // proposal, buy at the exact returned ask price, and pass the returned
   // payout through unchanged. Do not apply an app-level payout cap, fee, or
   // percentage reduction here or in any future feature that uses this path.
+  const isAccumulator = input.contract_type === "ACCU";
+  const duration = isAccumulator ? Math.max(5, Math.floor(input.duration)) : input.duration;
   return send({
     proposal: 1,
     amount: input.amount,
     basis: "stake",
     contract_type: input.contract_type,
     currency: defaultCurrency,
-    duration: input.duration,
-    duration_unit: input.duration_unit,
+    duration,
+    duration_unit: isAccumulator ? "t" : input.duration_unit,
     underlying_symbol: input.symbol ?? defaultSymbol,
     ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
     ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
@@ -632,6 +658,8 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
     }, buyAckTimeoutMs);
     getState().pendingBuyInputs.set(requestKey, input);
     getState().buyWaiters.set(requestKey, { resolve, reject, timer });
+    const isAccumulator = input.contract_type === "ACCU";
+    const duration = isAccumulator ? Math.max(5, Math.floor(input.duration)) : input.duration;
     const sent = send({
       buy: "1",
       parameters: {
@@ -639,8 +667,8 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
         basis: "stake",
         contract_type: input.contract_type,
         currency: defaultCurrency,
-        duration: input.duration,
-        duration_unit: input.duration_unit,
+        duration,
+        duration_unit: isAccumulator ? "t" : input.duration_unit,
         underlying_symbol: input.symbol ?? defaultSymbol,
         ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
         ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
@@ -652,6 +680,22 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
       clearTimeout(timer);
       getState().buyWaiters.delete(requestKey);
       getState().pendingBuyInputs.delete(requestKey);
+      reject(new Error("Deriv WebSocket is not ready"));
+    }
+  });
+}
+
+async function sendSell(contractId: string): Promise<SellResult> {
+  const reqId = ++getState().sellSequence;
+  return new Promise<SellResult>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      getState().sellWaiters.delete(reqId);
+      reject(new Error("Deriv did not confirm the contract close in time"));
+    }, buyAckTimeoutMs);
+    getState().sellWaiters.set(reqId, { resolve, reject, timer });
+    if (!send({ sell: contractId, price: 0, req_id: reqId })) {
+      clearTimeout(timer);
+      getState().sellWaiters.delete(reqId);
       reject(new Error("Deriv WebSocket is not ready"));
     }
   });
@@ -829,6 +873,17 @@ async function connectInternal() {
             buyWaiter.resolve(getState().lastBuy);
           }
         }
+      } else if (message.msg_type === "sell") {
+        const reqId = Number(message.req_id ?? message.echo_req?.req_id);
+        const waiter = getState().sellWaiters.get(reqId);
+        if (waiter) {
+          clearTimeout(waiter.timer);
+          getState().sellWaiters.delete(reqId);
+          waiter.resolve({
+            contract_id: String(message.sell?.contract_id ?? message.echo_req?.sell ?? ""),
+            sold_for: Number(message.sell?.sold_for ?? 0),
+          });
+        }
       } else if (message.msg_type === "proposal_open_contract") {
         const contract = message.proposal_open_contract;
         if (contract) {
@@ -883,6 +938,7 @@ async function connectInternal() {
       getState().socket = null;
       getState().account = null;
       rejectBuyWaiters("Deriv WebSocket disconnected before the contract purchase was acknowledged");
+      rejectSellWaiters("Deriv WebSocket disconnected before the contract could be sold");
       logger.warn("Deriv WebSocket closed");
       resolveOnce(false);
       if (isRuntimeCurrent()) scheduleReconnect();
@@ -1120,6 +1176,23 @@ export async function buyContract(input: BuyInput) {
     proposal,
     buy,
   };
+}
+
+export async function sellContract(contractId: string) {
+  if (!contractId.trim()) throw new Error("A contract id is required to close a contract");
+  const connected = await connect();
+  if (!connected) throw new Error("Deriv WebSocket is not ready");
+  const result = await sendSell(contractId.trim());
+  const matching = getState().history.find((trade: DerivHistoryItem) => trade.contract_id === contractId.trim());
+  if (matching) {
+    upsertHistory({
+      ...matching,
+      status: "closed",
+      sell_time: Math.floor(Date.now() / 1000),
+      profit: result.sold_for - matching.buy_price,
+    });
+  }
+  return { ok: true, ...result };
 }
 
 export async function bulkBuyContracts(input: {

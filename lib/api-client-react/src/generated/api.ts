@@ -41,6 +41,8 @@ import type {
   DerivHistoryResponse,
   DerivProposalInput,
   DerivProposalRequest,
+  DerivSellInput,
+  DerivSellResponse,
   DerivStatus,
   DerivSymbolSelection,
   DerivTokenInput,
@@ -1835,6 +1837,77 @@ export const useBulkBuyDerivContracts = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getBulkBuyDerivContractsMutationOptions(options));
+    }
+
+export const getSellDerivContractUrl = () => {
+
+
+
+
+  return `/api/deriv/sell`
+}
+
+/**
+ * @summary Close an open Deriv contract at the current sell price
+ */
+export const sellDerivContract = async (derivSellInput: DerivSellInput, options?: Parameters<typeof customFetch>[1]): Promise<DerivSellResponse> => {
+
+  return customFetch<DerivSellResponse>(getSellDerivContractUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(derivSellInput)
+  }
+);}
+
+
+
+
+
+export const getSellDerivContractMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sellDerivContract>>, TError,{data: BodyType<DerivSellInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sellDerivContract>>, TError,{data: BodyType<DerivSellInput>}, TContext> => {
+
+const mutationKey = ['sellDerivContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sellDerivContract>>, {data: BodyType<DerivSellInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sellDerivContract(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SellDerivContractMutationResult = NonNullable<Awaited<ReturnType<typeof sellDerivContract>>>
+    export type SellDerivContractMutationBody = BodyType<DerivSellInput>
+    export type SellDerivContractMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Close an open Deriv contract at the current sell price
+ */
+export const useSellDerivContract = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sellDerivContract>>, TError,{data: BodyType<DerivSellInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sellDerivContract>>,
+        TError,
+        {data: BodyType<DerivSellInput>},
+        TContext
+      > => {
+      return useMutation(getSellDerivContractMutationOptions(options));
     }
 
 export const getDualBuyDerivContractsUrl = () => {

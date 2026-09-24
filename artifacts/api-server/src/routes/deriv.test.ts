@@ -115,6 +115,10 @@ mock.module("../lib/deriv", {
       observePat();
       return { ok: true, message: "contract bought", proposal: null, buy: null };
     },
+    sellContract: async () => {
+      observePat();
+      return { ok: true, contract_id: "contract-1", sold_for: 1 };
+    },
     bulkBuyContracts: async () => {
       observePat();
       return { ok: true, message: "contracts bought", count: 1, results: [] };

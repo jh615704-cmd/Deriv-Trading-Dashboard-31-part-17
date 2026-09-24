@@ -173,10 +173,11 @@ export default function BulkTraderPanel({
           <div className="bulk-trader-market">
             <div className="bulk-trader-label"><small>MARKET SCAN · {marketLabel}</small><b>{analysisTickCount} ticks · {currentSignal ? `${currentSignal.sampleCount} observed` : "Waiting for sample"}</b></div>
             <select data-testid="select-bulk-market" value={autoSelectBest ? "__auto__" : symbol} onChange={(event) => event.target.value === "__auto__" ? onAutoSelectBestChange(true) : (onAutoSelectBestChange(false), onSymbolChange(event.target.value))} disabled={!isConnected || isPlacingTrade}>
-              <option value="__auto__">Auto selected best</option>
-              {rankedSymbols.map((item, index) => {
+              <option value="__auto__">{`Auto best · #1 ${rankedSymbols[0]?.label ?? "waiting for sample"}`}</option>
+              {symbols.map((item) => {
                 const signal = marketSignals.find((entry) => entry.symbol === item.value);
-                return <option key={item.value} value={item.value}>{index + 1}. {item.label} · {signal ? displayPercentage(signal.observedPercentage) : "waiting"}</option>;
+                const rank = rankedSymbols.findIndex((entry) => entry.value === item.value) + 1;
+                return <option key={item.value} value={item.value}>{rank > 0 ? `#${rank} ` : ""}{item.label} · {signal ? displayPercentage(signal.observedPercentage) : "waiting"}</option>;
               })}
             </select>
             <div className="bulk-market-ranking" aria-label="Live market ranking">

@@ -981,6 +981,23 @@ export const BulkBuyDerivContractsResponse = zod.object({
 
 
 /**
+ * @summary Close an open Deriv contract at the current sell price
+ */
+
+
+
+export const SellDerivContractBody = zod.object({
+  "contract_id": zod.string().min(1)
+})
+
+export const SellDerivContractResponse = zod.object({
+  "ok": zod.boolean(),
+  "contract_id": zod.string(),
+  "sold_for": zod.number()
+})
+
+
+/**
  * Requests and sends one Over and one Under digit contract without the single-trade cooldown. The pair uses the selected barrier and stake.
  * @summary Buy one Over and one Under contract as a single action
  */

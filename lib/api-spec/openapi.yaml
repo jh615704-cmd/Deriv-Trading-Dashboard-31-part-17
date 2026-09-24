@@ -640,6 +640,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /deriv/sell:
+    post:
+      operationId: sellDerivContract
+      tags: [deriv]
+      summary: Close an open Deriv contract at the current sell price
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivSellInput"
+      responses:
+        "200":
+          description: Contract close confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivSellResponse"
+        "400":
+          description: Invalid contract close request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: Deriv did not confirm the contract close
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /deriv/dual-buy:
     post:
       operationId: dualBuyDerivContracts
@@ -1204,6 +1234,23 @@ components:
           anyOf:
             - $ref: "#/components/schemas/DerivBuy"
             - type: "null"
+    DerivSellInput:
+      type: object
+      required: [contract_id]
+      properties:
+        contract_id:
+          type: string
+          minLength: 1
+    DerivSellResponse:
+      type: object
+      required: [ok, contract_id, sold_for]
+      properties:
+        ok:
+          type: boolean
+        contract_id:
+          type: string
+        sold_for:
+          type: number
     DerivBulkBuyResponse:
       type: object
       required: [ok, message, count, proposals]

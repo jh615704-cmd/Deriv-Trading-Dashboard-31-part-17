@@ -48,6 +48,8 @@ export * from './derivProposalInput';
 export * from './derivProposalInputContractType';
 export * from './derivProposalInputDurationUnit';
 export * from './derivProposalRequest';
+export * from './derivSellInput';
+export * from './derivSellResponse';
 export * from './derivStatus';
 export * from './derivSymbolSelection';
 export * from './derivTick';

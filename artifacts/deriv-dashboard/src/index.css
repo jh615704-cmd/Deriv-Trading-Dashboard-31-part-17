@@ -1377,3 +1377,38 @@ body { overflow-x: hidden; }
   .bulk-trader-actions.action-count-3 button { padding-right: 4px; padding-left: 4px; }
   .bulk-trader-actions.action-count-3 button span { font-size: 8px; }
 }
+
+/* Feature identity colors */
+.xt-feature-card-edge2 {
+  border-color: rgba(67, 211, 132, .46);
+  background: linear-gradient(145deg, rgba(11, 78, 51, .96), rgba(5, 43, 31, .96));
+}
+.xt-feature-card-edge2 svg { color: #70e7a8; }
+.xt-feature-card-edge {
+  border-color: rgba(229, 66, 73, .5);
+  background: linear-gradient(145deg, rgba(112, 18, 30, .96), rgba(64, 9, 20, .96));
+}
+.xt-feature-card-edge svg { color: #ff8a88; }
+.xt-feature-card-trade-x {
+  border-color: rgba(41, 154, 222, .52);
+  background: linear-gradient(145deg, rgba(7, 72, 126, .96), rgba(4, 37, 82, .96));
+}
+.xt-feature-card-trade-x svg { color: #71cfff; }
+.xt-feature-card-digit-flip {
+  border-color: rgba(255, 151, 39, .58);
+  background: linear-gradient(145deg, rgba(157, 62, 7, .96), rgba(91, 31, 5, .96));
+}
+.xt-feature-card-digit-flip svg { color: #ffc066; }
+.xt-feature-card-bulk {
+  border-color: rgba(194, 75, 255, .58);
+  background: linear-gradient(145deg, rgba(105, 21, 151, .96), rgba(57, 12, 91, .96));
+}
+.xt-feature-card-bulk svg { color: #e0a0ff; }
+.trade-x-panel {
+  background: linear-gradient(145deg, #063d72, #042750) !important;
+  border-color: #1985c6 !important;
+}
+.digit-flip-panel {
+  background: linear-gradient(145deg, #8c3906, #542104) !important;
+  border-color: #ef8e24 !important;
+}
