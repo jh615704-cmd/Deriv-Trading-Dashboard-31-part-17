@@ -417,6 +417,20 @@ export default function XTraderPage() {
   const [analysisDigits, setAnalysisDigits] = useState<number[]>([]);
   const [analysisTickCount, setAnalysisTickCount] = useState(0);
   const [connectionMessage, setConnectionMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+  const [connectionMessageFading, setConnectionMessageFading] = useState(false);
+  useEffect(() => {
+    if (!connectionMessage) {
+      setConnectionMessageFading(false);
+      return;
+    }
+    setConnectionMessageFading(false);
+    const fadeTimer = window.setTimeout(() => setConnectionMessageFading(true), 4500);
+    const removeTimer = window.setTimeout(() => setConnectionMessage(null), 5000);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, [connectionMessage]);
   const [nextStake, setNextStake] = useState(stake);
   const runningRef = useRef(false);
   const autoSwitchRef = useRef(autoSwitch);
@@ -2330,7 +2344,7 @@ export default function XTraderPage() {
             <button onClick={() => void disconnect()} disabled={deleteTokenMutation.isPending}>Disconnect</button>
           </div>
         )}
-        {connectionMessage && <p className={`xt-inline-message ${connectionMessage.kind}`}>{connectionMessage.text}</p>}
+        {connectionMessage && <p className={`xt-inline-message ${connectionMessage.kind}${connectionMessageFading ? " fading" : ""}`} role="status" aria-live="polite">{connectionMessage.text}</p>}
       </section>
 
       <section className="xt-account-grid">
