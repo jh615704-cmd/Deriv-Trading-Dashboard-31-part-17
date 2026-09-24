@@ -42,6 +42,15 @@ export type MoneyBankTrade = {
   sell_time?: number | null;
 };
 
+export type MoneyBankScannerRecommendation = {
+  symbol: string;
+  growthRate: number;
+  takeProfitTicks: number;
+  score: number;
+  sampleCount: number;
+  observedBalance: number;
+};
+
 type MoneyBankPanelProps = {
   isConnected: boolean;
   running: boolean;
@@ -72,6 +81,14 @@ type MoneyBankPanelProps = {
   onProfitTargetChange: (value: number | null) => void;
   lossLimit: number | null;
   onLossLimitChange: (value: number | null) => void;
+  scannerEnabled: boolean;
+  scannerCountdown: number;
+  scannerBusy: boolean;
+  scannerRecommendation: MoneyBankScannerRecommendation | null;
+  onScannerChange: (value: boolean) => void;
+  onAdaptScannerSettings: () => void;
+  jdyEnabled: boolean;
+  onJdyChange: (value: boolean) => void;
   closing?: boolean;
   marketSignals: readonly MoneyBankMarketSignal[];
   recentTrades: readonly MoneyBankTrade[];
@@ -92,6 +109,7 @@ export const MONEY_BANK_AUTO_SYMBOLS = ["1HZ10V", "1HZ15V", "1HZ25V", "1HZ30V", 
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const ACCUMULATOR_MIN_STAKE = 1;
+const roundCents = (value: number) => Number((Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2));
 
 export function calculateRecoveryLadder(input: {
   strategy: MoneyBankStrategy;
@@ -108,17 +126,17 @@ export function calculateRecoveryLadder(input: {
   const requestedBase = input.strategy === "budget"
     ? Math.max(ACCUMULATOR_MIN_STAKE, input.budget) / factors.reduce((sum, factor) => sum + factor, 0)
     : Math.max(ACCUMULATOR_MIN_STAKE, input.manualBase);
-  const base = Math.max(ACCUMULATOR_MIN_STAKE, requestedBase);
+  const base = roundCents(Math.max(ACCUMULATOR_MIN_STAKE, requestedBase));
 
   return LEVEL_NAMES.map((name, index) => {
-    const stake = Math.max(ACCUMULATOR_MIN_STAKE, base * factors[index]);
+    const stake = roundCents(Math.max(ACCUMULATOR_MIN_STAKE, base * factors[index]));
     const cumulative = LEVEL_NAMES.slice(0, index + 1)
-      .reduce((sum, _, levelIndex) => sum + Math.max(ACCUMULATOR_MIN_STAKE, base * factors[levelIndex]), 0);
+      .reduce((sum, _, levelIndex) => roundCents(sum + roundCents(Math.max(ACCUMULATOR_MIN_STAKE, base * factors[levelIndex]))), 0);
     return {
       name,
       stake,
       cumulative,
-      profit: stake * payout,
+      profit: roundCents(stake * payout),
     };
   });
 }
@@ -168,6 +186,14 @@ export function MoneyBankPanel({
   onProfitTargetChange,
   lossLimit,
   onLossLimitChange,
+  scannerEnabled,
+  scannerCountdown,
+  scannerBusy,
+  scannerRecommendation,
+  onScannerChange,
+  onAdaptScannerSettings,
+  jdyEnabled,
+  onJdyChange,
   closing = false,
   marketSignals,
   recentTrades,
@@ -436,6 +462,14 @@ export function MoneyBankPanel({
                <label><span>Loss Limit ($)</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0" step="1" placeholder="Optional" value={lossLimit ?? ""} onChange={(event) => onLossLimitChange(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} disabled={running} /></div></label>
             </div>
             <div className="money-bank-toggle-list">
+               <label><span><b>AI SCANNER</b><small>{scannerBusy ? "Scanning supported markets and growth rates…" : scannerEnabled ? scannerCountdown > 0 ? `Next scan in ${scannerCountdown}s` : "Refreshing every minute" : "Waits 10 seconds, then refreshes every minute"}</small></span><input type="checkbox" checked={scannerEnabled} onChange={(event) => onScannerChange(event.target.checked)} disabled={running || !isConnected} /><i /></label>
+               {scannerRecommendation && (
+                 <div className="money-bank-scanner-result">
+                   <span><small>BEST CURRENT SETUP</small><b>{scannerRecommendation.symbol} · {scannerRecommendation.growthRate}% · {scannerRecommendation.takeProfitTicks} ticks</b><em>{scannerRecommendation.observedBalance.toFixed(1)}% observed balance · {scannerRecommendation.sampleCount} ticks sampled</em></span>
+                   <button type="button" onClick={onAdaptScannerSettings} disabled={running}>Adapt settings</button>
+                 </div>
+               )}
+               <label><span><b>JDY AI</b><small>Validate the selected setup before every trade and refresh after settlement</small></span><input type="checkbox" checked={jdyEnabled} onChange={(event) => onJdyChange(event.target.checked)} disabled={running || !isConnected} /><i /></label>
               <label><span><b>Reinvest profit</b><small>Keep wins in the next BASE</small></span><input type="checkbox" checked={reinvestProfit} onChange={(event) => onReinvestProfitChange(event.target.checked)} disabled={running} /><i /></label>
                <label><span><b>Auto-switch safest pair</b><small>Use the highest current snapshot win rate</small></span><input type="checkbox" checked={autoSwitch} onChange={(event) => onAutoSwitchChange(event.target.checked)} disabled={running} /><i /></label>
             </div>

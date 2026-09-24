@@ -216,6 +216,23 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
     assert.equal(proposalRequests[0].growth_rate, 0.04);
   });
 
+  test("rounds Accumulator stakes before Deriv receives the proposal", async () => {
+    await withSelectedAccount("accumulator-rounding-user", () => deriv.buyContract({
+      amount: 1.239,
+      duration: 5,
+      duration_unit: "t",
+      contract_type: "ACCU",
+      growth_rate: 0.04,
+      symbol: "1HZ90V",
+      confirm_live_trade: true,
+    }));
+
+    const proposalRequest = latestSocket().sent.find((message) => message.proposal);
+    assert.ok(proposalRequest);
+    assert.equal(proposalRequest.amount, 1.24);
+    assert.deepEqual(proposalRequest.limit_order, { take_profit: 0.27 });
+  });
+
   test("uses the same ACCU parameters for bulk direct buys", async () => {
     const result = await withSelectedAccount("accumulator-bulk-user", () => deriv.bulkBuyContracts({
       amount: 1,

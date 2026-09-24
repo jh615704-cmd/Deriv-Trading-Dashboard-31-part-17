@@ -613,19 +613,20 @@ function send(message: Record<string, unknown>) {
 
 function contractParameters(input: ProposalInput) {
   const isAccumulator = input.contract_type === "ACCU";
+  const amount = isAccumulator ? roundCents(input.amount) : input.amount;
   const expiryOrTakeProfit = isAccumulator
     ? {
         limit_order: {
           take_profit: Math.max(
             0.01,
-            Number((input.amount * (Math.pow(1 + (input.growth_rate ?? 0), input.duration) - 1)).toFixed(2)),
+            roundCents(amount * (Math.pow(1 + (input.growth_rate ?? 0), input.duration) - 1)),
           ),
         },
       }
     : { duration: input.duration, duration_unit: input.duration_unit };
 
   return {
-    amount: input.amount,
+    amount,
     basis: "stake" as const,
     contract_type: input.contract_type,
     currency: defaultCurrency,
@@ -634,6 +635,10 @@ function contractParameters(input: ProposalInput) {
     ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
     ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
   };
+}
+
+function roundCents(value: number) {
+  return Number((Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2));
 }
 
 function sendStakeProposal(input: ProposalInput, reqId: number) {
@@ -1156,6 +1161,9 @@ export async function selectSymbol(symbol: string) {
 }
 
 export async function buyContract(input: BuyInput) {
+  const normalizedInput = input.contract_type === "ACCU"
+    ? { ...input, amount: roundCents(input.amount) }
+    : input;
   if (!getState().account) throw new Error("Select an account before buying a contract");
   if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
@@ -1163,11 +1171,11 @@ export async function buyContract(input: BuyInput) {
   if (getState().account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
-  if (input.amount > getState().account.balance) {
+  if (normalizedInput.amount > getState().account.balance) {
     throw new Error("The selected stake exceeds the current account balance");
   }
-  validateContractBarrier(input);
-  validateAccumulatorInput(input);
+  validateContractBarrier(normalizedInput);
+  validateAccumulatorInput(normalizedInput);
   assertNoActiveContract();
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
@@ -1175,19 +1183,19 @@ export async function buyContract(input: BuyInput) {
   }
   getState().lastBuyAt = Date.now();
   const proposal = await requestFreshProposal({
-    amount: input.amount,
-    duration: input.duration,
-    duration_unit: input.duration_unit,
-    contract_type: input.contract_type,
-    barrier: input.barrier,
-    growth_rate: input.growth_rate,
-    symbol: input.symbol,
+    amount: normalizedInput.amount,
+    duration: normalizedInput.duration,
+    duration_unit: normalizedInput.duration_unit,
+    contract_type: normalizedInput.contract_type,
+    barrier: normalizedInput.barrier,
+    growth_rate: normalizedInput.growth_rate,
+    symbol: normalizedInput.symbol,
   });
   const connected = await connect();
   if (!connected) {
     throw new Error("Deriv WebSocket is not ready");
   }
-  const buy = await sendProposalBuy(proposal, input);
+  const buy = await sendProposalBuy(proposal, normalizedInput);
   return {
     ok: true,
     message: getState().account.type === "real"

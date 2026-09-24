@@ -25,9 +25,15 @@ export function PatOnboarding() {
       });
       if (!result.success) throw new Error(result.message);
 
-      await queryClient.invalidateQueries({ queryKey: getGetDerivTokenStatusQueryKey() });
+      queryClient.setQueryData(getGetDerivTokenStatusQueryKey(), {
+        has_token: true,
+        expires_at: null,
+        last_verified_at: new Date().toISOString(),
+      });
       const connection = await testConnectionMutation.mutateAsync();
       if (!connection.ok) throw new Error(connection.message);
+      queryClient.setQueryData(getGetDerivAccountsQueryKey(), connection.accounts);
+      queryClient.setQueryData(getGetDerivStatusQueryKey(), connection.status);
 
       toast({
         title: "Deriv connected",
@@ -35,8 +41,6 @@ export function PatOnboarding() {
       });
       setToken('');
       setExpiresAt('');
-      await queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
-      await queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
       setLocation('/app');
     } catch (error: any) {
       const message = error?.data?.error || error?.message || "Failed to connect this Deriv PAT.";

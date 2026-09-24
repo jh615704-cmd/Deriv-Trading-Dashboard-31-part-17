@@ -277,6 +277,15 @@ type DigitFlipSettlementWatch = {
   processedIds: Set<string>;
 };
 
+type MoneyBankScannerRecommendation = {
+  symbol: string;
+  growthRate: number;
+  takeProfitTicks: number;
+  score: number;
+  sampleCount: number;
+  observedBalance: number;
+};
+
 export default function XTraderPage() {
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const queryClient = useQueryClient();
@@ -346,6 +355,11 @@ export default function XTraderPage() {
   const [moneyBankRunning, setMoneyBankRunning] = useState(false);
   const [moneyBankClosing, setMoneyBankClosing] = useState(false);
   const [moneyBankSafestSymbol, setMoneyBankSafestSymbol] = useState("1HZ90V");
+  const [moneyBankScannerEnabled, setMoneyBankScannerEnabled] = useState(false);
+  const [moneyBankScannerCountdown, setMoneyBankScannerCountdown] = useState(0);
+  const [moneyBankScannerBusy, setMoneyBankScannerBusy] = useState(false);
+  const [moneyBankScannerRecommendation, setMoneyBankScannerRecommendation] = useState<MoneyBankScannerRecommendation | null>(null);
+  const [moneyBankJdyEnabled, setMoneyBankJdyEnabled] = useState(false);
   const [moneyBankSessionPnl, setMoneyBankSessionPnl] = useState(0);
   const [moneyBankTradeCount, setMoneyBankTradeCount] = useState(0);
   const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
@@ -421,6 +435,8 @@ export default function XTraderPage() {
   const moneyBankSafestSymbolRef = useRef("1HZ90V");
   const moneyBankActionLockRef = useRef(false);
   const moneyBankClosePromiseRef = useRef<Promise<void> | null>(null);
+  const moneyBankOpenContractIdRef = useRef<string | null>(null);
+  const moneyBankScannerNextAtRef = useRef<number | null>(null);
   const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
   const moneyBankLevelRef = useRef(0);
@@ -525,6 +541,7 @@ export default function XTraderPage() {
     return { current: next, peak: Math.max(peak, next) };
   }, { current: 0, peak: 0 });
   const moneyBankSignals = (status.data?.market_signals ?? []) as MoneyBankMarketSignal[];
+  const moneyBankScannerRecommendationRef = useRef<MoneyBankScannerRecommendation | null>(null);
   const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
   const tradeXLosses = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit < 0).length;
@@ -577,6 +594,72 @@ export default function XTraderPage() {
       .sort((left, right) => right.observedPercentage - left.observedPercentage || right.sampleCount - left.sampleCount)[0]?.symbol ?? null,
     [bulkTraderMarketSignals],
   );
+
+  const scanMoneyBank = async () => {
+    if (!isConnected || moneyBankScannerBusy) return;
+    setMoneyBankScannerBusy(true);
+    try {
+      const freshStatus = await status.refetch();
+      const freshSignals = (freshStatus.data?.market_signals ?? moneyBankSignals) as MoneyBankMarketSignal[];
+      let best: MoneyBankScannerRecommendation | null = null;
+      for (const [marketSymbol] of moneyBankMarkets) {
+        const signal = freshSignals.find((entry) => entry.symbol === marketSymbol);
+        if (!signal || signal.sample_count < 5) continue;
+        const observedBalance = Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50);
+        for (let growthRate = 1; growthRate <= 5; growthRate += 1) {
+          for (let takeProfitTicks = 5; takeProfitTicks <= 50; takeProfitTicks += 1) {
+            const theoreticalReturn = (Math.pow(1 + growthRate / 100, takeProfitTicks) - 1) * 100;
+            const riskPenalty = growthRate * takeProfitTicks * 0.035;
+            const sampleConfidence = Math.min(signal.sample_count, 100) / 20;
+            const score = observedBalance * 0.72 + sampleConfidence + theoreticalReturn * 0.12 - riskPenalty;
+            if (!best || score > best.score) {
+              best = {
+                symbol: marketSymbol,
+                growthRate,
+                takeProfitTicks,
+                score,
+                sampleCount: signal.sample_count,
+                observedBalance,
+              };
+            }
+          }
+        }
+      }
+      moneyBankScannerRecommendationRef.current = best;
+      setMoneyBankScannerRecommendation(best);
+      if (best) {
+        setConnectionMessage({
+          kind: "info",
+          text: `AI SCANNER recommends ${best.symbol} at ${best.growthRate}% growth for ${best.takeProfitTicks} ticks (${best.observedBalance.toFixed(1)}% observed market balance).`,
+        });
+      } else {
+        setConnectionMessage({ kind: "info", text: "AI SCANNER is collecting enough live samples across the supported Volatility markets." });
+      }
+    } catch (error) {
+      setConnectionMessage({ kind: "error", text: `AI SCANNER could not refresh: ${errorMessage(error)}` });
+    } finally {
+      setMoneyBankScannerBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!moneyBankScannerEnabled) {
+      moneyBankScannerNextAtRef.current = null;
+      setMoneyBankScannerCountdown(0);
+      return;
+    }
+    moneyBankScannerNextAtRef.current ??= Date.now() + 10_000;
+    const timer = window.setInterval(() => {
+      const nextAt = moneyBankScannerNextAtRef.current ?? Date.now();
+      const remaining = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
+      setMoneyBankScannerCountdown(remaining);
+      if (remaining === 0 && !moneyBankScannerBusy) {
+        moneyBankScannerNextAtRef.current = Date.now() + 60_000;
+        void scanMoneyBank();
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [moneyBankScannerEnabled, moneyBankScannerBusy, isConnected, status.data?.market_signals]);
 
   useEffect(() => {
     if (sessionAccountIdRef.current === currentAccount?.id) return;
@@ -852,10 +935,15 @@ export default function XTraderPage() {
       const tokenResult = await tokenMutation.mutateAsync({ data: { token: pat.trim() } });
       setPat("");
       queryClient.setQueryData(getGetDerivAccountsQueryKey(), tokenResult.accounts);
-      await queryClient.invalidateQueries({ queryKey: getGetDerivTokenStatusQueryKey() });
-      await connectionMutation.mutateAsync();
-      await queryClient.invalidateQueries({ queryKey: getGetDerivAccountsQueryKey() });
-      await queryClient.invalidateQueries({ queryKey: getGetDerivStatusQueryKey() });
+      queryClient.setQueryData(getGetDerivTokenStatusQueryKey(), {
+        has_token: true,
+        expires_at: null,
+        last_verified_at: new Date().toISOString(),
+      });
+      const connection = await connectionMutation.mutateAsync();
+      if (!connection.ok) throw new Error(connection.message);
+      queryClient.setQueryData(getGetDerivAccountsQueryKey(), connection.accounts);
+      queryClient.setQueryData(getGetDerivStatusQueryKey(), connection.status);
       setConnectionMessage({ kind: "info", text: "Deriv connected. Your credential remains protected on the server." });
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -1196,17 +1284,27 @@ export default function XTraderPage() {
     if (!config || !moneyBankRunningRef.current || moneyBankActionLockRef.current) return;
 
     let latestRows = await getDerivHistory();
-    for (let attempt = 0; latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open") && attempt < 100; attempt += 1) {
+    const openContractId = moneyBankOpenContractIdRef.current;
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      const stillOpen = openContractId
+        ? latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")
+        : latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open");
+      if (!stillOpen) break;
       await sleep(500);
       latestRows = await getDerivHistory();
     }
-    if (latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open")) {
+    const unsettledPrevious = openContractId
+      ? latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")
+      : latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open");
+    if (unsettledPrevious) {
       throw new Error("Money Bank stopped while the previous contract was still settling.");
     }
 
-    const settledAccumulator = latestRows
-      .filter((trade) => trade.contract_type === "ACCU" && trade.status !== "open")
-      .find((trade) => !moneyBankProcessedSettlementIdsRef.current.has(trade.contract_id));
+    const settledAccumulator = (openContractId
+      ? latestRows.filter((trade) => trade.contract_id === openContractId)
+      : latestRows.filter((trade) => trade.contract_type === "ACCU" && trade.status !== "open")
+    ).find((trade) => !moneyBankProcessedSettlementIdsRef.current.has(trade.contract_id));
+    moneyBankOpenContractIdRef.current = null;
     if (settledAccumulator) {
       moneyBankProcessedSettlementIdsRef.current.add(settledAccumulator.contract_id);
       const nextSessionPnl = moneyBankSessionPnlRef.current + settledAccumulator.profit;
@@ -1238,10 +1336,28 @@ export default function XTraderPage() {
       if (config.lossLimit != null && config.lossLimit > 0 && nextSessionPnl <= -config.lossLimit) {
         throw new Error("Money Bank reached the session Loss limit.");
       }
+      if (moneyBankScannerEnabled) {
+        moneyBankScannerNextAtRef.current = Date.now() + 60_000;
+        void scanMoneyBank();
+      }
     }
 
     if (!moneyBankRunningRef.current) return;
     const currentConfig = moneyBankConfigRef.current ?? config;
+    const tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
+    if (moneyBankJdyEnabled) {
+      const freshStatus = await status.refetch();
+      const selectedSignal = (freshStatus.data?.market_signals ?? []).find((signal) => signal.symbol === tradeSymbol);
+      if (!selectedSignal || selectedSignal.sample_count < 5 || selectedSignal.quote == null) {
+        setConnectionMessage({ kind: "info", text: `JDY AI is waiting for a fresh sample on ${tradeSymbol} before trading.` });
+        await sleep(1000);
+        return;
+      }
+      setConnectionMessage({
+        kind: "info",
+        text: `JDY AI validated ${tradeSymbol} at ${currentConfig.growthRate}% growth and ${currentConfig.takeProfitTicks} ticks before entry.`,
+      });
+    }
     const level = currentConfig.ladder[Math.min(6, moneyBankLevelRef.current)];
     if (!level) throw new Error("Money Bank could not calculate the next recovery level.");
     const accountBalance = currentAccount?.balance ?? 0;
@@ -1249,7 +1365,6 @@ export default function XTraderPage() {
       throw new Error(`Money Bank stopped because ${level.stake.toFixed(2)} ${currentAccount?.currency ?? "USD"} exceeds the connected balance.`);
     }
 
-    const tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
     if (tradeSymbol !== moneyBankSymbol) {
       setMoneyBankSymbol(tradeSymbol);
       await selectMarket(tradeSymbol);
@@ -1257,9 +1372,9 @@ export default function XTraderPage() {
 
     moneyBankActionLockRef.current = true;
     try {
-      await moneyBankBuyMutation.mutateAsync({
+      const result = await moneyBankBuyMutation.mutateAsync({
         data: {
-          amount: level.stake,
+          amount: Number(level.stake.toFixed(2)),
           duration: currentConfig.takeProfitTicks,
           duration_unit: "t",
           contract_type: "ACCU",
@@ -1268,6 +1383,10 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+      const contractId = result.buy?.contract_id;
+      if (typeof contractId === "string" && contractId) {
+        moneyBankOpenContractIdRef.current = contractId;
+      }
       setMoneyBankTradeCount((value) => value + 1);
       refreshTradeResults();
     } finally {
@@ -1314,6 +1433,7 @@ export default function XTraderPage() {
         .map((trade) => trade.contract_id);
       moneyBankSessionKnownIdsRef.current = new Set(accumulatorIds);
       moneyBankProcessedSettlementIdsRef.current = new Set(accumulatorIds);
+      moneyBankOpenContractIdRef.current = latestRows.find((trade) => trade.contract_type === "ACCU" && trade.status === "open")?.contract_id ?? null;
       moneyBankLevelRef.current = 0;
       moneyBankConfigRef.current = config;
       moneyBankSafestSymbolRef.current = moneyBankSafestSymbol;
@@ -1391,6 +1511,8 @@ export default function XTraderPage() {
   const toggleMoneyBank = (enabled: boolean) => {
     setEdge2Enabled(enabled);
     if (!enabled) {
+      setMoneyBankScannerEnabled(false);
+      setMoneyBankJdyEnabled(false);
       stopMoneyBank();
       return;
     }
@@ -2641,6 +2763,25 @@ export default function XTraderPage() {
           onProfitTargetChange={setMoneyBankProfitTarget}
           lossLimit={moneyBankLossLimit}
           onLossLimitChange={setMoneyBankLossLimit}
+           scannerEnabled={moneyBankScannerEnabled}
+           scannerCountdown={moneyBankScannerCountdown}
+           scannerBusy={moneyBankScannerBusy}
+           scannerRecommendation={moneyBankScannerRecommendation}
+           onScannerChange={(enabled) => {
+             setMoneyBankScannerEnabled(enabled);
+             if (enabled) moneyBankScannerNextAtRef.current = Date.now() + 10_000;
+           }}
+           onAdaptScannerSettings={() => {
+             const recommendation = moneyBankScannerRecommendationRef.current;
+             if (!recommendation) return;
+             setMoneyBankSymbol(recommendation.symbol);
+             setMoneyBankGrowthRate(recommendation.growthRate);
+             setMoneyBankTakeProfitTicks(recommendation.takeProfitTicks);
+             void selectMarket(recommendation.symbol);
+             setConnectionMessage({ kind: "info", text: "Money Bank adapted to the latest AI SCANNER recommendation." });
+           }}
+           jdyEnabled={moneyBankJdyEnabled}
+           onJdyChange={setMoneyBankJdyEnabled}
           marketSignals={moneyBankSignals}
           recentTrades={moneyBankRows}
           sessionWins={moneyBankWins}
