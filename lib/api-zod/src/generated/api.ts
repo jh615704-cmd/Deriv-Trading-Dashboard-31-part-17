@@ -951,6 +951,9 @@ export const bulkBuyDerivContractsBodyDurationMax = 5;
 export const bulkBuyDerivContractsBodyBarrierMin = 0;
 export const bulkBuyDerivContractsBodyBarrierMax = 9;
 
+export const bulkBuyDerivContractsBodyGrowthRateMin = 0.01;
+export const bulkBuyDerivContractsBodyGrowthRateMax = 0.05;
+
 export const bulkBuyDerivContractsBodyCountMax = 6;
 
 
@@ -959,8 +962,9 @@ export const BulkBuyDerivContractsBody = zod.object({
   "amount": zod.number().gt(bulkBuyDerivContractsBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(bulkBuyDerivContractsBodyDurationMax),
   "duration_unit": zod.enum(['t']),
-  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT']),
+  "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT', 'ACCU']),
   "barrier": zod.number().int().min(bulkBuyDerivContractsBodyBarrierMin).max(bulkBuyDerivContractsBodyBarrierMax).optional(),
+  "growth_rate": zod.number().min(bulkBuyDerivContractsBodyGrowthRateMin).max(bulkBuyDerivContractsBodyGrowthRateMax).optional(),
   "symbol": zod.string().optional(),
   "count": zod.number().int().min(1).max(bulkBuyDerivContractsBodyCountMax),
   "confirm_live_trade": zod.literal(true)

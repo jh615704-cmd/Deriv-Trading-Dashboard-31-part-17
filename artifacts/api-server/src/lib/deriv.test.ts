@@ -171,9 +171,9 @@ after(() => {
 });
 
 describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
-  test("uses a future expiry and forwards decimal growth for Accumulator contracts", async () => {
+  test("omits expiry fields and forwards decimal growth for Accumulator contracts", async () => {
     const result = await withSelectedAccount("accumulator-user", () => deriv.buyContract({
-      amount: 0.5,
+      amount: 1,
       duration: 5,
       duration_unit: "t",
       contract_type: "ACCU",
@@ -190,8 +190,56 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
     assert.equal(proposalRequest.growth_rate, 0.04);
     assert.equal(proposalRequest.duration, undefined);
     assert.equal(proposalRequest.duration_unit, undefined);
-    assert.ok(Number.isInteger(proposalRequest.date_expiry));
-    assert.ok(proposalRequest.date_expiry > Math.floor(Date.now() / 1000));
+    assert.equal(proposalRequest.date_expiry, undefined);
+    assert.deepEqual(proposalRequest.limit_order, { take_profit: 0.22 });
+  });
+
+  test("keeps the requested tick count out of the ACCU proposal payload", async () => {
+    const result = await withSelectedAccount("accumulator-duration-fallback-user", () => deriv.buyContract({
+      amount: 1,
+      duration: 5,
+      duration_unit: "t",
+      contract_type: "ACCU",
+      growth_rate: 0.04,
+      symbol: "1HZ90V",
+      confirm_live_trade: true,
+    }));
+
+    assert.equal(result.buy.contract_id, "contract-proposal-1");
+    const socket = latestSocket();
+    const proposalRequests = socket.sent.filter((message) => message.proposal);
+    assert.equal(proposalRequests.length, 1);
+    assert.equal(proposalRequests[0].duration, undefined);
+    assert.equal(proposalRequests[0].duration_unit, undefined);
+    assert.equal(proposalRequests[0].date_expiry, undefined);
+    assert.deepEqual(proposalRequests[0].limit_order, { take_profit: 0.22 });
+    assert.equal(proposalRequests[0].growth_rate, 0.04);
+  });
+
+  test("uses the same ACCU parameters for bulk direct buys", async () => {
+    const result = await withSelectedAccount("accumulator-bulk-user", () => deriv.bulkBuyContracts({
+      amount: 1,
+      duration: 5,
+      duration_unit: "t",
+      contract_type: "ACCU",
+      growth_rate: 0.04,
+      symbol: "1HZ90V",
+      count: 1,
+      confirm_live_trade: true,
+    }));
+
+    assert.equal(result.count, 1);
+    const socket = latestSocket();
+    const proposalRequest = socket.sent.find((message) => message.proposal);
+    const buyRequest = socket.sent.find((message) => message.buy === "1");
+    assert.ok(proposalRequest);
+    assert.ok(buyRequest);
+    assert.equal(buyRequest.parameters.growth_rate, 0.04);
+    assert.equal(buyRequest.parameters.contract_type, "ACCU");
+    assert.equal(buyRequest.parameters.date_expiry, undefined);
+    assert.equal(buyRequest.parameters.duration, undefined);
+    assert.equal(buyRequest.parameters.duration_unit, undefined);
+    assert.deepEqual(buyRequest.parameters.limit_order, { take_profit: 0.22 });
   });
 
   test("correlates proposal and buy acknowledgements and tracks open history before settlement", async () => {

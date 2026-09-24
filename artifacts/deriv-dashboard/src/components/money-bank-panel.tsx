@@ -90,6 +90,7 @@ const GROWTH_RATES = [1, 2, 3, 4, 5];
 export const MONEY_BANK_AUTO_SYMBOLS = ["1HZ10V", "1HZ15V", "1HZ25V", "1HZ30V", "1HZ50V", "1HZ75V", "1HZ90V", "1HZ100V"] as const;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const ACCUMULATOR_MIN_STAKE = 1;
 
 export function calculateRecoveryLadder(input: {
   strategy: MoneyBankStrategy;
@@ -104,14 +105,14 @@ export function calculateRecoveryLadder(input: {
   const ratio = clamp(1.12 + (0.08 / (payout + 0.16)), 1.14, 1.42);
   const factors = LEVEL_NAMES.map((_, index) => Math.pow(ratio, index));
   const requestedBase = input.strategy === "budget"
-    ? Math.max(0.01, input.budget) / factors.reduce((sum, factor) => sum + factor, 0)
-    : Math.max(0.01, input.manualBase);
-  const base = Math.max(0.01, requestedBase);
+    ? Math.max(ACCUMULATOR_MIN_STAKE, input.budget) / factors.reduce((sum, factor) => sum + factor, 0)
+    : Math.max(ACCUMULATOR_MIN_STAKE, input.manualBase);
+  const base = Math.max(ACCUMULATOR_MIN_STAKE, requestedBase);
 
   return LEVEL_NAMES.map((name, index) => {
-    const stake = Math.max(0.01, base * factors[index]);
+    const stake = Math.max(ACCUMULATOR_MIN_STAKE, base * factors[index]);
     const cumulative = LEVEL_NAMES.slice(0, index + 1)
-      .reduce((sum, _, levelIndex) => sum + Math.max(0.01, base * factors[levelIndex]), 0);
+      .reduce((sum, _, levelIndex) => sum + Math.max(ACCUMULATOR_MIN_STAKE, base * factors[levelIndex]), 0);
     return {
       name,
       stake,
@@ -361,10 +362,10 @@ export function MoneyBankPanel({
                   <b>$</b>
                   <input
                     type="number"
-                    min="0.01"
+                     min={ACCUMULATOR_MIN_STAKE}
                     step="0.01"
                     value={strategy === "budget" ? budget : manualBase}
-                    onChange={(event) => (strategy === "budget" ? onBudgetChange : onManualBaseChange)(Math.max(0.01, Number(event.target.value) || 0.01))}
+                     onChange={(event) => (strategy === "budget" ? onBudgetChange : onManualBaseChange)(Math.max(ACCUMULATOR_MIN_STAKE, Number(event.target.value) || ACCUMULATOR_MIN_STAKE))}
                     disabled={running}
                   />
                 </div>
@@ -374,7 +375,7 @@ export function MoneyBankPanel({
                 <strong>{money(selectedStake, currency)}</strong>
               </div>
             </div>
-            <p className="money-bank-helper"><Info size={14} /> BASE is the first stake. A loss advances one level; a win recovers prior losses plus the target profit.</p>
+             <p className="money-bank-helper"><Info size={14} /> BASE is the first stake. Accumulator contracts require at least {money(ACCUMULATOR_MIN_STAKE, currency)}. A loss advances one level; a win recovers prior losses plus the target profit.</p>
           </section>
         </div>
 

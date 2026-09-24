@@ -1169,11 +1169,15 @@ components:
           enum: [t]
         contract_type:
           type: string
-          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF, CALL, PUT]
+          enum: [DIGITEVEN, DIGITODD, DIGITOVER, DIGITUNDER, DIGITDIFF, CALL, PUT, ACCU]
         barrier:
           type: integer
           minimum: 0
           maximum: 9
+        growth_rate:
+          type: number
+          minimum: 0.01
+          maximum: 0.05
         symbol:
           type: string
         count:

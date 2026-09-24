@@ -128,8 +128,6 @@ type BuyInput = {
   confirm_live_trade: true;
 };
 
-type AccumulatorExpiryMode = "date_expiry" | "duration";
-
 export type SellResult = {
   contract_id: string;
   sold_for: number;
@@ -182,11 +180,9 @@ return {
   lastProposalSymbol: defaultSymbol,
   lastProposalInput: null as ProposalInput | null,
   lastProposalRefreshAt: 0,
-  lastProposalExpiryMode: "date_expiry" as AccumulatorExpiryMode,
   proposalSequence: 0,
   buySequence: 0,
   proposalWaiters: new Map<number, { resolve: (proposal: DerivProposal) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>(),
-  proposalExpiryModes: new Map<string, AccumulatorExpiryMode>(),
   lastBuyAt: 0,
   contractInputs: new Map<string, ProposalInput>(),
   digitEvenCount: 0,
@@ -604,13 +600,29 @@ function send(message: Record<string, unknown>) {
   return true;
 }
 
-function accumulatorExpiry(duration: number) {
-  // ACCU expiry is more reliable as an absolute epoch on the authenticated
-  // Options socket. Money Bank trades only use one-second Volatility streams,
-  // so one requested tick maps to one second here. Add a small transport
-  // margin so the expiry is still in the future when Deriv validates it.
-  const ticks = Math.max(5, Math.floor(duration));
-  return Math.floor(Date.now() / 1000) + ticks + 2;
+function contractParameters(input: ProposalInput) {
+  const isAccumulator = input.contract_type === "ACCU";
+  const expiryOrTakeProfit = isAccumulator
+    ? {
+        limit_order: {
+          take_profit: Math.max(
+            0.01,
+            Number((input.amount * (Math.pow(1 + (input.growth_rate ?? 0), input.duration) - 1)).toFixed(2)),
+          ),
+        },
+      }
+    : { duration: input.duration, duration_unit: input.duration_unit };
+
+  return {
+    amount: input.amount,
+    basis: "stake" as const,
+    contract_type: input.contract_type,
+    currency: defaultCurrency,
+    ...expiryOrTakeProfit,
+    underlying_symbol: input.symbol ?? defaultSymbol,
+    ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
+    ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
+  };
 }
 
 function sendStakeProposal(input: ProposalInput, reqId: number) {
@@ -618,21 +630,9 @@ function sendStakeProposal(input: ProposalInput, reqId: number) {
   // proposal, buy at the exact returned ask price, and pass the returned
   // payout through unchanged. Do not apply an app-level payout cap, fee, or
   // percentage reduction here or in any future feature that uses this path.
-  const isAccumulator = input.contract_type === "ACCU";
-  const duration = isAccumulator ? Math.max(5, Math.floor(input.duration)) : input.duration;
-  const expiry = isAccumulator
-    ? { date_expiry: accumulatorExpiry(duration) }
-    : { duration, duration_unit: input.duration_unit };
   return send({
     proposal: 1,
-    amount: input.amount,
-    basis: "stake",
-    contract_type: input.contract_type,
-    currency: defaultCurrency,
-    ...expiry,
-    underlying_symbol: input.symbol ?? defaultSymbol,
-    ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
-    ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
+    ...contractParameters(input),
     req_id: reqId,
   });
 }
@@ -673,22 +673,10 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
     }, buyAckTimeoutMs);
     getState().pendingBuyInputs.set(requestKey, input);
     getState().buyWaiters.set(requestKey, { resolve, reject, timer });
-    const isAccumulator = input.contract_type === "ACCU";
-    const duration = isAccumulator ? Math.max(5, Math.floor(input.duration)) : input.duration;
-    const expiry = isAccumulator
-      ? { date_expiry: accumulatorExpiry(duration) }
-      : { duration, duration_unit: input.duration_unit };
     const sent = send({
       buy: "1",
       parameters: {
-        amount: input.amount,
-        basis: "stake",
-        contract_type: input.contract_type,
-        currency: defaultCurrency,
-        ...expiry,
-        underlying_symbol: input.symbol ?? defaultSymbol,
-        ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
-        ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
+        ...contractParameters(input),
       },
       price: proposal.ask_price,
       req_id: reqId,
@@ -1047,6 +1035,7 @@ export async function testConnection() {
 }
 
 export async function requestProposal(input: ProposalInput) {
+  validateAccumulatorInput(input);
   getState().lastProposalContractType = input.contract_type;
   getState().lastProposalSymbol = input.symbol ?? defaultSymbol;
   getState().lastProposalInput = input;
@@ -1072,20 +1061,21 @@ async function requestFreshProposal(input: ProposalInput) {
       lastError = "Deriv WebSocket is not ready";
     } else {
       try {
-        return await new Promise<DerivProposal>((resolve, reject) => {
+        const proposal = await new Promise<DerivProposal>((resolve, reject) => {
           const reqId = ++getState().proposalSequence;
           const timer = setTimeout(() => {
             getState().proposalWaiters.delete(reqId);
             reject(new Error("Deriv did not return a proposal in time"));
           }, proposalTimeoutMs);
           getState().proposalWaiters.set(reqId, { resolve, reject, timer });
-           const sent = sendStakeProposal(input, reqId);
+          const sent = sendStakeProposal(input, reqId);
           if (!sent) {
             clearTimeout(timer);
             getState().proposalWaiters.delete(reqId);
             reject(new Error("Deriv WebSocket is not ready"));
           }
         });
+        return proposal;
       } catch (error) {
         lastError = error instanceof Error ? error.message : "Deriv proposal request failed";
         logger.warn({ attempt, err: error }, "Deriv proposal attempt failed");
@@ -1166,6 +1156,7 @@ export async function buyContract(input: BuyInput) {
     throw new Error("The selected stake exceeds the current account balance");
   }
   validateContractBarrier(input);
+  validateAccumulatorInput(input);
   assertNoActiveContract();
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
@@ -1220,7 +1211,8 @@ export async function bulkBuyContracts(input: {
   contract_type: DigitContractType;
   barrier?: number;
   symbol?: string;
-    count: number;
+  growth_rate?: number;
+  count: number;
   confirm_live_trade: true;
 }) {
   if (!getState().account) throw new Error("Select an account before buying contracts");
@@ -1234,6 +1226,7 @@ export async function bulkBuyContracts(input: {
     throw new Error("The selected bulk stake exceeds the current account balance");
   }
   validateContractBarrier(input);
+  validateAccumulatorInput(input);
 
   const proposalInput = {
     amount: input.amount,
@@ -1241,6 +1234,7 @@ export async function bulkBuyContracts(input: {
     duration_unit: input.duration_unit,
     contract_type: input.contract_type,
     barrier: input.barrier,
+    growth_rate: input.growth_rate,
     symbol: input.symbol,
   } satisfies ProposalInput;
 
@@ -1281,6 +1275,25 @@ function validateContractBarrier(input: { contract_type: DigitContractType; barr
   }
   if (input.contract_type === "DIGITUNDER" && barrier === 0) {
     throw new Error("DIGITUNDER barrier 0 offers no return. Choose a barrier from 1 to 9.");
+  }
+}
+
+function validateAccumulatorInput(input: {
+  contract_type: DigitContractType;
+  amount: number;
+  growth_rate?: number;
+}) {
+  if (input.contract_type !== "ACCU") return;
+  if (input.amount < 1) {
+    throw new Error("Accumulator stakes must be at least 1.00.");
+  }
+  if (
+    input.growth_rate == null
+    || !Number.isFinite(input.growth_rate)
+    || input.growth_rate < 0.01
+    || input.growth_rate > 0.05
+  ) {
+    throw new Error("Accumulator growth rate must be between 0.01 and 0.05.");
   }
 }
 

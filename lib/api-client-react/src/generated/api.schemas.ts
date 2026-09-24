@@ -477,6 +477,7 @@ export const DerivBulkBuyInputContractType = {
   DIGITDIFF: 'DIGITDIFF',
   CALL: 'CALL',
   PUT: 'PUT',
+  ACCU: 'ACCU',
 } as const;
 
 export interface DerivBulkBuyInput {
@@ -494,6 +495,11 @@ export interface DerivBulkBuyInput {
      * @maximum 9
      */
   barrier?: number;
+  /**
+     * @minimum 0.01
+     * @maximum 0.05
+     */
+  growth_rate?: number;
   symbol?: string;
   /**
      * @minimum 1
