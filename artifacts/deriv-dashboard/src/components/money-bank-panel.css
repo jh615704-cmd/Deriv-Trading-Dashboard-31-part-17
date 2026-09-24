@@ -611,6 +611,191 @@
   transform: translateX(15px);
 }
 
+.money-bank-scanner-result,
+.money-bank-jdy-status,
+.money-bank-reinvest-details {
+  margin: 0 0 9px;
+  border: 1px solid rgba(66, 213, 142, .2);
+  border-radius: 10px;
+  background: rgba(3, 25, 17, .58);
+}
+
+.money-bank-scanner-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+}
+
+.money-bank-scanner-result > span,
+.money-bank-jdy-status,
+.money-bank-reinvest-details {
+  display: grid;
+  gap: 5px;
+}
+
+.money-bank-scanner-result span {
+  min-width: 0;
+}
+
+.money-bank-scanner-result small,
+.money-bank-jdy-status small,
+.money-bank-reinvest-details small {
+  color: #78b393;
+  font-size: .55rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.money-bank-scanner-result b,
+.money-bank-jdy-status b {
+  display: block;
+  color: #d8fbe4;
+  font-size: .68rem;
+}
+
+.money-bank-scanner-result em {
+  display: block;
+  margin-top: 2px;
+  color: #79af91;
+  font-size: .6rem;
+  font-style: normal;
+}
+
+.money-bank-scanner-result button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(95, 232, 161, .4);
+  border-radius: 7px;
+  background: rgba(23, 126, 78, .25);
+  color: #a9f5c4;
+  cursor: pointer;
+  font-size: .6rem;
+  font-weight: 800;
+}
+
+.money-bank-scanner-result button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.money-bank-jdy-status {
+  padding: 10px;
+  border-color: rgba(180, 96, 255, .42);
+  background: rgba(65, 22, 95, .2);
+}
+
+.money-bank-jdy-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #d7b4ff;
+  font-size: .64rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.money-bank-jdy-state i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #be73ff;
+  box-shadow: 0 0 0 4px rgba(190, 115, 255, .16);
+}
+
+.money-bank-jdy-status.scanning .money-bank-jdy-state i {
+  animation: money-bank-jdy-pulse 1s ease-in-out infinite;
+}
+
+.money-bank-jdy-status.safe {
+  border-color: rgba(66, 213, 142, .42);
+  background: rgba(22, 105, 65, .18);
+}
+
+.money-bank-jdy-status.safe .money-bank-jdy-state {
+  color: #8ff0bb;
+}
+
+.money-bank-jdy-status.safe .money-bank-jdy-state i {
+  background: #42d58e;
+  box-shadow: 0 0 0 4px rgba(66, 213, 142, .14);
+}
+
+.money-bank-jdy-status.not-good {
+  border-color: rgba(255, 116, 126, .45);
+  background: rgba(120, 29, 42, .2);
+}
+
+.money-bank-jdy-status.not-good .money-bank-jdy-state {
+  color: #ff9da9;
+}
+
+.money-bank-jdy-status.not-good .money-bank-jdy-state i {
+  background: #ff7182;
+  box-shadow: 0 0 0 4px rgba(255, 113, 130, .13);
+}
+
+@keyframes money-bank-jdy-pulse {
+  0%, 100% { opacity: .45; transform: scale(.82); box-shadow: 0 0 0 3px rgba(190, 115, 255, .12); }
+  50% { opacity: 1; transform: scale(1.18); box-shadow: 0 0 0 7px rgba(190, 115, 255, .26), 0 0 18px rgba(190, 115, 255, .72); }
+}
+
+.money-bank-reinvest-details {
+  padding: 10px;
+}
+
+.money-bank-reinvest-details > label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #b6d9c1;
+  font-size: .64rem;
+  font-weight: 700;
+}
+
+.money-bank-reinvest-details select {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(66, 213, 142, .34);
+  border-radius: 7px;
+  background: #061c15;
+  color: #e3ffeb;
+  font-size: .64rem;
+  font-weight: 800;
+}
+
+.money-bank-reinvest-details > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.money-bank-reinvest-details > div > span {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid rgba(66, 213, 142, .14);
+  border-radius: 7px;
+  background: rgba(2, 20, 13, .4);
+}
+
+.money-bank-reinvest-details > div b {
+  color: #e3ffeb;
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.money-bank-reinvest-details p {
+  margin: 0;
+  color: #78ac91;
+  font-size: .59rem;
+  line-height: 1.35;
+}
+
 .money-bank-footer {
   border-top: 1px solid rgba(232, 86, 107, .2);
   background: rgba(28, 7, 12, .7);

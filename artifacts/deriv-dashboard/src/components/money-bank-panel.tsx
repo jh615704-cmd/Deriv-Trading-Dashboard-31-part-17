@@ -15,9 +15,11 @@ export type MoneyBankStartConfig = {
   symbol: string;
   growthRate: number;
   takeProfitTicks: number;
+  strategy: MoneyBankStrategy;
   ladder: MoneyBankLadderLevel[];
   autoSwitch: boolean;
   reinvestProfit: boolean;
+  reinvestPercent: number;
   profitTarget: number | null;
   lossLimit: number | null;
 };
@@ -49,6 +51,11 @@ export type MoneyBankScannerRecommendation = {
   score: number;
   sampleCount: number;
   observedBalance: number;
+  estimatedLosses: number;
+};
+
+export type MoneyBankJdyDecision = MoneyBankScannerRecommendation & {
+  safe: boolean;
 };
 
 type MoneyBankPanelProps = {
@@ -77,6 +84,8 @@ type MoneyBankPanelProps = {
   onAutoSwitchChange: (value: boolean) => void;
   reinvestProfit: boolean;
   onReinvestProfitChange: (value: boolean) => void;
+  reinvestPercent: number;
+  onReinvestPercentChange: (value: number) => void;
   profitTarget: number | null;
   onProfitTargetChange: (value: number | null) => void;
   lossLimit: number | null;
@@ -89,6 +98,8 @@ type MoneyBankPanelProps = {
   onAdaptScannerSettings: () => void;
   jdyEnabled: boolean;
   onJdyChange: (value: boolean) => void;
+  jdyState: "idle" | "scanning" | "safe" | "not-good";
+  jdyDecision: MoneyBankJdyDecision | null;
   closing?: boolean;
   marketSignals: readonly MoneyBankMarketSignal[];
   recentTrades: readonly MoneyBankTrade[];
@@ -96,6 +107,7 @@ type MoneyBankPanelProps = {
   currentStreak: number;
   peakStreak: number;
   nextStake: number;
+  lastSettledProfit: number | null;
   onSafestPairChange?: (symbol: string) => void;
   onStart: (config: MoneyBankStartConfig) => void;
   onStop: () => void;
@@ -182,6 +194,8 @@ export function MoneyBankPanel({
   onAutoSwitchChange,
   reinvestProfit,
   onReinvestProfitChange,
+  reinvestPercent,
+  onReinvestPercentChange,
   profitTarget,
   onProfitTargetChange,
   lossLimit,
@@ -194,6 +208,8 @@ export function MoneyBankPanel({
   onAdaptScannerSettings,
   jdyEnabled,
   onJdyChange,
+  jdyState,
+  jdyDecision,
   closing = false,
   marketSignals,
   recentTrades,
@@ -201,6 +217,7 @@ export function MoneyBankPanel({
   currentStreak,
   peakStreak,
   nextStake,
+  lastSettledProfit,
   onSafestPairChange,
   onStart,
   onStop,
@@ -219,6 +236,10 @@ export function MoneyBankPanel({
   const selectedMarket = markets.find(([market]) => market === symbol)?.[1] ?? symbol;
   const totalCycleRisk = ladder.at(-1)?.cumulative ?? 0;
   const selectedStake = ladder[0]?.stake ?? 0;
+  const projectedProfit = ladder[0]?.profit ?? 0;
+  const profitBasis = lastSettledProfit != null && lastSettledProfit > 0 ? lastSettledProfit : projectedProfit;
+  const reinvestedProfit = roundCents(profitBasis * reinvestPercent / 100);
+  const retainedProfit = roundCents(Math.max(0, profitBasis - reinvestedProfit));
   const [snapshotVersion, setSnapshotVersion] = useState(0);
   const [capturedAt, setCapturedAt] = useState(() => new Date());
   const [historyHidden, setHistoryHidden] = useState<Set<string>>(new Set());
@@ -249,9 +270,11 @@ export function MoneyBankPanel({
       symbol,
       growthRate,
       takeProfitTicks,
+      strategy,
       ladder,
       autoSwitch,
       reinvestProfit,
+      reinvestPercent,
       profitTarget,
       lossLimit,
     });
@@ -462,15 +485,38 @@ export function MoneyBankPanel({
                <label><span>Loss Limit ($)</span><div className="money-bank-input-wrap"><b>$</b><input type="number" min="0" step="1" placeholder="Optional" value={lossLimit ?? ""} onChange={(event) => onLossLimitChange(event.target.value === "" ? null : Math.max(0, Number(event.target.value) || 0))} disabled={running} /></div></label>
             </div>
             <div className="money-bank-toggle-list">
-               <label><span><b>AI SCANNER</b><small>{scannerBusy ? "Scanning supported markets and growth rates…" : scannerEnabled ? scannerCountdown > 0 ? `Next scan in ${scannerCountdown}s` : "Refreshing every minute" : "Waits 10 seconds, then refreshes every minute"}</small></span><input type="checkbox" checked={scannerEnabled} onChange={(event) => onScannerChange(event.target.checked)} disabled={running || !isConnected} /><i /></label>
-               {scannerRecommendation && (
-                 <div className="money-bank-scanner-result">
-                   <span><small>BEST CURRENT SETUP</small><b>{scannerRecommendation.symbol} · {scannerRecommendation.growthRate}% · {scannerRecommendation.takeProfitTicks} ticks</b><em>{scannerRecommendation.observedBalance.toFixed(1)}% observed balance · {scannerRecommendation.sampleCount} ticks sampled</em></span>
-                   <button type="button" onClick={onAdaptScannerSettings} disabled={running}>Adapt settings</button>
-                 </div>
-               )}
-               <label><span><b>JDY AI</b><small>Validate the selected setup before every trade and refresh after settlement</small></span><input type="checkbox" checked={jdyEnabled} onChange={(event) => onJdyChange(event.target.checked)} disabled={running || !isConnected} /><i /></label>
-              <label><span><b>Reinvest profit</b><small>Keep wins in the next BASE</small></span><input type="checkbox" checked={reinvestProfit} onChange={(event) => onReinvestProfitChange(event.target.checked)} disabled={running} /><i /></label>
+                <label>
+                  <span><b>AI SCANNER</b><small>{scannerEnabled ? scannerBusy ? "Scanning supported markets and growth rates…" : scannerCountdown > 0 ? `Next scan in ${scannerCountdown}s` : "Refreshing every minute" : "Off"}</small></span>
+                  <input type="checkbox" checked={scannerEnabled} onChange={(event) => onScannerChange(event.target.checked)} disabled={running || !isConnected} /><i />
+                </label>
+                {scannerEnabled && (
+                  <div className="money-bank-scanner-result">
+                    {scannerRecommendation ? (
+                      <>
+                        <span><small>BEST CURRENT SETUP</small><b>{scannerRecommendation.symbol} · {scannerRecommendation.growthRate}% · {scannerRecommendation.takeProfitTicks} ticks</b><em>{scannerRecommendation.observedBalance.toFixed(1)}% observed balance · {scannerRecommendation.sampleCount} ticks sampled</em></span>
+                        <button type="button" onClick={onAdaptScannerSettings} disabled={running}>Adapt settings</button>
+                      </>
+                    ) : (
+                      <span><small>SCANNER STATUS</small><b>{scannerBusy ? "Scanning all supported setups…" : "Collecting enough live samples…"}</b></span>
+                    )}
+                  </div>
+                )}
+                <label><span><b>JDY AI</b><small>Scan the next setup before entry and refresh after every settlement</small></span><input type="checkbox" checked={jdyEnabled} onChange={(event) => onJdyChange(event.target.checked)} disabled={running || !isConnected} /><i /></label>
+                {jdyEnabled && (
+                  <div className={`money-bank-jdy-status ${jdyState}`}>
+                    <div className="money-bank-jdy-state"><i />{jdyState === "scanning" ? "SCANNING" : jdyState === "safe" ? "SAFE TO TRADE" : jdyState === "not-good" ? "NOT A GOOD TRADE" : "READY TO SCAN"}</div>
+                    <small>{jdyState === "scanning" ? "Reviewing every supported market, growth rate, and tick target…" : jdyState === "not-good" ? "The scan estimates more than 3 losses in the next 10 trades. Start again after conditions improve." : "A trade is only allowed after the current setup passes the loss-risk check."}</small>
+                    {jdyDecision && <b>{jdyDecision.symbol} · {jdyDecision.growthRate}% · {jdyDecision.takeProfitTicks} ticks · estimated losses: {jdyDecision.estimatedLosses}/10</b>}
+                  </div>
+                )}
+                <label><span><b>Reinvest profit</b><small>{reinvestProfit ? `${reinvestPercent}% of each win goes into the next BASE` : "Keep wins in the next BASE"}</small></span><input type="checkbox" checked={reinvestProfit} onChange={(event) => onReinvestProfitChange(event.target.checked)} disabled={running} /><i /></label>
+                {reinvestProfit && (
+                  <div className="money-bank-reinvest-details">
+                    <label><span>Profit to reinvest</span><select value={reinvestPercent} onChange={(event) => onReinvestPercentChange(Number(event.target.value))} disabled={running}>{[10, 25, 45, 50, 65, 75, 85, 95, 100].map((percent) => <option key={percent} value={percent}>{percent}%</option>)}</select></label>
+                    <div><span><small>REINVESTED</small><b>{money(reinvestedProfit, currency)}</b></span><span><small>LEFT BACK</small><b>{money(retainedProfit, currency)}</b></span></div>
+                    <p>Based on {lastSettledProfit != null && lastSettledProfit > 0 ? "your last settled win" : "the projected BASE win"} of {money(profitBasis, currency)}.</p>
+                  </div>
+                )}
                <label><span><b>Auto-switch safest pair</b><small>Use the highest current snapshot win rate</small></span><input type="checkbox" checked={autoSwitch} onChange={(event) => onAutoSwitchChange(event.target.checked)} disabled={running} /><i /></label>
             </div>
           </section>

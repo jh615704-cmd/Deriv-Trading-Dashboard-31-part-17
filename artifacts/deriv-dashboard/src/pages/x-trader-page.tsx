@@ -64,6 +64,7 @@ import {
   type MoneyBankMarketSignal,
   type MoneyBankTrade,
   type MoneyBankStrategy,
+  type MoneyBankJdyDecision,
   MONEY_BANK_AUTO_SYMBOLS,
 } from "../components/money-bank-panel";
 
@@ -284,6 +285,7 @@ type MoneyBankScannerRecommendation = {
   score: number;
   sampleCount: number;
   observedBalance: number;
+  estimatedLosses: number;
 };
 
 export default function XTraderPage() {
@@ -350,6 +352,7 @@ export default function XTraderPage() {
   const [moneyBankManualBase, setMoneyBankManualBase] = useState(1);
   const [moneyBankAutoSwitch, setMoneyBankAutoSwitch] = useState(false);
   const [moneyBankReinvestProfit, setMoneyBankReinvestProfit] = useState(false);
+  const [moneyBankReinvestPercent, setMoneyBankReinvestPercent] = useState(100);
   const [moneyBankProfitTarget, setMoneyBankProfitTarget] = useState<number | null>(null);
   const [moneyBankLossLimit, setMoneyBankLossLimit] = useState<number | null>(null);
   const [moneyBankRunning, setMoneyBankRunning] = useState(false);
@@ -360,7 +363,10 @@ export default function XTraderPage() {
   const [moneyBankScannerBusy, setMoneyBankScannerBusy] = useState(false);
   const [moneyBankScannerRecommendation, setMoneyBankScannerRecommendation] = useState<MoneyBankScannerRecommendation | null>(null);
   const [moneyBankJdyEnabled, setMoneyBankJdyEnabled] = useState(false);
+  const [moneyBankJdyState, setMoneyBankJdyState] = useState<"idle" | "scanning" | "safe" | "not-good">("idle");
+  const [moneyBankJdyDecision, setMoneyBankJdyDecision] = useState<MoneyBankJdyDecision | null>(null);
   const [moneyBankSessionPnl, setMoneyBankSessionPnl] = useState(0);
+  const [moneyBankLastSettledProfit, setMoneyBankLastSettledProfit] = useState<number | null>(null);
   const [moneyBankTradeCount, setMoneyBankTradeCount] = useState(0);
   const [bulkTraderEnabled, setBulkTraderEnabled] = useState(false);
   const [bulkTraderType, setBulkTraderType] = useState<BulkTraderType>("over-under");
@@ -437,6 +443,7 @@ export default function XTraderPage() {
   const moneyBankClosePromiseRef = useRef<Promise<void> | null>(null);
   const moneyBankOpenContractIdRef = useRef<string | null>(null);
   const moneyBankScannerNextAtRef = useRef<number | null>(null);
+  const moneyBankJdyScanInFlightRef = useRef(false);
   const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
   const moneyBankLevelRef = useRef(0);
@@ -612,6 +619,7 @@ export default function XTraderPage() {
             const riskPenalty = growthRate * takeProfitTicks * 0.035;
             const sampleConfidence = Math.min(signal.sample_count, 100) / 20;
             const score = observedBalance * 0.72 + sampleConfidence + theoreticalReturn * 0.12 - riskPenalty;
+            const estimatedLosses = Math.max(0, Math.ceil((100 - observedBalance + riskPenalty) / 10));
             if (!best || score > best.score) {
               best = {
                 symbol: marketSymbol,
@@ -620,6 +628,7 @@ export default function XTraderPage() {
                 score,
                 sampleCount: signal.sample_count,
                 observedBalance,
+                estimatedLosses,
               };
             }
           }
@@ -639,6 +648,63 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: `AI SCANNER could not refresh: ${errorMessage(error)}` });
     } finally {
       setMoneyBankScannerBusy(false);
+    }
+  };
+
+  const scanJdyMoneyBank = async (): Promise<MoneyBankJdyDecision | null> => {
+    if (!isConnected || moneyBankJdyScanInFlightRef.current) return moneyBankJdyDecision;
+    moneyBankJdyScanInFlightRef.current = true;
+    setMoneyBankJdyState("scanning");
+    try {
+      const freshStatus = await status.refetch();
+      const freshSignals = (freshStatus.data?.market_signals ?? moneyBankSignals) as MoneyBankMarketSignal[];
+      const candidates: MoneyBankJdyDecision[] = [];
+      for (const [marketSymbol] of moneyBankMarkets) {
+        const signal = freshSignals.find((entry) => entry.symbol === marketSymbol);
+        if (!signal || signal.sample_count < 5) continue;
+        const observedBalance = Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50);
+        for (let growthRate = 1; growthRate <= 5; growthRate += 1) {
+          for (let takeProfitTicks = 5; takeProfitTicks <= 50; takeProfitTicks += 1) {
+            const riskPenalty = growthRate * 1.5 + takeProfitTicks * 0.12;
+            const estimatedLosses = Math.max(0, Math.ceil((100 - observedBalance + riskPenalty) / 10));
+            const sampleConfidence = Math.min(signal.sample_count, 200) / 10;
+            const score = observedBalance - riskPenalty + sampleConfidence;
+            candidates.push({
+              symbol: marketSymbol,
+              growthRate,
+              takeProfitTicks,
+              score,
+              sampleCount: signal.sample_count,
+              observedBalance,
+              estimatedLosses,
+              safe: signal.sample_count >= 20 && estimatedLosses <= 3,
+            });
+          }
+        }
+      }
+      const decision = candidates.sort((left, right) =>
+        Number(right.safe) - Number(left.safe)
+        || right.score - left.score
+        || right.sampleCount - left.sampleCount,
+      )[0] ?? null;
+      setMoneyBankJdyDecision(decision);
+      if (!decision) {
+        setMoneyBankJdyState("not-good");
+        setConnectionMessage({ kind: "info", text: "JDY AI could not find enough live samples for a safe Money Bank trade." });
+      } else if (!decision.safe) {
+        setMoneyBankJdyState("not-good");
+        setConnectionMessage({ kind: "info", text: `JDY AI cancelled the next trade: the best setup estimates ${decision.estimatedLosses} losses in the next 10 trades.` });
+      } else {
+        setMoneyBankJdyState("safe");
+        setConnectionMessage({ kind: "info", text: `JDY AI found a safer setup on ${decision.symbol} at ${decision.growthRate}% growth for ${decision.takeProfitTicks} ticks.` });
+      }
+      return decision;
+    } catch (error) {
+      setMoneyBankJdyState("not-good");
+      setConnectionMessage({ kind: "error", text: `JDY AI could not complete its scan: ${errorMessage(error)}` });
+      return null;
+    } finally {
+      moneyBankJdyScanInFlightRef.current = false;
     }
   };
 
@@ -1282,6 +1348,7 @@ export default function XTraderPage() {
   const executeMoneyBankTrade = async () => {
     const config = moneyBankConfigRef.current;
     if (!config || !moneyBankRunningRef.current || moneyBankActionLockRef.current) return;
+    let jdyDecisionForEntry: MoneyBankJdyDecision | null = null;
 
     let latestRows = await getDerivHistory();
     const openContractId = moneyBankOpenContractIdRef.current;
@@ -1310,10 +1377,12 @@ export default function XTraderPage() {
       const nextSessionPnl = moneyBankSessionPnlRef.current + settledAccumulator.profit;
       moneyBankSessionPnlRef.current = nextSessionPnl;
       setMoneyBankSessionPnl(nextSessionPnl);
+      setMoneyBankLastSettledProfit(settledAccumulator.profit);
       if (settledAccumulator.profit > 0) {
         moneyBankLevelRef.current = 0;
         if (config.reinvestProfit) {
-          const nextBase = Math.max(0.01, config.ladder[0].stake + settledAccumulator.profit);
+          const reinvestedProfit = settledAccumulator.profit * (config.reinvestPercent / 100);
+          const nextBase = Math.max(1, config.ladder[0].stake + reinvestedProfit);
           moneyBankConfigRef.current = {
             ...config,
             ladder: calculateRecoveryLadder({
@@ -1340,22 +1409,47 @@ export default function XTraderPage() {
         moneyBankScannerNextAtRef.current = Date.now() + 60_000;
         void scanMoneyBank();
       }
+      if (moneyBankJdyEnabled) {
+        jdyDecisionForEntry = await scanJdyMoneyBank();
+      }
     }
 
     if (!moneyBankRunningRef.current) return;
-    const currentConfig = moneyBankConfigRef.current ?? config;
-    const tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
+    let currentConfig = moneyBankConfigRef.current ?? config;
+    let tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
     if (moneyBankJdyEnabled) {
-      const freshStatus = await status.refetch();
-      const selectedSignal = (freshStatus.data?.market_signals ?? []).find((signal) => signal.symbol === tradeSymbol);
-      if (!selectedSignal || selectedSignal.sample_count < 5 || selectedSignal.quote == null) {
-        setConnectionMessage({ kind: "info", text: `JDY AI is waiting for a fresh sample on ${tradeSymbol} before trading.` });
-        await sleep(1000);
+      const decision = jdyDecisionForEntry ?? await scanJdyMoneyBank();
+      if (!decision?.safe) {
+        moneyBankRunningRef.current = false;
+        setMoneyBankRunning(false);
+        setMoneyBankJdyState("not-good");
+        setConnectionMessage({
+          kind: "info",
+          text: decision
+            ? `JDY AI cancelled this trade: not a good trade, with an estimated ${decision.estimatedLosses} losses in the next 10 trades.`
+            : "JDY AI cancelled this trade because it could not confirm a safe setup.",
+        });
         return;
       }
+      currentConfig = {
+        ...currentConfig,
+        symbol: decision.symbol,
+        growthRate: decision.growthRate,
+        takeProfitTicks: decision.takeProfitTicks,
+        ladder: calculateRecoveryLadder({
+          strategy: currentConfig.strategy,
+          budget: currentConfig.ladder.at(-1)?.cumulative ?? 0,
+          manualBase: currentConfig.ladder[0]?.stake ?? 1,
+          growthRate: decision.growthRate,
+          takeProfitTicks: decision.takeProfitTicks,
+        }),
+      };
+      moneyBankConfigRef.current = currentConfig;
+      tradeSymbol = decision.symbol;
+      setMoneyBankJdyState("safe");
       setConnectionMessage({
         kind: "info",
-        text: `JDY AI validated ${tradeSymbol} at ${currentConfig.growthRate}% growth and ${currentConfig.takeProfitTicks} ticks before entry.`,
+        text: `JDY AI confirmed a safe ${tradeSymbol} setup at ${decision.growthRate}% growth for ${decision.takeProfitTicks} ticks.`,
       });
     }
     const level = currentConfig.ladder[Math.min(6, moneyBankLevelRef.current)];
@@ -1379,7 +1473,7 @@ export default function XTraderPage() {
           duration_unit: "t",
           contract_type: "ACCU",
           growth_rate: currentConfig.growthRate / 100,
-           symbol: currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol,
+          symbol: tradeSymbol,
           confirm_live_trade: true,
         },
       });
@@ -1439,6 +1533,7 @@ export default function XTraderPage() {
       moneyBankSafestSymbolRef.current = moneyBankSafestSymbol;
       moneyBankSessionPnlRef.current = 0;
       setMoneyBankSessionPnl(0);
+      setMoneyBankLastSettledProfit(null);
       setMoneyBankTradeCount(0);
       moneyBankRunningRef.current = true;
       setMoneyBankRunning(true);
@@ -1512,7 +1607,11 @@ export default function XTraderPage() {
     setEdge2Enabled(enabled);
     if (!enabled) {
       setMoneyBankScannerEnabled(false);
+      setMoneyBankScannerRecommendation(null);
+      moneyBankScannerNextAtRef.current = null;
       setMoneyBankJdyEnabled(false);
+      setMoneyBankJdyState("idle");
+      setMoneyBankJdyDecision(null);
       stopMoneyBank();
       return;
     }
@@ -2759,6 +2858,8 @@ export default function XTraderPage() {
           onAutoSwitchChange={setMoneyBankAutoSwitch}
           reinvestProfit={moneyBankReinvestProfit}
           onReinvestProfitChange={setMoneyBankReinvestProfit}
+          reinvestPercent={moneyBankReinvestPercent}
+          onReinvestPercentChange={setMoneyBankReinvestPercent}
           profitTarget={moneyBankProfitTarget}
           onProfitTargetChange={setMoneyBankProfitTarget}
           lossLimit={moneyBankLossLimit}
@@ -2769,7 +2870,14 @@ export default function XTraderPage() {
            scannerRecommendation={moneyBankScannerRecommendation}
            onScannerChange={(enabled) => {
              setMoneyBankScannerEnabled(enabled);
-             if (enabled) moneyBankScannerNextAtRef.current = Date.now() + 10_000;
+             if (enabled) {
+               moneyBankScannerNextAtRef.current = Date.now() + 10_000;
+             } else {
+               moneyBankScannerNextAtRef.current = null;
+               setMoneyBankScannerCountdown(0);
+               setMoneyBankScannerRecommendation(null);
+               moneyBankScannerRecommendationRef.current = null;
+             }
            }}
            onAdaptScannerSettings={() => {
              const recommendation = moneyBankScannerRecommendationRef.current;
@@ -2781,12 +2889,23 @@ export default function XTraderPage() {
              setConnectionMessage({ kind: "info", text: "Money Bank adapted to the latest AI SCANNER recommendation." });
            }}
            jdyEnabled={moneyBankJdyEnabled}
-           onJdyChange={setMoneyBankJdyEnabled}
+           onJdyChange={(enabled) => {
+             setMoneyBankJdyEnabled(enabled);
+             if (enabled) {
+               void scanJdyMoneyBank();
+             } else {
+               setMoneyBankJdyState("idle");
+               setMoneyBankJdyDecision(null);
+             }
+           }}
+           jdyState={moneyBankJdyState}
+           jdyDecision={moneyBankJdyDecision}
           marketSignals={moneyBankSignals}
           recentTrades={moneyBankRows}
           sessionWins={moneyBankWins}
           currentStreak={moneyBankStreaks.current}
           peakStreak={moneyBankStreaks.peak}
+          lastSettledProfit={moneyBankLastSettledProfit}
           nextStake={(moneyBankConfigRef.current?.ladder[Math.min(6, moneyBankLevelRef.current)] ?? calculateRecoveryLadder({ strategy: moneyBankStrategy, budget: moneyBankBudget, manualBase: moneyBankManualBase, growthRate: moneyBankGrowthRate, takeProfitTicks: moneyBankTakeProfitTicks })[Math.min(6, moneyBankLevelRef.current)])?.stake ?? 0}
           onSafestPairChange={(next) => {
             moneyBankSafestSymbolRef.current = next;
