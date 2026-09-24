@@ -171,6 +171,29 @@ after(() => {
 });
 
 describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
+  test("uses a future expiry and forwards decimal growth for Accumulator contracts", async () => {
+    const result = await withSelectedAccount("accumulator-user", () => deriv.buyContract({
+      amount: 0.5,
+      duration: 5,
+      duration_unit: "t",
+      contract_type: "ACCU",
+      growth_rate: 0.04,
+      symbol: "1HZ90V",
+      confirm_live_trade: true,
+    }));
+
+    assert.equal(result.buy.contract_id, "contract-proposal-1");
+    const socket = latestSocket();
+    const proposalRequest = socket.sent.find((message) => message.proposal);
+    assert.ok(proposalRequest);
+    assert.equal(proposalRequest.contract_type, "ACCU");
+    assert.equal(proposalRequest.growth_rate, 0.04);
+    assert.equal(proposalRequest.duration, undefined);
+    assert.equal(proposalRequest.duration_unit, undefined);
+    assert.ok(Number.isInteger(proposalRequest.date_expiry));
+    assert.ok(proposalRequest.date_expiry > Math.floor(Date.now() / 1000));
+  });
+
   test("correlates proposal and buy acknowledgements and tracks open history before settlement", async () => {
     const result = await withSelectedAccount("correlation-user", () => deriv.buyContract({
       amount: 1,

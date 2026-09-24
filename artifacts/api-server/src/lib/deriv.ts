@@ -600,6 +600,15 @@ function send(message: Record<string, unknown>) {
   return true;
 }
 
+function accumulatorExpiry(duration: number) {
+  // ACCU expiry is more reliable as an absolute epoch on the authenticated
+  // Options socket. Money Bank trades only use one-second Volatility streams,
+  // so one requested tick maps to one second here. Add a small transport
+  // margin so the expiry is still in the future when Deriv validates it.
+  const ticks = Math.max(5, Math.floor(duration));
+  return Math.floor(Date.now() / 1000) + ticks + 2;
+}
+
 function sendStakeProposal(input: ProposalInput, reqId: number) {
   // Deriv owns the payout quote. Every feature must request a stake-based
   // proposal, buy at the exact returned ask price, and pass the returned
@@ -607,14 +616,16 @@ function sendStakeProposal(input: ProposalInput, reqId: number) {
   // percentage reduction here or in any future feature that uses this path.
   const isAccumulator = input.contract_type === "ACCU";
   const duration = isAccumulator ? Math.max(5, Math.floor(input.duration)) : input.duration;
+  const expiry = isAccumulator
+    ? { date_expiry: accumulatorExpiry(duration) }
+    : { duration, duration_unit: input.duration_unit };
   return send({
     proposal: 1,
     amount: input.amount,
     basis: "stake",
     contract_type: input.contract_type,
     currency: defaultCurrency,
-    duration,
-    duration_unit: isAccumulator ? "t" : input.duration_unit,
+    ...expiry,
     underlying_symbol: input.symbol ?? defaultSymbol,
     ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
     ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
@@ -660,6 +671,9 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
     getState().buyWaiters.set(requestKey, { resolve, reject, timer });
     const isAccumulator = input.contract_type === "ACCU";
     const duration = isAccumulator ? Math.max(5, Math.floor(input.duration)) : input.duration;
+    const expiry = isAccumulator
+      ? { date_expiry: accumulatorExpiry(duration) }
+      : { duration, duration_unit: input.duration_unit };
     const sent = send({
       buy: "1",
       parameters: {
@@ -667,8 +681,7 @@ async function sendDirectBuy(proposal: DerivProposal, input: ProposalInput): Pro
         basis: "stake",
         contract_type: input.contract_type,
         currency: defaultCurrency,
-        duration,
-        duration_unit: isAccumulator ? "t" : input.duration_unit,
+        ...expiry,
         underlying_symbol: input.symbol ?? defaultSymbol,
         ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
         ...(input.growth_rate == null ? {} : { growth_rate: input.growth_rate }),
@@ -1161,6 +1174,7 @@ export async function buyContract(input: BuyInput) {
     duration_unit: input.duration_unit,
     contract_type: input.contract_type,
     barrier: input.barrier,
+    growth_rate: input.growth_rate,
     symbol: input.symbol,
   });
   const connected = await connect();

@@ -484,6 +484,9 @@ export default function XTraderPage() {
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const volatilityMarkets = markets.filter(([market]) => !market.startsWith("JD"));
+  const moneyBankMarkets = volatilityMarkets.filter(([market]) =>
+    (MONEY_BANK_AUTO_SYMBOLS as readonly string[]).includes(market),
+  );
   const rows = history.data ?? [];
   const edgeAllRows = rows.filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER");
   const tradeXAllRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF");
@@ -2612,7 +2615,7 @@ export default function XTraderPage() {
           liveConfirmed={liveConfirmed}
           onLiveConfirm={setLiveConfirmed}
           symbol={moneyBankSymbol}
-          markets={volatilityMarkets}
+          markets={moneyBankMarkets}
           onSymbolChange={(next) => {
             setMoneyBankSymbol(next);
             void selectMarket(next);
