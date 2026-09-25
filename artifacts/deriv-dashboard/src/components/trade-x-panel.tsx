@@ -303,7 +303,7 @@ export default function TradeXPanel({
                      aria-label={`Digit ${item.digit}, ${item.percentage.toFixed(1)} percent frequency${isMarketDigit ? ", current market digit" : ""}`}
                     data-testid={`button-trade-x-digit-${item.digit}`}
                   >
-                    <span className={`tx-market-touch ${isMarketDigit ? "is-live" : ""}`}>{isMarketDigit ? `LIVE ${item.digit}` : "\u00a0"}</span>
+                    <span className={`tx-market-touch ${isMarketDigit ? "is-live" : ""}`} aria-hidden="true">{isMarketDigit ? "💰" : ""}</span>
                      <span className="tx-digit-number">{item.digit}</span>
                      <span className="tx-digit-percent">{item.percentage.toFixed(1)}%</span>
                      <span className={`tx-digit-meta tx-digit-meta-${item.momentum ?? "flat"}`}><i />{momentumLabel(item.momentum)}</span>
