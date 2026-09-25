@@ -56,6 +56,13 @@ export type MoneyBankScannerRecommendation = {
 
 export type MoneyBankJdyDecision = MoneyBankScannerRecommendation & {
   safe: boolean;
+  stake: number;
+  predictedWinRate: number;
+  estimatedLossStreak: number;
+  suggestedSymbol: string | null;
+  suggestedGrowthRate: number | null;
+  suggestedTakeProfitTicks: number | null;
+  suggestedStake: number | null;
 };
 
 type MoneyBankPanelProps = {
@@ -502,11 +509,23 @@ export function MoneyBankPanel({
                   </div>
                 )}
                 <label><span><b>JDY AI</b><small>Scan the next setup before entry and refresh after every settlement</small></span><input type="checkbox" checked={jdyEnabled} onChange={(event) => onJdyChange(event.target.checked)} disabled={running || !isConnected} /><i /></label>
-                {jdyEnabled && (
+                {jdyEnabled && jdyState !== "idle" && (
                   <div className={`money-bank-jdy-status ${jdyState}`}>
-                    <div className="money-bank-jdy-state"><i />{jdyState === "scanning" ? "SCANNING" : jdyState === "safe" ? "SAFE TO TRADE" : jdyState === "not-good" ? "NOT A GOOD TRADE" : "READY TO SCAN"}</div>
-                    <small>{jdyState === "scanning" ? "Reviewing every supported market, growth rate, and tick target…" : jdyState === "not-good" ? "The scan estimates more than 3 losses in the next 10 trades. Start again after conditions improve." : "A trade is only allowed after the current setup passes the loss-risk check."}</small>
-                    {jdyDecision && <b>{jdyDecision.symbol} · {jdyDecision.growthRate}% · {jdyDecision.takeProfitTicks} ticks · estimated losses: {jdyDecision.estimatedLosses}/10</b>}
+                    <div className="money-bank-jdy-state"><i />{jdyState === "scanning" ? "CALCULATING" : jdyState === "safe" ? "SAFE TO TRADE" : "NOT A GOOD TRADE"}</div>
+                    <small>{jdyState === "scanning" ? "Predicting the selected trade and checking for a 3–4 loss streak…" : jdyState === "not-good" ? "No contract was opened. Change the suggested settings and select Start Accumulator to try again." : "The selected setup passed the loss-streak check and is ready for entry."}</small>
+                    {jdyDecision && (
+                      <>
+                        <b>{jdyDecision.symbol} · {jdyDecision.growthRate}% · {jdyDecision.takeProfitTicks} ticks · stake {money(jdyDecision.stake, currency)} · predicted win rate: {jdyDecision.predictedWinRate.toFixed(1)}%</b>
+                        <span className="money-bank-jdy-risk">Estimated loss streak: {jdyDecision.estimatedLossStreak} · sampled {jdyDecision.sampleCount} ticks</span>
+                        {!jdyDecision.safe && (
+                          <div className="money-bank-jdy-suggestions">
+                            <small>TRY CHANGING</small>
+                            <span>Market: <b>{jdyDecision.suggestedSymbol ?? "wait for more samples"}</b></span>
+                            <span>Growth: <b>{jdyDecision.suggestedGrowthRate != null ? `${jdyDecision.suggestedGrowthRate}%` : "wait for more samples"}</b> · Ticks: <b>{jdyDecision.suggestedTakeProfitTicks ?? "wait"}</b> · Stake: <b>{jdyDecision.suggestedStake != null ? money(jdyDecision.suggestedStake, currency) : "lower amount"}</b></span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
                 <label><span><b>Reinvest profit</b><small>{reinvestProfit ? `${reinvestPercent}% of each win goes into the next BASE` : "Keep wins in the next BASE"}</small></span><input type="checkbox" checked={reinvestProfit} onChange={(event) => onReinvestProfitChange(event.target.checked)} disabled={running} /><i /></label>

@@ -738,6 +738,34 @@
   box-shadow: 0 0 0 4px rgba(255, 113, 130, .13);
 }
 
+.money-bank-jdy-risk {
+  color: #d6b5ff;
+  font-size: .61rem;
+}
+
+.money-bank-jdy-suggestions {
+  display: grid;
+  gap: 3px;
+  margin-top: 3px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 135, 148, .18);
+  color: #e4c0c4;
+  font-size: .61rem;
+  line-height: 1.35;
+}
+
+.money-bank-jdy-suggestions small {
+  color: #ff9da9;
+}
+
+.money-bank-jdy-suggestions span {
+  display: block;
+}
+
+.money-bank-jdy-suggestions b {
+  color: #fff0f0;
+}
+
 @keyframes money-bank-jdy-pulse {
   0%, 100% { opacity: .45; transform: scale(.82); box-shadow: 0 0 0 3px rgba(190, 115, 255, .12); }
   50% { opacity: 1; transform: scale(1.18); box-shadow: 0 0 0 7px rgba(190, 115, 255, .26), 0 0 18px rgba(190, 115, 255, .72); }

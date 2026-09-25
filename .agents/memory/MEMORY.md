@@ -16,3 +16,4 @@
 - [Admin PAT separation](admin-pat-separation.md) — access-key authorization must never inject or fall back to a Replit-secret Deriv PAT; every admin session enters its own PAT.
 - [Runtime health checks](runtime-health-check.md) — restart stale workflows before diagnosing missing bootstrap secrets; API health is served at `/api/healthz`.
 - [Deriv Accumulator contract](deriv-accumulator-contract.md) — Accumulator trades use ACCU with decimal growth_rate in both proposal and buy payloads.
+- [Money Bank JDY gate](money-bank-jdy-gate.md) — evaluate the user-selected setup at entry; alternatives are advisory and must never be auto-applied.

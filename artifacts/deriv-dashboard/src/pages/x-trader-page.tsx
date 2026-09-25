@@ -665,53 +665,69 @@ export default function XTraderPage() {
     }
   };
 
-  const scanJdyMoneyBank = async (): Promise<MoneyBankJdyDecision | null> => {
+  const scanJdyMoneyBank = async (
+    candidateConfig?: MoneyBankStartConfig,
+    candidateSymbol?: string,
+  ): Promise<MoneyBankJdyDecision | null> => {
     if (!isConnected || moneyBankJdyScanInFlightRef.current) return moneyBankJdyDecision;
+    const config = candidateConfig ?? moneyBankConfigRef.current;
+    const selectedSymbol = candidateSymbol ?? (config?.autoSwitch ? moneyBankSafestSymbolRef.current : config?.symbol);
+    if (!config || !selectedSymbol) return null;
     moneyBankJdyScanInFlightRef.current = true;
     setMoneyBankJdyState("scanning");
     try {
       const freshStatus = await status.refetch();
       const freshSignals = (freshStatus.data?.market_signals ?? moneyBankSignals) as MoneyBankMarketSignal[];
-      const candidates: MoneyBankJdyDecision[] = [];
-      for (const [marketSymbol] of moneyBankMarkets) {
+      const evaluateSetup = (marketSymbol: string, growthRate: number, takeProfitTicks: number): MoneyBankJdyDecision => {
         const signal = freshSignals.find((entry) => entry.symbol === marketSymbol);
-        if (!signal || signal.sample_count < 5) continue;
-        const observedBalance = Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50);
-        for (let growthRate = 1; growthRate <= 5; growthRate += 1) {
-          for (let takeProfitTicks = 5; takeProfitTicks <= 50; takeProfitTicks += 1) {
-            const riskPenalty = growthRate * 1.5 + takeProfitTicks * 0.12;
-            const estimatedLosses = Math.max(0, Math.ceil((100 - observedBalance + riskPenalty) / 10));
-            const sampleConfidence = Math.min(signal.sample_count, 200) / 10;
-            const score = observedBalance - riskPenalty + sampleConfidence;
-            candidates.push({
-              symbol: marketSymbol,
-              growthRate,
-              takeProfitTicks,
-              score,
-              sampleCount: signal.sample_count,
-              observedBalance,
-              estimatedLosses,
-              safe: signal.sample_count >= 20 && estimatedLosses <= 3,
-            });
-          }
-        }
+        const observedBalance = signal ? Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50) : 0;
+        const stake = config.ladder[Math.min(6, moneyBankLevelRef.current)]?.stake ?? config.ladder[0]?.stake ?? 1;
+        const stakeRiskPenalty = currentAccount?.balance
+          ? Math.min(15, (stake / currentAccount.balance) * 100)
+          : 20;
+        const riskPenalty = growthRate * 1.5 + takeProfitTicks * 0.12 + stakeRiskPenalty;
+        const predictedWinRate = Math.max(0, Math.min(100, observedBalance - riskPenalty));
+        const estimatedLossStreak = Math.max(0, Math.ceil((100 - predictedWinRate) / 10));
+        const sampleCount = signal?.sample_count ?? 0;
+        const score = predictedWinRate + Math.min(sampleCount, 200) / 10;
+        return {
+          symbol: marketSymbol,
+          growthRate,
+          takeProfitTicks,
+          score,
+          sampleCount,
+          observedBalance,
+          estimatedLosses: estimatedLossStreak,
+          stake,
+          predictedWinRate,
+          estimatedLossStreak,
+          safe: sampleCount >= 20 && predictedWinRate >= 70 && estimatedLossStreak <= 3,
+          suggestedSymbol: null,
+          suggestedGrowthRate: null,
+          suggestedTakeProfitTicks: null,
+          suggestedStake: Math.max(1, Number((stake * 0.5).toFixed(2))),
+        };
+      };
+
+      const decision = evaluateSetup(selectedSymbol, config.growthRate, config.takeProfitTicks);
+      const alternatives = moneyBankMarkets
+        .flatMap(([marketSymbol]) => Array.from({ length: 5 }, (_, index) => index + 1)
+          .flatMap((growthRate) => Array.from({ length: 46 }, (_, index) => index + 5)
+            .map((takeProfitTicks) => evaluateSetup(marketSymbol, growthRate, takeProfitTicks))))
+        .filter((candidate) => candidate.symbol !== decision.symbol || candidate.growthRate !== decision.growthRate || candidate.takeProfitTicks !== decision.takeProfitTicks)
+        .sort((left, right) =>
+          Number(right.safe) - Number(left.safe)
+          || right.score - left.score
+          || right.sampleCount - left.sampleCount,
+        );
+      const suggestion = alternatives[0];
+      if (!decision.safe && suggestion) {
+        decision.suggestedSymbol = suggestion.symbol;
+        decision.suggestedGrowthRate = suggestion.growthRate;
+        decision.suggestedTakeProfitTicks = suggestion.takeProfitTicks;
       }
-      const decision = candidates.sort((left, right) =>
-        Number(right.safe) - Number(left.safe)
-        || right.score - left.score
-        || right.sampleCount - left.sampleCount,
-      )[0] ?? null;
       setMoneyBankJdyDecision(decision);
-      if (!decision) {
-        setMoneyBankJdyState("not-good");
-        setConnectionMessage({ kind: "info", text: "JDY AI could not find enough live samples for a safe Money Bank trade." });
-      } else if (!decision.safe) {
-        setMoneyBankJdyState("not-good");
-        setConnectionMessage({ kind: "info", text: `JDY AI cancelled the next trade: the best setup estimates ${decision.estimatedLosses} losses in the next 10 trades.` });
-      } else {
-        setMoneyBankJdyState("safe");
-        setConnectionMessage({ kind: "info", text: `JDY AI found a safer setup on ${decision.symbol} at ${decision.growthRate}% growth for ${decision.takeProfitTicks} ticks.` });
-      }
+      setMoneyBankJdyState(decision.safe ? "safe" : "not-good");
       return decision;
     } catch (error) {
       setMoneyBankJdyState("not-good");
@@ -1362,7 +1378,6 @@ export default function XTraderPage() {
   const executeMoneyBankTrade = async () => {
     const config = moneyBankConfigRef.current;
     if (!config || !moneyBankRunningRef.current || moneyBankActionLockRef.current) return;
-    let jdyDecisionForEntry: MoneyBankJdyDecision | null = null;
 
     let latestRows = await getDerivHistory();
     const openContractId = moneyBankOpenContractIdRef.current;
@@ -1423,16 +1438,13 @@ export default function XTraderPage() {
         moneyBankScannerNextAtRef.current = Date.now() + 60_000;
         void scanMoneyBank();
       }
-      if (moneyBankJdyEnabled) {
-        jdyDecisionForEntry = await scanJdyMoneyBank();
-      }
     }
 
     if (!moneyBankRunningRef.current) return;
     let currentConfig = moneyBankConfigRef.current ?? config;
     let tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
     if (moneyBankJdyEnabled) {
-      const decision = jdyDecisionForEntry ?? await scanJdyMoneyBank();
+      const decision = await scanJdyMoneyBank(currentConfig, tradeSymbol);
       if (!decision?.safe) {
         moneyBankRunningRef.current = false;
         setMoneyBankRunning(false);
@@ -1440,30 +1452,15 @@ export default function XTraderPage() {
         setConnectionMessage({
           kind: "info",
           text: decision
-            ? `JDY AI cancelled this trade: not a good trade, with an estimated ${decision.estimatedLosses} losses in the next 10 trades.`
+            ? `JDY AI cancelled this trade: not a good trade, with an estimated ${decision.estimatedLossStreak}-loss streak risk.`
             : "JDY AI cancelled this trade because it could not confirm a safe setup.",
         });
         return;
       }
-      currentConfig = {
-        ...currentConfig,
-        symbol: decision.symbol,
-        growthRate: decision.growthRate,
-        takeProfitTicks: decision.takeProfitTicks,
-        ladder: calculateRecoveryLadder({
-          strategy: currentConfig.strategy,
-          budget: currentConfig.ladder.at(-1)?.cumulative ?? 0,
-          manualBase: currentConfig.ladder[0]?.stake ?? 1,
-          growthRate: decision.growthRate,
-          takeProfitTicks: decision.takeProfitTicks,
-        }),
-      };
-      moneyBankConfigRef.current = currentConfig;
-      tradeSymbol = decision.symbol;
       setMoneyBankJdyState("safe");
       setConnectionMessage({
         kind: "info",
-        text: `JDY AI confirmed a safe ${tradeSymbol} setup at ${decision.growthRate}% growth for ${decision.takeProfitTicks} ticks.`,
+        text: `JDY AI confirmed the selected ${tradeSymbol} setup before entry.`,
       });
     }
     const level = currentConfig.ladder[Math.min(6, moneyBankLevelRef.current)];
@@ -1551,6 +1548,10 @@ export default function XTraderPage() {
       setMoneyBankTradeCount(0);
       moneyBankRunningRef.current = true;
       setMoneyBankRunning(true);
+      if (moneyBankJdyEnabled) {
+        setMoneyBankJdyDecision(null);
+        setMoneyBankJdyState("scanning");
+      }
       void runMoneyBankLoop();
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -2905,12 +2906,8 @@ export default function XTraderPage() {
            jdyEnabled={moneyBankJdyEnabled}
            onJdyChange={(enabled) => {
              setMoneyBankJdyEnabled(enabled);
-             if (enabled) {
-               void scanJdyMoneyBank();
-             } else {
-               setMoneyBankJdyState("idle");
-               setMoneyBankJdyDecision(null);
-             }
+             setMoneyBankJdyState("idle");
+             setMoneyBankJdyDecision(null);
            }}
            jdyState={moneyBankJdyState}
            jdyDecision={moneyBankJdyDecision}
