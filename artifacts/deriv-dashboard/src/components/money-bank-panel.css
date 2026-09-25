@@ -766,6 +766,25 @@
   color: #fff0f0;
 }
 
+.money-bank-jdy-suggestions button {
+  width: max-content;
+  min-height: 27px;
+  margin-top: 4px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 157, 169, .42);
+  border-radius: 7px;
+  background: rgba(120, 29, 42, .3);
+  color: #ffd8dc;
+  cursor: pointer;
+  font-size: .59rem;
+  font-weight: 800;
+}
+
+.money-bank-jdy-suggestions button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
 @keyframes money-bank-jdy-pulse {
   0%, 100% { opacity: .45; transform: scale(.82); box-shadow: 0 0 0 3px rgba(190, 115, 255, .12); }
   50% { opacity: 1; transform: scale(1.18); box-shadow: 0 0 0 7px rgba(190, 115, 255, .26), 0 0 18px rgba(190, 115, 255, .72); }

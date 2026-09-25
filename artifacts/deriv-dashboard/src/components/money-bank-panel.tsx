@@ -107,6 +107,7 @@ type MoneyBankPanelProps = {
   onJdyChange: (value: boolean) => void;
   jdyState: "idle" | "scanning" | "safe" | "not-good";
   jdyDecision: MoneyBankJdyDecision | null;
+  onApplyJdyRecommendation: () => void;
   closing?: boolean;
   marketSignals: readonly MoneyBankMarketSignal[];
   recentTrades: readonly MoneyBankTrade[];
@@ -217,6 +218,7 @@ export function MoneyBankPanel({
   onJdyChange,
   jdyState,
   jdyDecision,
+  onApplyJdyRecommendation,
   closing = false,
   marketSignals,
   recentTrades,
@@ -522,6 +524,7 @@ export function MoneyBankPanel({
                             <small>TRY CHANGING</small>
                             <span>Market: <b>{jdyDecision.suggestedSymbol ?? "wait for more samples"}</b></span>
                             <span>Growth: <b>{jdyDecision.suggestedGrowthRate != null ? `${jdyDecision.suggestedGrowthRate}%` : "wait for more samples"}</b> · Ticks: <b>{jdyDecision.suggestedTakeProfitTicks ?? "wait"}</b> · Stake: <b>{jdyDecision.suggestedStake != null ? money(jdyDecision.suggestedStake, currency) : "lower amount"}</b></span>
+                            {jdyDecision.suggestedSymbol && <button type="button" onClick={onApplyJdyRecommendation} disabled={running}>Use safer setup</button>}
                           </div>
                         )}
                       </>

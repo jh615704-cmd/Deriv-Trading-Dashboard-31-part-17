@@ -671,7 +671,7 @@ export default function XTraderPage() {
   ): Promise<MoneyBankJdyDecision | null> => {
     if (!isConnected || moneyBankJdyScanInFlightRef.current) return moneyBankJdyDecision;
     const config = candidateConfig ?? moneyBankConfigRef.current;
-    const selectedSymbol = candidateSymbol ?? (config?.autoSwitch ? moneyBankSafestSymbolRef.current : config?.symbol);
+    const selectedSymbol = candidateSymbol ?? config?.symbol;
     if (!config || !selectedSymbol) return null;
     moneyBankJdyScanInFlightRef.current = true;
     setMoneyBankJdyState("scanning");
@@ -1444,6 +1444,9 @@ export default function XTraderPage() {
     let currentConfig = moneyBankConfigRef.current ?? config;
     let tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
     if (moneyBankJdyEnabled) {
+      // JDY must evaluate and send the market visible in the Money Bank form.
+      // Auto-switch is intentionally ignored for this guarded entry.
+      tradeSymbol = currentConfig.symbol;
       const decision = await scanJdyMoneyBank(currentConfig, tradeSymbol);
       if (!decision?.safe) {
         moneyBankRunningRef.current = false;
@@ -1604,12 +1607,24 @@ export default function XTraderPage() {
     setRunning(false);
   };
 
+  const deactivateMoneyBank = () => {
+    setEdge2Enabled(false);
+    setMoneyBankScannerEnabled(false);
+    setMoneyBankScannerRecommendation(null);
+    moneyBankScannerNextAtRef.current = null;
+    setMoneyBankJdyEnabled(false);
+    setMoneyBankJdyState("idle");
+    setMoneyBankJdyDecision(null);
+    stopMoneyBank();
+  };
+
   const toggleXTrader = (enabled: boolean) => {
     setXTraderEnabled(enabled);
     if (!enabled) {
       stop();
       return;
     }
+    deactivateMoneyBank();
     setDigitFlipEnabled(false);
     digitFlipRunningRef.current = false;
     setDigitFlipRunning(false);
@@ -1621,13 +1636,7 @@ export default function XTraderPage() {
   const toggleMoneyBank = (enabled: boolean) => {
     setEdge2Enabled(enabled);
     if (!enabled) {
-      setMoneyBankScannerEnabled(false);
-      setMoneyBankScannerRecommendation(null);
-      moneyBankScannerNextAtRef.current = null;
-      setMoneyBankJdyEnabled(false);
-      setMoneyBankJdyState("idle");
-      setMoneyBankJdyDecision(null);
-      stopMoneyBank();
+      deactivateMoneyBank();
       return;
     }
     stop();
@@ -1967,6 +1976,7 @@ export default function XTraderPage() {
       setDigitFlipRunning(false);
       return;
     }
+    deactivateMoneyBank();
     setXTraderEnabled(false);
     setTradeXEnabled(false);
     setBulkTraderEnabled(false);
@@ -2082,6 +2092,7 @@ export default function XTraderPage() {
   const toggleTradeX = (enabled: boolean) => {
     setTradeXEnabled(enabled);
     if (enabled) {
+      deactivateMoneyBank();
       setXTraderEnabled(false);
       setDigitFlipEnabled(false);
       setBulkTraderEnabled(false);
@@ -2098,6 +2109,7 @@ export default function XTraderPage() {
   const toggleBulkTrader = (enabled: boolean) => {
     setBulkTraderEnabled(enabled);
     if (!enabled) return;
+    deactivateMoneyBank();
     setXTraderEnabled(false);
     setTradeXEnabled(false);
     setDigitFlipEnabled(false);
@@ -2911,6 +2923,20 @@ export default function XTraderPage() {
            }}
            jdyState={moneyBankJdyState}
            jdyDecision={moneyBankJdyDecision}
+           onApplyJdyRecommendation={() => {
+             const recommendation = moneyBankJdyDecision;
+             if (!recommendation?.suggestedSymbol || recommendation.suggestedGrowthRate == null || recommendation.suggestedTakeProfitTicks == null) return;
+             setMoneyBankAutoSwitch(false);
+             setMoneyBankSymbol(recommendation.suggestedSymbol);
+             setMoneyBankGrowthRate(recommendation.suggestedGrowthRate);
+             setMoneyBankTakeProfitTicks(recommendation.suggestedTakeProfitTicks);
+             if (recommendation.suggestedStake != null) {
+               setMoneyBankStrategy("manual");
+               setMoneyBankManualBase(recommendation.suggestedStake);
+             }
+             void selectMarket(recommendation.suggestedSymbol);
+             setConnectionMessage({ kind: "info", text: "JDY AI settings applied. Select Start Accumulator to run the new guarded setup." });
+           }}
           marketSignals={moneyBankSignals}
           recentTrades={moneyBankRows}
           sessionWins={moneyBankWins}
