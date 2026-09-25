@@ -401,3 +401,13 @@
   .edge-ref-run,
   .edge-ref-session-reset { min-height: 52px; }
 }
+
+.edge-reference-layout .edge-ref-card,
+.edge-reference-layout .edge-ref-input-card,
+.edge-reference-layout .edge-ref-session,
+.edge-reference-layout .edge-ref-history,
+.edge-reference-layout .edge-ref-disclaimer {
+  background:
+    radial-gradient(circle at 92% 0%, rgba(22, 132, 84, .25), transparent 32%),
+    linear-gradient(135deg, #09261b 0%, #061a14 55%, #0b2a1d 100%);
+}
