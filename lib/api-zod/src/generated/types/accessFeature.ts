@@ -15,6 +15,8 @@ export const AccessFeature = {
   'trade-x': 'trade-x',
   'bulk-trader': 'bulk-trader',
   'cash-grab': 'cash-grab',
+  'money-bank': 'money-bank',
+  'jdy-ai-3': 'jdy-ai-3',
   settings: 'settings',
   history: 'history',
   admin: 'admin',

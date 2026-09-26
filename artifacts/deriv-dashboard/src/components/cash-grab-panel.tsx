@@ -49,6 +49,8 @@ export interface CashGrabStartConfig {
   duration: CashGrabDuration;
   syncBalance: boolean;
   balancePercentage: number;
+  multiplier: number | null;
+  autoSelectBest: boolean;
   jdyAi2: boolean;
   jdyAi3: boolean;
 }
@@ -57,6 +59,8 @@ export interface CashGrabPanelProps {
   contractFamily: CashGrabContractFamily;
   direction: CashGrabDirection;
   symbol: string;
+  bestSymbol?: string | null;
+  autoSelectBest: boolean;
   symbols: readonly CashGrabSymbolOption[];
   selectedDigit: number;
   lastDigit?: number | null;
@@ -68,9 +72,11 @@ export interface CashGrabPanelProps {
   accountBalance?: number | null;
   currency?: string;
   balancePercentage: number;
+  multiplier: number | null;
   jdyAi2: boolean;
   jdyAi2Status?: CashGrabAiStatus;
   jdyAi3: boolean;
+  jdyAi3Available: boolean;
   jdyAi3Status?: CashGrabAiStatus;
   running: boolean;
   isConnected: boolean;
@@ -85,12 +91,14 @@ export interface CashGrabPanelProps {
   onContractFamilyChange: (family: CashGrabContractFamily) => void;
   onDirectionChange: (direction: CashGrabDirection) => void;
   onSymbolChange: (symbol: string) => void;
+  onAutoSelectBestChange: (enabled: boolean) => void;
   onSelectedDigitChange: (digit: number) => void;
   onStakeChange: (stake: number) => void;
   onBulkCountChange: (count: number) => void;
   onDurationChange: (duration: CashGrabDuration) => void;
   onSyncBalanceChange: (enabled: boolean) => void;
   onBalancePercentageChange: (percentage: number) => void;
+  onMultiplierChange: (multiplier: number | null) => void;
   onJdyAi2Change: (enabled: boolean) => void;
   onJdyAi3Change: (enabled: boolean) => void;
   onLiveConfirmChange: (confirmed: boolean) => void;
@@ -141,6 +149,8 @@ export default function CashGrabPanel({
   contractFamily,
   direction,
   symbol,
+  bestSymbol = null,
+  autoSelectBest,
   symbols,
   selectedDigit,
   lastDigit = null,
@@ -152,9 +162,11 @@ export default function CashGrabPanel({
   accountBalance = null,
   currency = "USD",
   balancePercentage,
+  multiplier,
   jdyAi2,
   jdyAi2Status = "off",
   jdyAi3,
+  jdyAi3Available,
   jdyAi3Status = "off",
   running,
   isConnected,
@@ -169,12 +181,14 @@ export default function CashGrabPanel({
   onContractFamilyChange,
   onDirectionChange,
   onSymbolChange,
+  onAutoSelectBestChange,
   onSelectedDigitChange,
   onStakeChange,
   onBulkCountChange,
   onDurationChange,
   onSyncBalanceChange,
   onBalancePercentageChange,
+  onMultiplierChange,
   onJdyAi2Change,
   onJdyAi3Change,
   onLiveConfirmChange,
@@ -205,6 +219,8 @@ export default function CashGrabPanel({
       duration,
       syncBalance,
       balancePercentage: visibleBalancePercentage,
+      multiplier: multiplier == null ? null : Math.max(0.5, multiplier),
+      autoSelectBest,
       jdyAi2,
       jdyAi3,
     });
@@ -248,14 +264,17 @@ export default function CashGrabPanel({
               <label className="cash-grab-select-label">
                 <span className="cash-grab-field-label">SYMBOL</span>
                 <span className="cash-grab-select-wrap">
-                  <select
-                    value={symbol}
-                    onChange={(event) => onSymbolChange(event.target.value)}
+                   <select
+                     value={autoSelectBest ? "__auto__" : symbol}
+                     onChange={(event) => event.target.value === "__auto__"
+                       ? onAutoSelectBestChange(true)
+                       : (onAutoSelectBestChange(false), onSymbolChange(event.target.value))}
                     disabled={!isConnected || interactionDisabled}
                     aria-label="Select Cash Grab market symbol"
                     data-testid="select-cash-grab-symbol"
                   >
-                    {!symbols.length && <option value={symbol}>{symbol || "No symbols available"}</option>}
+                     <option value="__auto__">{`Auto best · ${bestSymbol ?? "scanning all Volatility and Jump pairs"}`}</option>
+                     {!symbols.length && <option value={symbol}>{symbol || "No symbols available"}</option>}
                     {symbols.map((item) => <option value={item.value} key={item.value}>{item.label} · {item.value}</option>)}
                   </select>
                   <ChevronDown size={15} aria-hidden="true" />
@@ -326,7 +345,7 @@ export default function CashGrabPanel({
                       aria-label={`Digit ${digit}; ${overall.toFixed(1)} percent overall and ${market.toFixed(1)} percent for ${selectedSymbolLabel}${isCurrent ? ", current market digit" : ""}`}
                       data-testid={`button-cash-grab-digit-${digit}`}
                     >
-                      <span className="cash-grab-marker" aria-hidden={!isCurrent}>{isCurrent ? "💯" : ""}</span>
+                       <span className="cash-grab-marker" aria-hidden={!isCurrent}>{isCurrent ? "LIVE" : ""}</span>
                       <b>{digit}</b>
                       <small><span>O</span>{overall.toFixed(1)}%</small>
                       <small><span>M</span>{market.toFixed(1)}%</small>
@@ -360,10 +379,15 @@ export default function CashGrabPanel({
                   <span className="cash-grab-money-input"><b>{currency}</b><input type="number" min="0.35" step="0.01" value={stake} onChange={(event) => onStakeChange(Math.max(0.35, Number(event.target.value) || 0.35))} disabled={interactionDisabled || syncBalance} aria-label={`Stake in ${currency}`} data-testid="input-cash-grab-stake" /></span>
                   <small>Per contract</small>
                 </label>
+                 <label>
+                   <span className="cash-grab-field-label">LOSS MULTIPLIER</span>
+                   <span className="cash-grab-money-input"><b>×</b><input type="number" min="0.5" step="0.1" value={multiplier ?? ""} placeholder="Optional" onChange={(event) => onMultiplierChange(event.target.value === "" ? null : Math.max(0.5, Number(event.target.value) || 0.5))} disabled={interactionDisabled} aria-label="Multiplier after a loss" data-testid="input-cash-grab-multiplier" /></span>
+                   <small>Blank keeps the stake flat · minimum 0.5 · no maximum</small>
+                 </label>
                 <label>
                   <span className="cash-grab-field-label">BULK COUNT · MIN 1</span>
                   <input className="cash-grab-number-input" type="number" min="1" step="1" value={bulkCount} onChange={(event) => onBulkCountChange(Math.max(1, Math.trunc(Number(event.target.value) || 1)))} disabled={interactionDisabled} aria-label="Number of contracts to send" data-testid="input-cash-grab-count" />
-                  <small>Contracts sent together</small>
+                   <small>Contracts run one at a time</small>
                 </label>
               </div>
               <div className="cash-grab-choice-block">
@@ -418,7 +442,7 @@ export default function CashGrabPanel({
               </label>
               <label className="cash-grab-toggle-row">
                 <span className="cash-grab-toggle-copy"><b>JDY AI 3</b><small>{statusDescription(jdyAi3Status, jdyAi3)}</small></span>
-                <input type="checkbox" checked={jdyAi3} onChange={(event) => onJdyAi3Change(event.target.checked)} disabled={interactionDisabled || !isConnected} aria-label="Enable JDY AI 3" />
+                 <input type="checkbox" checked={jdyAi3} onChange={(event) => onJdyAi3Change(event.target.checked)} disabled={!jdyAi3Available || isPlacingTrade || !isConnected} aria-label="Enable JDY AI 3" />
                 <i aria-hidden="true" />
                 <strong className={`cash-grab-ai-status ${jdyAi3 ? jdyAi3Status : "off"}`}>{statusLabel(jdyAi3Status, jdyAi3)}</strong>
               </label>
@@ -439,7 +463,7 @@ export default function CashGrabPanel({
             {isReal && !liveConfirmed && <small>Confirm live funds before sending.</small>}
           </div>
           {running ? (
-            <button type="button" className="cash-grab-primary stop" onClick={onMoneyStop} disabled={isPlacingTrade} data-testid="button-cash-grab-stop"><Square size={14} fill="currentColor" /> MONEY STOP</button>
+             <button type="button" className="cash-grab-primary stop" onClick={onMoneyStop} data-testid="button-cash-grab-stop"><Square size={14} fill="currentColor" /> MONEY STOP</button>
           ) : (
             <button type="submit" className="cash-grab-primary" disabled={!canStart || (isReal && !liveConfirmed)} data-testid="button-cash-grab-start">{isPlacingTrade ? <span className="cash-grab-button-loading" /> : <Play size={14} fill="currentColor" />} {isPlacingTrade ? "PLACING…" : "MONEY START"}</button>
           )}

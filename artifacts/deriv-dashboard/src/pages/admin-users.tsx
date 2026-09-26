@@ -38,6 +38,8 @@ const featureOptions: Array<{ value: AccessFeature; label: string; description: 
   { value: "trade-x", label: "Trade X", description: "Digit Differs trading and automation" },
   { value: "bulk-trader", label: "Bulk Trader", description: "Send 1–6 contracts across four trade types" },
   { value: "cash-grab", label: "Cash Grab", description: "Controlled batch trading with risk gates" },
+  { value: "money-bank", label: "Money Bank", description: "Accumulator automation with recovery controls" },
+  { value: "jdy-ai-3", label: "JDY AI 3", description: "Cash Grab live gate and immediate stop control" },
   { value: "settings", label: "Settings", description: "View and manage the Deriv connection" },
   { value: "history", label: "History", description: "Read recent trading activity" },
 ];

@@ -329,7 +329,9 @@ export default function XTraderPage() {
   const canUseTradeX = isAdmin || accessSession.data?.features.includes("trade-x") === true;
   const canUseBulkTrader = isAdmin || accessSession.data?.features.includes("bulk-trader") === true;
   const canUseCashGrab = isAdmin || accessSession.data?.features.includes("cash-grab") === true;
-  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab;
+  const canUseMoneyBank = isAdmin || accessSession.data?.features.includes("money-bank") === true;
+  const canUseJdyAi3 = isAdmin || accessSession.data?.features.includes("jdy-ai-3") === true;
+  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab || canUseMoneyBank;
   const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true || canUseCashGrab;
   const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
@@ -419,6 +421,8 @@ export default function XTraderPage() {
   const [cashGrabStake, setCashGrabStake] = useState(.35);
   const [cashGrabCount, setCashGrabCount] = useState(1);
   const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(1);
+  const [cashGrabMultiplier, setCashGrabMultiplier] = useState<number | null>(null);
+  const [cashGrabAutoSelectBest, setCashGrabAutoSelectBest] = useState(false);
   const [cashGrabSyncBalance, setCashGrabSyncBalance] = useState(false);
   const [cashGrabBalancePercentage, setCashGrabBalancePercentage] = useState(10);
   const [cashGrabJdyAi2, setCashGrabJdyAi2] = useState(false);
@@ -509,9 +513,12 @@ export default function XTraderPage() {
   const moneyBankClosePromiseRef = useRef<Promise<void> | null>(null);
   const moneyBankOpenContractIdRef = useRef<string | null>(null);
   const moneyBankScannerNextAtRef = useRef<number | null>(null);
+  const moneyBankScannerRotationRef = useRef(0);
   const moneyBankJdyScanInFlightRef = useRef(false);
   const cashGrabRunningRef = useRef(false);
   const cashGrabActionLockRef = useRef(false);
+  const cashGrabRemainingTradesRef = useRef(0);
+  const cashGrabCurrentStakeRef = useRef(.35);
   const cashGrabSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const cashGrabProcessedSettlementIdsRef = useRef(new Set<string>());
   const cashGrabConfigRef = useRef<CashGrabStartConfig | null>(null);
@@ -614,6 +621,20 @@ export default function XTraderPage() {
     .filter((trade) => !cashGrabHiddenHistoryIds.has(trade.contract_id))
     .filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)) as CashGrabTrade[];
   const cashGrabSymbols = markets.map(([value, label]) => ({ value, label }));
+  const cashGrabBestSymbol = useMemo(() => {
+    const supported = new Set<string>(cashGrabSymbols.map((item) => item.value));
+    const signals = (status.data?.market_signals ?? [])
+      .filter((signal) => supported.has(signal.symbol) && signal.sample_count >= 5)
+      .map((signal) => {
+        const observedRate = cashGrabFamily === "even-odd"
+          ? Math.max(signal.digit_even_percentage ?? 0, signal.digit_odd_percentage ?? 0)
+          : cashGrabFamily === "rise-fall" || cashGrabFamily === "accumulator"
+            ? Math.max(signal.rise_percentage ?? 0, signal.fall_percentage ?? 0)
+            : Math.max(signal.rise_percentage ?? 0, signal.fall_percentage ?? 0);
+        return { signal, score: observedRate + Math.min(signal.sample_count, 100) / 100 };
+      });
+    return signals.sort((left, right) => right.score - left.score || right.signal.sample_count - left.signal.sample_count)[0]?.signal.symbol ?? null;
+  }, [cashGrabFamily, cashGrabSymbols, status.data?.market_signals]);
   const cashGrabDigitObservations = useMemo(() => {
     const marketDigits = status.data?.digit_history?.length ? status.data.digit_history : analysisDigits;
     const marketCounts = Array.from({ length: 10 }, (_, digit) => marketDigits.filter((entry) => entry === digit).length);
@@ -703,32 +724,46 @@ export default function XTraderPage() {
     try {
       const freshStatus = await status.refetch();
       const freshSignals = (freshStatus.data?.market_signals ?? moneyBankSignals) as MoneyBankMarketSignal[];
-      let best: MoneyBankScannerRecommendation | null = null;
+       const candidates: MoneyBankScannerRecommendation[] = [];
       for (const [marketSymbol] of moneyBankMarkets) {
         const signal = freshSignals.find((entry) => entry.symbol === marketSymbol);
         if (!signal || signal.sample_count < 5) continue;
         const observedBalance = Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50);
         for (let growthRate = 1; growthRate <= 5; growthRate += 1) {
           for (let takeProfitTicks = 5; takeProfitTicks <= 50; takeProfitTicks += 1) {
-            const theoreticalReturn = (Math.pow(1 + growthRate / 100, takeProfitTicks) - 1) * 100;
-            const riskPenalty = growthRate * takeProfitTicks * 0.035;
-            const sampleConfidence = Math.min(signal.sample_count, 100) / 20;
-            const score = observedBalance * 0.72 + sampleConfidence + theoreticalReturn * 0.12 - riskPenalty;
-            const estimatedLosses = Math.max(0, Math.ceil((100 - observedBalance + riskPenalty) / 10));
-            if (!best || score > best.score) {
-              best = {
-                symbol: marketSymbol,
-                growthRate,
-                takeProfitTicks,
-                score,
-                sampleCount: signal.sample_count,
-                observedBalance,
-                estimatedLosses,
-              };
-            }
+             const riskPenalty = growthRate * 1.35 + takeProfitTicks * 0.08;
+             const sampleConfidence = Math.min(signal.sample_count, 100) / 10;
+             const estimatedLosses = Math.max(0, Math.ceil((100 - observedBalance + riskPenalty) / 10));
+             candidates.push({
+               symbol: marketSymbol,
+               growthRate,
+               takeProfitTicks,
+               score: observedBalance * 0.9 + sampleConfidence - estimatedLosses * 2 - riskPenalty,
+               sampleCount: signal.sample_count,
+               observedBalance,
+               estimatedLosses,
+             });
           }
         }
       }
+       const ranked = candidates.sort((left, right) =>
+         right.observedBalance - left.observedBalance
+         || left.estimatedLosses - right.estimatedLosses
+         || right.sampleCount - left.sampleCount
+         || right.score - left.score,
+       );
+       const bestByMarket = moneyBankMarkets
+         .map(([marketSymbol]) => ranked.find((candidate) => candidate.symbol === marketSymbol))
+         .filter((candidate): candidate is MoneyBankScannerRecommendation => Boolean(candidate))
+         .sort((left, right) =>
+           right.observedBalance - left.observedBalance
+           || left.estimatedLosses - right.estimatedLosses
+           || right.sampleCount - left.sampleCount
+           || right.score - left.score,
+         );
+       const rotationWindow = bestByMarket.length ? bestByMarket : ranked.slice(0, Math.min(24, ranked.length));
+       const rotationIndex = rotationWindow.length ? moneyBankScannerRotationRef.current++ % rotationWindow.length : 0;
+       const best = rotationWindow[rotationIndex] ?? null;
       moneyBankScannerRecommendationRef.current = best;
       setMoneyBankScannerRecommendation(best);
       if (best) {
@@ -782,7 +817,7 @@ export default function XTraderPage() {
           stake,
           predictedWinRate,
           estimatedLossStreak,
-          safe: sampleCount >= 20 && predictedWinRate >= 70 && estimatedLossStreak <= 3,
+           safe: sampleCount >= 5 && predictedWinRate >= 45 && estimatedLossStreak <= 5,
           suggestedSymbol: null,
           suggestedGrowthRate: null,
           suggestedTakeProfitTicks: null,
@@ -987,11 +1022,14 @@ export default function XTraderPage() {
       duration: cashGrabDuration,
       syncBalance: cashGrabSyncBalance,
       balancePercentage: Math.max(.5, cashGrabBalancePercentage),
+      multiplier: cashGrabMultiplier == null ? null : Math.max(.5, cashGrabMultiplier),
+      autoSelectBest: cashGrabAutoSelectBest,
       jdyAi2: cashGrabJdyAi2,
       jdyAi3: cashGrabJdyAi3,
     };
   }, [
     cashGrabBalancePercentage,
+    cashGrabAutoSelectBest,
     cashGrabCount,
     cashGrabDirection,
     cashGrabDuration,
@@ -1002,6 +1040,7 @@ export default function XTraderPage() {
     cashGrabStake,
     cashGrabSymbol,
     cashGrabSyncBalance,
+    cashGrabMultiplier,
     currentAccount,
   ]);
 
@@ -1481,6 +1520,7 @@ export default function XTraderPage() {
 
   const stopMoneyBank = () => {
     moneyBankRunningRef.current = false;
+    moneyBankActionLockRef.current = false;
     setMoneyBankRunning(false);
     void closeMoneyBankContracts().catch((error) => {
       setConnectionMessage({ kind: "error", text: `Money Bank could not close every open contract: ${errorMessage(error)}` });
@@ -1554,6 +1594,33 @@ export default function XTraderPage() {
 
     if (!moneyBankRunningRef.current) return;
     let currentConfig = moneyBankConfigRef.current ?? config;
+    if (currentConfig.autoSwitch && Date.now() >= (moneyBankScannerNextAtRef.current ?? 0)) {
+      moneyBankScannerNextAtRef.current = Date.now() + 20_000;
+      await scanMoneyBank();
+      const recommendation = moneyBankScannerRecommendationRef.current;
+      if (recommendation) {
+        currentConfig = {
+          ...currentConfig,
+          symbol: recommendation.symbol,
+          growthRate: recommendation.growthRate,
+          takeProfitTicks: recommendation.takeProfitTicks,
+          ladder: calculateRecoveryLadder({
+            strategy: currentConfig.strategy,
+            budget: currentConfig.ladder.at(-1)?.cumulative ?? moneyBankBudget,
+            manualBase: currentConfig.ladder[0]?.stake ?? moneyBankManualBase,
+            growthRate: recommendation.growthRate,
+            takeProfitTicks: recommendation.takeProfitTicks,
+          }),
+        };
+        moneyBankConfigRef.current = currentConfig;
+        moneyBankSafestSymbolRef.current = recommendation.symbol;
+        setMoneyBankSafestSymbol(recommendation.symbol);
+        setMoneyBankSymbol(recommendation.symbol);
+        setMoneyBankGrowthRate(recommendation.growthRate);
+        setMoneyBankTakeProfitTicks(recommendation.takeProfitTicks);
+        if (recommendation.symbol !== symbol) await selectMarket(recommendation.symbol);
+      }
+    }
     let tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
     if (moneyBankJdyEnabled) {
       // JDY must evaluate and send the market visible in the Money Bank form.
@@ -1735,25 +1802,40 @@ export default function XTraderPage() {
 
   const reconcileCashGrabSession = (latestRows: typeof rows) => {
     const knownIds = cashGrabSessionKnownIdsRef.current;
-    if (!knownIds) return;
+    if (!knownIds) return [];
     const completed = latestRows
       .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
       .filter((trade) => !knownIds.has(trade.contract_id))
       .filter((trade) => trade.status !== "open")
       .filter((trade) => !cashGrabProcessedSettlementIdsRef.current.has(trade.contract_id));
-    if (!completed.length) return;
+    if (!completed.length) return [];
     completed.forEach((trade) => cashGrabProcessedSettlementIdsRef.current.add(trade.contract_id));
     const pnl = completed.reduce((sum, trade) => sum + trade.profit, 0);
     cashGrabSessionPnlRef.current += pnl;
     setCashGrabSessionPnl(cashGrabSessionPnlRef.current);
+    return completed;
+  };
+
+  const applyCashGrabSettlements = (completed: typeof rows) => {
+    const latestSettled = completed.at(-1);
+    const config = cashGrabConfigRef.current;
+    if (!latestSettled || !config) return;
+    const currentStake = cashGrabCurrentStakeRef.current;
+    cashGrabCurrentStakeRef.current = latestSettled.profit < 0 && config.multiplier != null
+      ? Number((currentStake * Math.max(.5, config.multiplier)).toFixed(2))
+      : Number(config.stake.toFixed(2));
   };
 
   const executeCashGrabTrade = async () => {
-    const config = cashGrabConfigRef.current;
+    let config = cashGrabConfigRef.current;
     if (!config || !cashGrabRunningRef.current || cashGrabActionLockRef.current) return;
+    if (cashGrabRemainingTradesRef.current <= 0) {
+      stopCashGrab();
+      return;
+    }
     let latestRows = await getDerivHistory();
-    reconcileCashGrabSession(latestRows);
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       const activeCashGrab = latestRows.some((trade) =>
         cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number])
         && cashGrabSessionKnownIdsRef.current
@@ -1763,10 +1845,17 @@ export default function XTraderPage() {
       if (!activeCashGrab) break;
       await sleep(500);
       latestRows = await getDerivHistory();
-      reconcileCashGrabSession(latestRows);
+       applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
     }
     if (!cashGrabRunningRef.current) return;
 
+    if (config.autoSelectBest && cashGrabBestSymbol && cashGrabBestSymbol !== config.symbol) {
+      config = { ...config, symbol: cashGrabBestSymbol };
+      cashGrabConfigRef.current = config;
+      setCashGrabSymbol(cashGrabBestSymbol);
+      await selectMarket(cashGrabBestSymbol);
+    }
+    if (!cashGrabRunningRef.current) return;
     const gateEnabled = config.jdyAi2 || config.jdyAi3;
     setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
     setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
@@ -1779,9 +1868,9 @@ export default function XTraderPage() {
     setCashGrabJdyAi2Status(config.jdyAi2 ? "ready" : "off");
     setCashGrabJdyAi3Status(config.jdyAi3 ? "ready" : "off");
 
-    const amount = config.stake;
-    if (!currentAccount || amount * config.bulkCount > currentAccount.balance) {
-      setConnectionMessage({ kind: "error", text: "Cash Grab skipped the batch because the selected stake exceeds the connected balance." });
+    const amount = Number(cashGrabCurrentStakeRef.current.toFixed(2));
+    if (!currentAccount || amount > currentAccount.balance) {
+      setConnectionMessage({ kind: "error", text: "Cash Grab stopped because the selected stake exceeds the connected balance." });
       cashGrabRunningRef.current = false;
       setCashGrabRunning(false);
       return;
@@ -1808,13 +1897,29 @@ export default function XTraderPage() {
           ...(contractType === "DIGITDIFF" ? { barrier: config.selectedDigit } : {}),
           ...(contractType === "ACCU" ? { growth_rate: 0.01 } : {}),
           symbol: config.symbol,
-          count: config.bulkCount,
+           count: 1,
           confirm_live_trade: true,
         },
       });
-      const afterRows = await claimFeatureRows(cashGrabClaimedHistoryIdsRef.current, latestRows, [...cashGrabContractTypes]);
-      setCashGrabTradeCount((value) => value + config.bulkCount);
-      reconcileCashGrabSession(afterRows as typeof rows);
+       cashGrabRemainingTradesRef.current -= 1;
+       setCashGrabTradeCount((value) => value + 1);
+       let afterRows = await claimFeatureRows(cashGrabClaimedHistoryIdsRef.current, latestRows, [...cashGrabContractTypes]) as typeof rows;
+       let completed = reconcileCashGrabSession(afterRows);
+       applyCashGrabSettlements(completed);
+       for (let attempt = 0; attempt < 60 && cashGrabRunningRef.current; attempt += 1) {
+         const active = afterRows.some((trade) =>
+           cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number])
+           && cashGrabSessionKnownIdsRef.current
+           && !cashGrabSessionKnownIdsRef.current.has(trade.contract_id)
+           && trade.status === "open",
+         );
+         if (!active) break;
+         await sleep(250);
+         afterRows = await getDerivHistory();
+         completed = reconcileCashGrabSession(afterRows);
+         applyCashGrabSettlements(completed);
+       }
+       if (cashGrabRemainingTradesRef.current <= 0) stopCashGrab();
       refreshTradeResults();
     } catch (error) {
       setConnectionMessage({ kind: "error", text: `Cash Grab skipped this batch: ${errorMessage(error)}` });
@@ -1838,6 +1943,7 @@ export default function XTraderPage() {
 
   const stopCashGrab = () => {
     cashGrabRunningRef.current = false;
+    cashGrabRemainingTradesRef.current = 0;
     setCashGrabRunning(false);
     setCashGrabJdyAi2Status(cashGrabJdyAi2 ? "blocked" : "off");
     setCashGrabJdyAi3Status(cashGrabJdyAi3 ? "blocked" : "off");
@@ -1865,6 +1971,8 @@ export default function XTraderPage() {
       cashGrabSessionKnownIdsRef.current = new Set(existingIds);
       cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
       cashGrabConfigRef.current = config;
+      cashGrabRemainingTradesRef.current = Math.max(1, Math.trunc(config.bulkCount));
+      cashGrabCurrentStakeRef.current = Number(config.stake.toFixed(2));
       cashGrabSessionPnlRef.current = 0;
       setCashGrabSessionPnl(0);
       setCashGrabTradeCount(0);
@@ -1948,6 +2056,7 @@ export default function XTraderPage() {
   };
 
   const toggleMoneyBank = (enabled: boolean) => {
+    if (enabled && !canUseMoneyBank) return;
     setEdge2Enabled(enabled);
     if (!enabled) {
       deactivateMoneyBank();
@@ -2038,6 +2147,17 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
     }
   };
+
+  useEffect(() => {
+    if (
+      !bulkTraderAutoSelectBest
+      || !bulkTraderBestSymbol
+      || bulkTraderBestSymbol === bulkTraderSymbol
+      || bulkBuyMutation.isPending
+    ) return;
+    setBulkTraderSymbol(bulkTraderBestSymbol);
+    void selectMarket(bulkTraderBestSymbol);
+  }, [bulkTraderAutoSelectBest, bulkTraderBestSymbol, bulkTraderSymbol, bulkBuyMutation.isPending]);
 
   const executeTradeX = async (count = 1, durationOverride = tradeXConfigRef.current.duration, digitOverride?: number) => {
     if (tradeXActionLockRef.current) {
@@ -2713,12 +2833,12 @@ export default function XTraderPage() {
             <BookOpen size={14} />Guide
           </button>
           <label className="xt-switch">
-            <input
+           <input
               type="checkbox"
               checked={edge2Enabled}
               onChange={(event) => toggleMoneyBank(event.target.checked)}
               aria-label="Toggle Money Bank"
-              disabled={!isConnected}
+               disabled={!canUseMoneyBank || !isConnected}
             />
             <span />
           </label>
@@ -3188,7 +3308,7 @@ export default function XTraderPage() {
         </section>
       )}
 
-      {edge2Enabled && (
+       {edge2Enabled && canUseMoneyBank && (
         <MoneyBankPanel
           isConnected={isConnected}
           running={moneyBankRunning}
@@ -3264,12 +3384,32 @@ export default function XTraderPage() {
              setMoneyBankSymbol(recommendation.suggestedSymbol);
              setMoneyBankGrowthRate(recommendation.suggestedGrowthRate);
              setMoneyBankTakeProfitTicks(recommendation.suggestedTakeProfitTicks);
+             const suggestedStake = recommendation.suggestedStake == null ? moneyBankManualBase : recommendation.suggestedStake;
+             const nextConfig: MoneyBankStartConfig = {
+               symbol: recommendation.suggestedSymbol,
+               growthRate: recommendation.suggestedGrowthRate,
+               takeProfitTicks: recommendation.suggestedTakeProfitTicks,
+               strategy: "manual",
+               ladder: calculateRecoveryLadder({
+                 strategy: "manual",
+                 budget: moneyBankBudget,
+                 manualBase: suggestedStake,
+                 growthRate: recommendation.suggestedGrowthRate,
+                 takeProfitTicks: recommendation.suggestedTakeProfitTicks,
+               }),
+               autoSwitch: false,
+               reinvestProfit: moneyBankReinvestProfit,
+               reinvestPercent: moneyBankReinvestPercent,
+               profitTarget: moneyBankProfitTarget,
+               lossLimit: moneyBankLossLimit,
+             };
              if (recommendation.suggestedStake != null) {
                setMoneyBankStrategy("manual");
-               setMoneyBankManualBase(recommendation.suggestedStake);
+               setMoneyBankManualBase(suggestedStake);
              }
              void selectMarket(recommendation.suggestedSymbol);
-             setConnectionMessage({ kind: "info", text: "JDY AI settings applied. Select Start Accumulator to run the new guarded setup." });
+             setConnectionMessage({ kind: "info", text: "JDY AI settings applied. Starting the recommended guarded setup." });
+             if (!moneyBankRunning) void startMoneyBank(nextConfig);
            }}
           marketSignals={moneyBankSignals}
           recentTrades={moneyBankRows}
@@ -3294,6 +3434,8 @@ export default function XTraderPage() {
           contractFamily={cashGrabFamily}
           direction={cashGrabDirection}
           symbol={cashGrabSymbol}
+           bestSymbol={cashGrabBestSymbol}
+           autoSelectBest={cashGrabAutoSelectBest}
           symbols={cashGrabSymbols}
           selectedDigit={cashGrabSelectedDigit}
           lastDigit={lastDigit}
@@ -3305,10 +3447,12 @@ export default function XTraderPage() {
           accountBalance={currentAccount?.balance}
           currency={currentAccount?.currency ?? "USD"}
           balancePercentage={cashGrabBalancePercentage}
+           multiplier={cashGrabMultiplier}
           jdyAi2={cashGrabJdyAi2}
           jdyAi2Status={cashGrabJdyAi2Status}
-          jdyAi3={cashGrabJdyAi3}
-          jdyAi3Status={cashGrabJdyAi3Status}
+           jdyAi3={cashGrabJdyAi3}
+           jdyAi3Available={canUseJdyAi3}
+           jdyAi3Status={cashGrabJdyAi3Status}
           running={cashGrabRunning}
           isConnected={isConnected}
           isReal={isReal}
@@ -3326,12 +3470,20 @@ export default function XTraderPage() {
           }}
           onDirectionChange={setCashGrabDirection}
           onSymbolChange={(next) => { setCashGrabSymbol(next); void selectMarket(next); }}
+           onAutoSelectBestChange={(enabled) => {
+             setCashGrabAutoSelectBest(enabled);
+             if (enabled && cashGrabBestSymbol) {
+               setCashGrabSymbol(cashGrabBestSymbol);
+               void selectMarket(cashGrabBestSymbol);
+             }
+           }}
           onSelectedDigitChange={setCashGrabSelectedDigit}
           onStakeChange={setCashGrabStake}
           onBulkCountChange={setCashGrabCount}
           onDurationChange={setCashGrabDuration}
           onSyncBalanceChange={setCashGrabSyncBalance}
           onBalancePercentageChange={setCashGrabBalancePercentage}
+           onMultiplierChange={setCashGrabMultiplier}
           onJdyAi2Change={(enabled) => {
             setCashGrabJdyAi2(enabled);
             setCashGrabJdyAi2Status(enabled ? "ready" : "off");
@@ -3339,7 +3491,9 @@ export default function XTraderPage() {
           onJdyAi3Change={(enabled) => {
             setCashGrabJdyAi3(enabled);
             setCashGrabJdyAi3Status(enabled ? "ready" : "off");
-            if (enabled && !cashGrabRunning && cashGrabConfigRef.current) {
+             if (!enabled) {
+               stopCashGrab();
+             } else if (!cashGrabRunning && cashGrabConfigRef.current) {
               void startCashGrab({ ...cashGrabConfigRef.current, jdyAi3: true });
             }
           }}

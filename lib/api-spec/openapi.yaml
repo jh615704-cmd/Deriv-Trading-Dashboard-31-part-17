@@ -808,7 +808,7 @@ components:
             $ref: "#/components/schemas/AccessFeature"
     AccessFeature:
       type: string
-      enum: [edge, digit-flip, trade-x, bulk-trader, cash-grab, settings, history, admin]
+      enum: [edge, digit-flip, trade-x, bulk-trader, cash-grab, money-bank, jdy-ai-3, settings, history, admin]
     AccessSession:
       type: object
       required: [key_id, key_prefix, label, kind, is_admin, status, max_devices, features, online, last_seen_at]

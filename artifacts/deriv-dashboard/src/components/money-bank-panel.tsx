@@ -256,8 +256,10 @@ export function MoneyBankPanel({
   const [historyFading, setHistoryFading] = useState(false);
   const snapshot = useMemo(() => MONEY_BANK_AUTO_SYMBOLS.map((marketSymbol) => {
     const signal = marketSignals.find((entry) => entry.symbol === marketSymbol);
-    const balance = 100 - Math.abs((signal?.rise_percentage ?? 50) - (signal?.fall_percentage ?? 50));
-    const estimate = clamp(85 - (takeProfitTicks * .95) - (balance * .23) + (growthRate * 1.2), 2, 92);
+     const balance = signal ? Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50) : 0;
+     const estimate = signal
+       ? clamp(balance - (takeProfitTicks * .8) - (growthRate * 1.5), 2, 98)
+       : 0;
     const total = signal?.sample_count ? 100 : 0;
     const wins = total ? Math.round(total * estimate / 100) : 0;
     return { symbol: marketSymbol, wins, total, winRate: total ? (wins / total) * 100 : 0 };

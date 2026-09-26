@@ -17,3 +17,4 @@
 - [Runtime health checks](runtime-health-check.md) — restart stale workflows before diagnosing missing bootstrap secrets; API health is served at `/api/healthz`.
 - [Deriv Accumulator contract](deriv-accumulator-contract.md) — Accumulator trades use ACCU with decimal growth_rate in both proposal and buy payloads.
 - [Money Bank JDY gate](money-bank-jdy-gate.md) — evaluate the user-selected setup at entry; alternatives are advisory and must never be auto-applied.
+- [Access feature registry](access-feature-registry.md) — keep runtime access, API schemas, generated clients, route guards, and admin controls synchronized.

@@ -613,7 +613,7 @@ function send(message: Record<string, unknown>) {
 
 function contractParameters(input: ProposalInput) {
   const isAccumulator = input.contract_type === "ACCU";
-  const amount = isAccumulator ? roundCents(input.amount) : input.amount;
+  const amount = roundCents(input.amount);
   const expiryOrTakeProfit = isAccumulator
     ? {
         limit_order: {
@@ -1161,9 +1161,7 @@ export async function selectSymbol(symbol: string) {
 }
 
 export async function buyContract(input: BuyInput) {
-  const normalizedInput = input.contract_type === "ACCU"
-    ? { ...input, amount: roundCents(input.amount) }
-    : input;
+  const normalizedInput = { ...input, amount: roundCents(input.amount) };
   if (!getState().account) throw new Error("Select an account before buying a contract");
   if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
@@ -1234,6 +1232,7 @@ export async function bulkBuyContracts(input: {
   count: number;
   confirm_live_trade: true;
 }) {
+  const amount = roundCents(input.amount);
   if (!getState().account) throw new Error("Select an account before buying contracts");
   if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
@@ -1241,14 +1240,14 @@ export async function bulkBuyContracts(input: {
   if (getState().account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
-  if (input.amount * input.count > getState().account.balance) {
+  if (amount * input.count > getState().account.balance) {
     throw new Error("The selected bulk stake exceeds the current account balance");
   }
   validateContractBarrier(input);
   validateAccumulatorInput(input);
 
   const proposalInput = {
-    amount: input.amount,
+    amount,
     duration: input.duration,
     duration_unit: input.duration_unit,
     contract_type: input.contract_type,
