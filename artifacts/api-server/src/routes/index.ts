@@ -10,9 +10,9 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(accessRouter);
-router.use("/token", requireAccess, requireAnyAccessFeature("edge", "digit-flip", "trade-x", "bulk-trader", "settings"));
-router.use("/deriv", requireAccess, requireAnyAccessFeature("edge", "digit-flip", "trade-x", "bulk-trader"));
-router.use("/deriv/history", requireAccessFeature("history"));
+router.use("/token", requireAccess, requireAnyAccessFeature("edge", "digit-flip", "trade-x", "bulk-trader", "cash-grab", "settings"));
+router.use("/deriv", requireAccess, requireAnyAccessFeature("edge", "digit-flip", "trade-x", "bulk-trader", "cash-grab"));
+router.use("/deriv/history", requireAccess, requireAnyAccessFeature("history", "cash-grab"));
 router.use(derivRouter);
 router.use(tokenRouter);
 router.use(adminRouter);

@@ -37,6 +37,7 @@ const featureOptions: Array<{ value: AccessFeature; label: string; description: 
   { value: "digit-flip", label: "DigitFlip", description: "Even / Odd parity trading and automation" },
   { value: "trade-x", label: "Trade X", description: "Digit Differs trading and automation" },
   { value: "bulk-trader", label: "Bulk Trader", description: "Send 1–6 contracts across four trade types" },
+  { value: "cash-grab", label: "Cash Grab", description: "Controlled batch trading with risk gates" },
   { value: "settings", label: "Settings", description: "View and manage the Deriv connection" },
   { value: "history", label: "History", description: "Read recent trading activity" },
 ];

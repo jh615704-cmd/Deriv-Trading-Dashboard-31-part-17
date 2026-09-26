@@ -7,7 +7,7 @@ export const ACCESS_COOKIE_NAME = "jdy_access";
 const LEGACY_PRIMARY_ADMIN_KEY_HASH = "0d11ae258d4fd0f86e2e07606a4b835b2cdc745a71fbe1d8590ba7d3abdd22be";
 export const PRIMARY_ADMIN_MAX_DEVICES = 10;
 const PRIMARY_ADMIN_LABEL = "Primary administrator";
-export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "bulk-trader", "settings", "history", "admin"] as const;
+export const ACCESS_FEATURES = ["edge", "digit-flip", "trade-x", "bulk-trader", "cash-grab", "settings", "history", "admin"] as const;
 export type AccessFeature = typeof ACCESS_FEATURES[number];
 export type AccessKeyStatus = "active" | "paused" | "blocked" | "banned" | "deleted";
 

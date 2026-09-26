@@ -14,6 +14,7 @@ export const AccessFeature = {
   'digit-flip': 'digit-flip',
   'trade-x': 'trade-x',
   'bulk-trader': 'bulk-trader',
+  'cash-grab': 'cash-grab',
   settings: 'settings',
   history: 'history',
   admin: 'admin',

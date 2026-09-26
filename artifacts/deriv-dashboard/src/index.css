@@ -1383,7 +1383,8 @@ body { overflow-x: hidden; }
 .xt-feature-card-edge,
 .xt-feature-card-trade-x,
 .xt-feature-card-digit-flip,
-.xt-feature-card-bulk {
+.xt-feature-card-bulk,
+.xt-feature-card-cash-grab {
   border-color: rgba(41, 154, 222, .52);
   background: linear-gradient(145deg, rgba(7, 72, 126, .96), rgba(4, 37, 82, .96));
 }
@@ -1391,7 +1392,8 @@ body { overflow-x: hidden; }
 .xt-feature-card-edge svg,
 .xt-feature-card-trade-x svg,
 .xt-feature-card-digit-flip svg,
-.xt-feature-card-bulk svg { color: #71cfff; }
+.xt-feature-card-bulk svg,
+.xt-feature-card-cash-grab svg { color: #71cfff; }
 .trade-x-panel {
   background: linear-gradient(145deg, #0d3828, #061f16) !important;
   border-color: rgba(66, 213, 142, .42) !important;

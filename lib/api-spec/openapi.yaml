@@ -808,7 +808,7 @@ components:
             $ref: "#/components/schemas/AccessFeature"
     AccessFeature:
       type: string
-      enum: [edge, digit-flip, trade-x, bulk-trader, settings, history, admin]
+      enum: [edge, digit-flip, trade-x, bulk-trader, cash-grab, settings, history, admin]
     AccessSession:
       type: object
       required: [key_id, key_prefix, label, kind, is_admin, status, max_devices, features, online, last_seen_at]
@@ -1180,10 +1180,9 @@ components:
           maximum: 0.05
         symbol:
           type: string
-        count:
+         count:
           type: integer
           minimum: 1
-          maximum: 6
         confirm_live_trade:
           type: boolean
           const: true

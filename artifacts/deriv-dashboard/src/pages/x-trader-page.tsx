@@ -67,6 +67,14 @@ import {
   type MoneyBankJdyDecision,
   MONEY_BANK_AUTO_SYMBOLS,
 } from "../components/money-bank-panel";
+import CashGrabPanel, {
+  type CashGrabAiStatus,
+  type CashGrabContractFamily,
+  type CashGrabDirection,
+  type CashGrabDuration,
+  type CashGrabStartConfig,
+  type CashGrabTrade,
+} from "../components/cash-grab-panel";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -189,6 +197,30 @@ const moneyBankGuidePages = [
   { title: "Final checklist", body: "Money Bank is ready when the account, Volatility pair, growth rate, ticks, BASE strategy, optional limits, reinvest state, and auto-switch state are intentional.", points: ["Start small.", "Watch every settlement.", "Stop if the session no longer matches your plan."] },
 ] as const;
 
+const cashGrabGuidePages = [
+  { title: "Welcome to Cash Grab", body: "Cash Grab is a controlled batch workspace for four supported Deriv contract families. It keeps the selected settings visible and records each returned contract separately.", points: ["Start with demo funds.", "Cash Grab does not guarantee a result.", "Read the full guide before live use."] },
+  { title: "Connect your Deriv account", body: "Connect your own PAT and select the account Cash Grab should use. The server validates the credential and account before each request.", points: ["Keep your PAT private.", "Check the selected account.", "Demo is the safest place to learn."] },
+  { title: "Choose a market", body: "Choose any supported Volatility or Jump market. The selected symbol remains fixed while Cash Grab is running.", points: ["Switch markets before starting.", "Wait for live digits after a change.", "Cash Grab never silently swaps your market."] },
+  { title: "Choose a contract family", body: "Cash Grab supports Even / Odd, Rise / Fall, Differs, and Accumulator. Choose the family explicitly before sending.", points: ["One family is used per batch.", "The family is not inferred from a percentage.", "Deriv decides the settlement."] },
+  { title: "Even and Odd", body: "Even and Odd are digit parity contracts. Select the exact parity shown in the contract controls before starting.", points: ["Even and Odd are separate contract types.", "The expiry digit decides the result.", "Recent parity is descriptive context only."] },
+  { title: "Rise and Fall", body: "Rise and Fall map to Deriv's CALL and PUT contract types. Select Rise or Fall; Cash Grab keeps that choice fixed.", points: ["Rise and Fall are separate directions.", "The quote at entry does not guarantee expiry.", "Review the returned contract status."] },
+  { title: "Digit Differs", body: "Differs uses the selected digit as its barrier. The contract wins only when the expiry digit differs from that barrier.", points: ["Digits 0 through 9 are available.", "The barrier is sent unchanged.", "A missing digit in a sample is not a guarantee."] },
+  { title: "Accumulator", body: "Accumulator uses the selected market and a fixed low growth parameter required by Deriv. The server requires at least 1.00 per contract.", points: ["A stake below 1.00 is rejected without adjustment.", "Growth is not a win probability.", "Read the settlement and floating value carefully."] },
+  { title: "Read the live digit", body: "The live digit strip shows observed overall and selected-market percentages. The 💯 marker identifies the current live digit.", points: ["The marker is telemetry, not a signal guarantee.", "Digits can change between reading and entry.", "Wait for a useful sample."] },
+  { title: "Stake", body: "Stake is the amount requested for each contract. Cash Grab accepts a minimum of 0.35 and does not silently increase a selected stake.", points: ["The connected balance remains final.", "Accumulator has its own 1.00 minimum.", "Keep a reserve."] },
+  { title: "Bulk count", body: "Bulk count is the number of independent contracts sent in one request. There is no visible dashboard maximum; account balance and server capacity remain final guards.", points: ["A batch is not one combined contract.", "Contracts can settle differently.", "Review every returned row."] },
+  { title: "Duration", body: "Choose 1 through 5 ticks for the contract duration. Shorter duration settles sooner but does not remove market risk.", points: ["The selected duration is sent unchanged.", "Duration does not improve probability by itself.", "Open contracts remain open until Deriv settles them."] },
+  { title: "Sync Balance", body: "SYNC BALANCE can calculate the per-contract stake from a selected percentage of the connected balance. DOUBLE SYNC is a visible percentage control.", points: ["Sync is optional.", "The parent retains balance guards.", "A synced value is still a risk amount."] },
+  { title: "JDY AI 2", body: "JDY AI 2 is a pre-entry safety gate. It remains quiet until MONEY START, then it may hold an entry when the selected setup fails the current risk check.", points: ["It does not change your settings.", "A held entry is skipped, not replaced.", "It does not promise a win."] },
+  { title: "JDY AI 3", body: "JDY AI 3 can begin the Cash Grab loop without a separate MONEY START tap. It uses the same honest pre-entry gate and does not claim a guaranteed outcome.", points: ["It uses the selected settings.", "Rejected entries are skipped.", "Disable it to return to manual start."] },
+  { title: "MONEY START", body: "MONEY START snapshots the visible Cash Grab configuration and begins the controlled loop after account and live-trading checks pass.", points: ["Review market, family, direction, stake, count, and ticks.", "The loop waits between independent batches.", "Changing controls does not rewrite an active batch."] },
+  { title: "MONEY STOP", body: "MONEY STOP prevents another batch from being started. Contracts already sent may continue to settle on Deriv.", points: ["Stop is not cancellation.", "Open contracts remain visible.", "Review history after stopping."] },
+  { title: "Session P/L", body: "Session P/L totals the settled profit and loss for Cash Grab entries since the current run began.", points: ["Open contracts are not final P/L.", "The account balance comes from Deriv.", "A positive session does not predict the next result."] },
+  { title: "Trading history", body: "History lists each returned contract with family, symbol, stake, status, and result. Independent contracts can show different outcomes in the same batch.", points: ["OPEN means no final result yet.", "WON and LOST reflect returned settlement data.", "History does not delete Deriv records."] },
+  { title: "Clear history", body: "The clear action uses a second tap and a short fade to hide visible Cash Grab rows from this dashboard.", points: ["It does not cancel open contracts.", "It does not delete Deriv records.", "New returned rows can appear in a later session."] },
+  { title: "Final checklist", body: "Cash Grab is ready when the account, market, family, direction, digit, stake, count, duration, balance mode, and AI gate state are intentional.", points: ["Start small on demo.", "Treat percentages as context.", "Never rely on a guaranteed outcome."] },
+] as const;
+
 const tradeXSymbols: readonly TradeXSymbolOption[] = markets.map(([value, label]) => ({
   value,
   label,
@@ -296,8 +328,9 @@ export default function XTraderPage() {
   const canUseDigitFlip = isAdmin || accessSession.data?.features.includes("digit-flip") === true;
   const canUseTradeX = isAdmin || accessSession.data?.features.includes("trade-x") === true;
   const canUseBulkTrader = isAdmin || accessSession.data?.features.includes("bulk-trader") === true;
-  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader;
-  const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true;
+  const canUseCashGrab = isAdmin || accessSession.data?.features.includes("cash-grab") === true;
+  const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab;
+  const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true || canUseCashGrab;
   const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
   const accounts = useGetDerivAccounts({ query: { enabled: connectedToken && canUseDeriv, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
@@ -378,6 +411,25 @@ export default function XTraderPage() {
   const [bulkTraderClearArmed, setBulkTraderClearArmed] = useState(false);
   const [bulkTraderAutoSelectBest, setBulkTraderAutoSelectBest] = useState(false);
   const [bulkTraderHiddenHistoryIds, setBulkTraderHiddenHistoryIds] = useState<Set<string>>(new Set());
+  const [cashGrabEnabled, setCashGrabEnabled] = useState(false);
+  const [cashGrabFamily, setCashGrabFamily] = useState<CashGrabContractFamily>("even-odd");
+  const [cashGrabDirection, setCashGrabDirection] = useState<CashGrabDirection>("DIGITEVEN");
+  const [cashGrabSymbol, setCashGrabSymbol] = useState("R_75");
+  const [cashGrabSelectedDigit, setCashGrabSelectedDigit] = useState(5);
+  const [cashGrabStake, setCashGrabStake] = useState(.35);
+  const [cashGrabCount, setCashGrabCount] = useState(1);
+  const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(1);
+  const [cashGrabSyncBalance, setCashGrabSyncBalance] = useState(false);
+  const [cashGrabBalancePercentage, setCashGrabBalancePercentage] = useState(10);
+  const [cashGrabJdyAi2, setCashGrabJdyAi2] = useState(false);
+  const [cashGrabJdyAi3, setCashGrabJdyAi3] = useState(false);
+  const [cashGrabJdyAi2Status, setCashGrabJdyAi2Status] = useState<CashGrabAiStatus>("off");
+  const [cashGrabJdyAi3Status, setCashGrabJdyAi3Status] = useState<CashGrabAiStatus>("off");
+  const [cashGrabRunning, setCashGrabRunning] = useState(false);
+  const [cashGrabSessionPnl, setCashGrabSessionPnl] = useState(0);
+  const [cashGrabTradeCount, setCashGrabTradeCount] = useState(0);
+  const [cashGrabClearArmed, setCashGrabClearArmed] = useState(false);
+  const [cashGrabHiddenHistoryIds, setCashGrabHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipMarketType, setDigitFlipMarketType] = useState<DigitFlipMarketType>("auto");
   const [digitFlipSymbol, setDigitFlipSymbol] = useState("R_75");
   const [digitFlipParity, setDigitFlipParity] = useState<DigitFlipParity>("DIGITEVEN");
@@ -406,7 +458,7 @@ export default function XTraderPage() {
   const [running, setRunning] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guidePage, setGuidePage] = useState(0);
-  const [guideMode, setGuideMode] = useState<"edge" | "trade-x" | "digit-flip" | "bulk-trader" | "money-bank">("edge");
+  const [guideMode, setGuideMode] = useState<"edge" | "trade-x" | "digit-flip" | "bulk-trader" | "money-bank" | "cash-grab">("edge");
   const [clearHistoryArmed, setClearHistoryArmed] = useState(false);
   const [historyFading, setHistoryFading] = useState(false);
   const [tradeXHistoryClearArmed, setTradeXHistoryClearArmed] = useState(false);
@@ -458,6 +510,12 @@ export default function XTraderPage() {
   const moneyBankOpenContractIdRef = useRef<string | null>(null);
   const moneyBankScannerNextAtRef = useRef<number | null>(null);
   const moneyBankJdyScanInFlightRef = useRef(false);
+  const cashGrabRunningRef = useRef(false);
+  const cashGrabActionLockRef = useRef(false);
+  const cashGrabSessionKnownIdsRef = useRef<Set<string> | null>(null);
+  const cashGrabProcessedSettlementIdsRef = useRef(new Set<string>());
+  const cashGrabConfigRef = useRef<CashGrabStartConfig | null>(null);
+  const cashGrabSessionPnlRef = useRef(0);
   const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
   const moneyBankLevelRef = useRef(0);
@@ -496,6 +554,7 @@ export default function XTraderPage() {
   const tradeXClaimedHistoryIdsRef = useRef(new Set<string>());
   const digitFlipClaimedHistoryIdsRef = useRef(new Set<string>());
   const bulkClaimedHistoryIdsRef = useRef(new Set<string>());
+  const cashGrabClaimedHistoryIdsRef = useRef(new Set<string>());
   const configRef = useRef({
     direction,
     barrier,
@@ -538,11 +597,33 @@ export default function XTraderPage() {
     || trade.contract_type === "PUT"
   ));
   const moneyBankAllRows = rows.filter((trade) => trade.contract_type === "ACCU");
+  const cashGrabAllRows = rows.filter((trade) => (
+    trade.contract_type === "DIGITEVEN"
+    || trade.contract_type === "DIGITODD"
+    || trade.contract_type === "CALL"
+    || trade.contract_type === "PUT"
+    || trade.contract_type === "DIGITDIFF"
+    || trade.contract_type === "ACCU"
+  ));
   const edgeRows = edgeAllRows.filter((trade) => edgeClaimedHistoryIdsRef.current.has(trade.contract_id) && !edgeHiddenHistoryIds.has(trade.contract_id));
   const tradeXRows = tradeXAllRows.filter((trade) => tradeXClaimedHistoryIdsRef.current.has(trade.contract_id) && !tradeXHiddenHistoryIds.has(trade.contract_id));
   const digitFlipRows = digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipHiddenHistoryIds.has(trade.contract_id));
   const bulkRows = bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkTraderHiddenHistoryIds.has(trade.contract_id));
   const moneyBankRows = moneyBankAllRows as MoneyBankTrade[];
+  const cashGrabRows = cashGrabAllRows
+    .filter((trade) => !cashGrabHiddenHistoryIds.has(trade.contract_id))
+    .filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)) as CashGrabTrade[];
+  const cashGrabSymbols = markets.map(([value, label]) => ({ value, label }));
+  const cashGrabDigitObservations = useMemo(() => {
+    const marketDigits = status.data?.digit_history?.length ? status.data.digit_history : analysisDigits;
+    const marketCounts = Array.from({ length: 10 }, (_, digit) => marketDigits.filter((entry) => entry === digit).length);
+    const sample = marketDigits.length || 1;
+    return Array.from({ length: 10 }, (_, digit) => ({
+      digit,
+      marketPercentage: (marketCounts[digit] / sample) * 100,
+      overallPercentage: (analysisDigits.filter((entry) => entry === digit).length / Math.max(1, analysisDigits.length)) * 100,
+    }));
+  }, [analysisDigits, status.data?.digit_history]);
   const bulkSessionRows = bulkSessionKnownIdsRef.current
     ? bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
@@ -892,6 +973,37 @@ export default function XTraderPage() {
   useEffect(() => {
     configRef.current = { direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed, rankedDigits };
   }, [direction, barrier, duration, stake, strategy, martingale, symbol, liveConfirmed, rankedDigits]);
+
+  useEffect(() => {
+    cashGrabConfigRef.current = {
+      contractFamily: cashGrabFamily,
+      direction: cashGrabDirection,
+      symbol: cashGrabSymbol,
+      selectedDigit: cashGrabSelectedDigit,
+      stake: cashGrabSyncBalance && currentAccount
+        ? Math.max(.35, currentAccount.balance * (cashGrabBalancePercentage / 100))
+        : Math.max(.35, cashGrabStake),
+      bulkCount: Math.max(1, Math.trunc(cashGrabCount)),
+      duration: cashGrabDuration,
+      syncBalance: cashGrabSyncBalance,
+      balancePercentage: Math.max(.5, cashGrabBalancePercentage),
+      jdyAi2: cashGrabJdyAi2,
+      jdyAi3: cashGrabJdyAi3,
+    };
+  }, [
+    cashGrabBalancePercentage,
+    cashGrabCount,
+    cashGrabDirection,
+    cashGrabDuration,
+    cashGrabFamily,
+    cashGrabJdyAi2,
+    cashGrabJdyAi3,
+    cashGrabSelectedDigit,
+    cashGrabStake,
+    cashGrabSymbol,
+    cashGrabSyncBalance,
+    currentAccount,
+  ]);
 
   useEffect(() => {
     tradeXConfigRef.current = {
@@ -1607,6 +1719,207 @@ export default function XTraderPage() {
     setRunning(false);
   };
 
+  const cashGrabContractTypes = ["DIGITEVEN", "DIGITODD", "CALL", "PUT", "DIGITDIFF", "ACCU"] as const;
+
+  const cashGrabSafetyCheck = (config: CashGrabStartConfig) => {
+    const selectedSignal = (status.data?.market_signals ?? []).find((signal) => signal.symbol === config.symbol);
+    const sampleCount = selectedSignal?.sample_count ?? 0;
+    const selectedObservation = cashGrabDigitObservations.find((observation) => observation.digit === config.selectedDigit);
+    const observedRate = config.contractFamily === "even-odd"
+      ? Math.max(selectedSignal?.digit_even_percentage ?? 0, selectedSignal?.digit_odd_percentage ?? 0)
+      : config.contractFamily === "rise-fall" || config.contractFamily === "accumulator"
+        ? Math.max(selectedSignal?.rise_percentage ?? 0, selectedSignal?.fall_percentage ?? 0)
+        : 100 - (selectedObservation?.marketPercentage ?? 0);
+    return sampleCount >= 5 && observedRate >= 45;
+  };
+
+  const reconcileCashGrabSession = (latestRows: typeof rows) => {
+    const knownIds = cashGrabSessionKnownIdsRef.current;
+    if (!knownIds) return;
+    const completed = latestRows
+      .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
+      .filter((trade) => !knownIds.has(trade.contract_id))
+      .filter((trade) => trade.status !== "open")
+      .filter((trade) => !cashGrabProcessedSettlementIdsRef.current.has(trade.contract_id));
+    if (!completed.length) return;
+    completed.forEach((trade) => cashGrabProcessedSettlementIdsRef.current.add(trade.contract_id));
+    const pnl = completed.reduce((sum, trade) => sum + trade.profit, 0);
+    cashGrabSessionPnlRef.current += pnl;
+    setCashGrabSessionPnl(cashGrabSessionPnlRef.current);
+  };
+
+  const executeCashGrabTrade = async () => {
+    const config = cashGrabConfigRef.current;
+    if (!config || !cashGrabRunningRef.current || cashGrabActionLockRef.current) return;
+    let latestRows = await getDerivHistory();
+    reconcileCashGrabSession(latestRows);
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const activeCashGrab = latestRows.some((trade) =>
+        cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number])
+        && cashGrabSessionKnownIdsRef.current
+        && !cashGrabSessionKnownIdsRef.current.has(trade.contract_id)
+        && trade.status === "open",
+      );
+      if (!activeCashGrab) break;
+      await sleep(500);
+      latestRows = await getDerivHistory();
+      reconcileCashGrabSession(latestRows);
+    }
+    if (!cashGrabRunningRef.current) return;
+
+    const gateEnabled = config.jdyAi2 || config.jdyAi3;
+    setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
+    setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
+    if (gateEnabled && !cashGrabSafetyCheck(config)) {
+      setCashGrabJdyAi2Status(config.jdyAi2 ? "quiet" : "off");
+      setCashGrabJdyAi3Status(config.jdyAi3 ? "quiet" : "off");
+      setConnectionMessage({ kind: "info", text: "Cash Grab held this entry: the selected setup did not pass the current safety check. Your settings stayed unchanged." });
+      return;
+    }
+    setCashGrabJdyAi2Status(config.jdyAi2 ? "ready" : "off");
+    setCashGrabJdyAi3Status(config.jdyAi3 ? "ready" : "off");
+
+    const amount = config.stake;
+    if (!currentAccount || amount * config.bulkCount > currentAccount.balance) {
+      setConnectionMessage({ kind: "error", text: "Cash Grab skipped the batch because the selected stake exceeds the connected balance." });
+      cashGrabRunningRef.current = false;
+      setCashGrabRunning(false);
+      return;
+    }
+    if (config.contractFamily === "accumulator" && amount < 1) {
+      setConnectionMessage({ kind: "error", text: "Cash Grab skipped the Accumulator batch because Deriv requires at least 1.00 per contract. The selected stake was not changed." });
+      cashGrabRunningRef.current = false;
+      setCashGrabRunning(false);
+      return;
+    }
+    const contractType = config.contractFamily === "differs"
+      ? "DIGITDIFF"
+      : config.contractFamily === "accumulator"
+        ? "ACCU"
+        : config.direction;
+    cashGrabActionLockRef.current = true;
+    try {
+      await bulkBuyMutation.mutateAsync({
+        data: {
+          amount,
+          duration: config.duration,
+          duration_unit: "t",
+          contract_type: contractType,
+          ...(contractType === "DIGITDIFF" ? { barrier: config.selectedDigit } : {}),
+          ...(contractType === "ACCU" ? { growth_rate: 0.01 } : {}),
+          symbol: config.symbol,
+          count: config.bulkCount,
+          confirm_live_trade: true,
+        },
+      });
+      const afterRows = await claimFeatureRows(cashGrabClaimedHistoryIdsRef.current, latestRows, [...cashGrabContractTypes]);
+      setCashGrabTradeCount((value) => value + config.bulkCount);
+      reconcileCashGrabSession(afterRows as typeof rows);
+      refreshTradeResults();
+    } catch (error) {
+      setConnectionMessage({ kind: "error", text: `Cash Grab skipped this batch: ${errorMessage(error)}` });
+    } finally {
+      cashGrabActionLockRef.current = false;
+    }
+  };
+
+  const runCashGrabLoop = async () => {
+    while (cashGrabRunningRef.current) {
+      try {
+        await executeCashGrabTrade();
+        if (cashGrabRunningRef.current) await sleep(900);
+      } catch (error) {
+        cashGrabRunningRef.current = false;
+        setCashGrabRunning(false);
+        setConnectionMessage({ kind: "error", text: errorMessage(error) });
+      }
+    }
+  };
+
+  const stopCashGrab = () => {
+    cashGrabRunningRef.current = false;
+    setCashGrabRunning(false);
+    setCashGrabJdyAi2Status(cashGrabJdyAi2 ? "blocked" : "off");
+    setCashGrabJdyAi3Status(cashGrabJdyAi3 ? "blocked" : "off");
+  };
+
+  const startCashGrab = async (requestedConfig?: CashGrabStartConfig) => {
+    const config = requestedConfig ?? cashGrabConfigRef.current;
+    if (!config || !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before starting Cash Grab." });
+      return;
+    }
+    if (!currentAccount) {
+      setConnectionMessage({ kind: "error", text: "Select a Deriv account before starting Cash Grab." });
+      return;
+    }
+    if (isReal && !liveConfirmed) {
+      setConnectionMessage({ kind: "error", text: "Confirm live funds before starting Cash Grab." });
+      return;
+    }
+    try {
+      const latestRows = await getDerivHistory();
+      const existingIds = latestRows
+        .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
+        .map((trade) => trade.contract_id);
+      cashGrabSessionKnownIdsRef.current = new Set(existingIds);
+      cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
+      cashGrabConfigRef.current = config;
+      cashGrabSessionPnlRef.current = 0;
+      setCashGrabSessionPnl(0);
+      setCashGrabTradeCount(0);
+      setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
+      setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
+      cashGrabRunningRef.current = true;
+      setCashGrabRunning(true);
+      void runCashGrabLoop();
+    } catch (error) {
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    }
+  };
+
+  const deactivateCashGrab = () => {
+    stopCashGrab();
+    setCashGrabEnabled(false);
+    setCashGrabJdyAi2(false);
+    setCashGrabJdyAi3(false);
+    setCashGrabJdyAi2Status("off");
+    setCashGrabJdyAi3Status("off");
+  };
+
+  const toggleCashGrab = (enabled: boolean) => {
+    setCashGrabEnabled(enabled);
+    if (!enabled) {
+      stopCashGrab();
+      return;
+    }
+    deactivateMoneyBank();
+    stop();
+    setXTraderEnabled(false);
+    setDigitFlipEnabled(false);
+    setTradeXEnabled(false);
+    setBulkTraderEnabled(false);
+    digitFlipRunningRef.current = false;
+    setDigitFlipRunning(false);
+  };
+
+  const clearCashGrabHistory = async () => {
+    if (!cashGrabClearArmed) {
+      setCashGrabClearArmed(true);
+      window.setTimeout(() => setCashGrabClearArmed(false), 2_500);
+      return;
+    }
+    setCashGrabClearArmed(false);
+    setHistoryFading(true);
+    await sleep(260);
+    setCashGrabHiddenHistoryIds((current) => {
+      const next = new Set(current);
+      cashGrabRows.forEach((trade) => next.add(trade.contract_id));
+      return next;
+    });
+    setHistoryFading(false);
+  };
+
   const deactivateMoneyBank = () => {
     setEdge2Enabled(false);
     setMoneyBankScannerEnabled(false);
@@ -1625,6 +1938,7 @@ export default function XTraderPage() {
       return;
     }
     deactivateMoneyBank();
+    deactivateCashGrab();
     setDigitFlipEnabled(false);
     digitFlipRunningRef.current = false;
     setDigitFlipRunning(false);
@@ -1639,6 +1953,7 @@ export default function XTraderPage() {
       deactivateMoneyBank();
       return;
     }
+    deactivateCashGrab();
     stop();
     setXTraderEnabled(false);
     setDigitFlipEnabled(false);
@@ -1977,6 +2292,7 @@ export default function XTraderPage() {
       return;
     }
     deactivateMoneyBank();
+    deactivateCashGrab();
     setXTraderEnabled(false);
     setTradeXEnabled(false);
     setBulkTraderEnabled(false);
@@ -2093,6 +2409,7 @@ export default function XTraderPage() {
     setTradeXEnabled(enabled);
     if (enabled) {
       deactivateMoneyBank();
+      deactivateCashGrab();
       setXTraderEnabled(false);
       setDigitFlipEnabled(false);
       setBulkTraderEnabled(false);
@@ -2110,6 +2427,7 @@ export default function XTraderPage() {
     setBulkTraderEnabled(enabled);
     if (!enabled) return;
     deactivateMoneyBank();
+    deactivateCashGrab();
     setXTraderEnabled(false);
     setTradeXEnabled(false);
     setDigitFlipEnabled(false);
@@ -2324,6 +2642,8 @@ export default function XTraderPage() {
         ? bulkTraderGuidePages
         : guideMode === "money-bank"
           ? moneyBankGuidePages
+          : guideMode === "cash-grab"
+            ? cashGrabGuidePages
         : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
@@ -2370,6 +2690,20 @@ export default function XTraderPage() {
           {!accountOptions.length && <option value="">Connect PAT first</option>}
           {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
         </select><ChevronDown size={15} /></div></label>
+      </section>
+
+      <section className="xt-feature-card xt-feature-card-cash-grab">
+        <div><Activity size={18} /><span><b>Cash Grab</b><small>AI MONEY PRINTING MACHINE · controlled batch entry</small></span></div>
+        <div className="xt-feature-actions">
+          {!canUseCashGrab && <span className="xt-feature-locked">RESTRICTED</span>}
+          {canUseCashGrab && <button className="xt-guide-button" type="button" onClick={() => { setGuideMode("cash-grab"); setGuidePage(0); setGuideOpen(true); }}>
+            <BookOpen size={14} />Guide
+          </button>}
+          <label className="xt-switch">
+            <input type="checkbox" checked={cashGrabEnabled} onChange={(event) => toggleCashGrab(event.target.checked)} aria-label="Toggle Cash Grab" disabled={!canUseCashGrab || !isConnected} />
+            <span />
+          </label>
+        </div>
       </section>
 
       <section className="xt-feature-card xt-feature-card-edge2">
@@ -2955,16 +3289,77 @@ export default function XTraderPage() {
         />
       )}
 
+      {cashGrabEnabled && canUseCashGrab && (
+        <CashGrabPanel
+          contractFamily={cashGrabFamily}
+          direction={cashGrabDirection}
+          symbol={cashGrabSymbol}
+          symbols={cashGrabSymbols}
+          selectedDigit={cashGrabSelectedDigit}
+          lastDigit={lastDigit}
+          digitObservations={cashGrabDigitObservations}
+          stake={cashGrabStake}
+          bulkCount={cashGrabCount}
+          duration={cashGrabDuration}
+          syncBalance={cashGrabSyncBalance}
+          accountBalance={currentAccount?.balance}
+          currency={currentAccount?.currency ?? "USD"}
+          balancePercentage={cashGrabBalancePercentage}
+          jdyAi2={cashGrabJdyAi2}
+          jdyAi2Status={cashGrabJdyAi2Status}
+          jdyAi3={cashGrabJdyAi3}
+          jdyAi3Status={cashGrabJdyAi3Status}
+          running={cashGrabRunning}
+          isConnected={isConnected}
+          isReal={isReal}
+          liveConfirmed={liveConfirmed}
+          isPlacingTrade={bulkBuyMutation.isPending}
+          recentTrades={cashGrabRows}
+          sessionPnl={cashGrabSessionPnl}
+          tradeCount={cashGrabTradeCount}
+          clearArmed={cashGrabClearArmed}
+          historyFading={historyFading}
+          onContractFamilyChange={(next) => {
+            setCashGrabFamily(next);
+            if (next === "even-odd" && cashGrabDirection !== "DIGITEVEN" && cashGrabDirection !== "DIGITODD") setCashGrabDirection("DIGITEVEN");
+            if (next === "rise-fall" && cashGrabDirection !== "CALL" && cashGrabDirection !== "PUT") setCashGrabDirection("CALL");
+          }}
+          onDirectionChange={setCashGrabDirection}
+          onSymbolChange={(next) => { setCashGrabSymbol(next); void selectMarket(next); }}
+          onSelectedDigitChange={setCashGrabSelectedDigit}
+          onStakeChange={setCashGrabStake}
+          onBulkCountChange={setCashGrabCount}
+          onDurationChange={setCashGrabDuration}
+          onSyncBalanceChange={setCashGrabSyncBalance}
+          onBalancePercentageChange={setCashGrabBalancePercentage}
+          onJdyAi2Change={(enabled) => {
+            setCashGrabJdyAi2(enabled);
+            setCashGrabJdyAi2Status(enabled ? "ready" : "off");
+          }}
+          onJdyAi3Change={(enabled) => {
+            setCashGrabJdyAi3(enabled);
+            setCashGrabJdyAi3Status(enabled ? "ready" : "off");
+            if (enabled && !cashGrabRunning && cashGrabConfigRef.current) {
+              void startCashGrab({ ...cashGrabConfigRef.current, jdyAi3: true });
+            }
+          }}
+          onLiveConfirmChange={setLiveConfirmed}
+          onMoneyStart={(config) => void startCashGrab(config)}
+          onMoneyStop={stopCashGrab}
+          onClearHistory={() => void clearCashGrabHistory()}
+        />
+      )}
+
       {guideOpen && (
         <div className="xt-guide-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideOpen(false); }}>
           <section className="xt-guide" role="dialog" aria-modal="true" aria-labelledby="xt-guide-title">
             <header className="xt-guide-header">
-              <div><BookOpen size={18} /><span><b>{guideMode === "trade-x" ? "Trade X Guide" : guideMode === "digit-flip" ? "DigitFlip Guide" : guideMode === "bulk-trader" ? "Bulk Trader Guide" : guideMode === "money-bank" ? "Money Bank Guide" : "EDGE Guide"}</b><small>Page {guidePage + 1} of {activeGuidePages.length}</small></span></div>
+              <div><BookOpen size={18} /><span><b>{guideMode === "trade-x" ? "Trade X Guide" : guideMode === "digit-flip" ? "DigitFlip Guide" : guideMode === "bulk-trader" ? "Bulk Trader Guide" : guideMode === "money-bank" ? "Money Bank Guide" : guideMode === "cash-grab" ? "Cash Grab Guide" : "EDGE Guide"}</b><small>Page {guidePage + 1} of {activeGuidePages.length}</small></span></div>
               <button type="button" aria-label="Close guide" onClick={() => setGuideOpen(false)}><X size={17} /></button>
             </header>
             <div className="xt-guide-progress"><span style={{ width: `${((guidePage + 1) / activeGuidePages.length) * 100}%` }} /></div>
             <article className="xt-guide-page">
-               <small className="xt-guide-kicker">{guideMode === "trade-x" ? "TRADE X FIELD GUIDE" : guideMode === "digit-flip" ? "DIGITFLIP FIELD GUIDE" : guideMode === "bulk-trader" ? "BULK TRADER FIELD GUIDE" : guideMode === "money-bank" ? "MONEY BANK FIELD GUIDE" : "EDGE FIELD GUIDE"}</small>
+               <small className="xt-guide-kicker">{guideMode === "trade-x" ? "TRADE X FIELD GUIDE" : guideMode === "digit-flip" ? "DIGITFLIP FIELD GUIDE" : guideMode === "bulk-trader" ? "BULK TRADER FIELD GUIDE" : guideMode === "money-bank" ? "MONEY BANK FIELD GUIDE" : guideMode === "cash-grab" ? "CASH GRAB FIELD GUIDE" : "EDGE FIELD GUIDE"}</small>
               <h2 id="xt-guide-title">{activeGuidePages[guidePage].title}</h2>
               <p>{activeGuidePages[guidePage].body}</p>
               <ul>{activeGuidePages[guidePage].points.map((point) => <li key={point}>{point}</li>)}</ul>
@@ -2973,7 +3368,7 @@ export default function XTraderPage() {
               <button type="button" className="xt-guide-nav" onClick={() => setGuidePage((page) => Math.max(0, page - 1))} disabled={guidePage === 0}><ChevronLeft size={15} />Back</button>
               <span>{guidePage + 1} / {activeGuidePages.length}</span>
               {guidePage === activeGuidePages.length - 1 ? (
-                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? toggleTradeX(true) : guideMode === "digit-flip" ? toggleDigitFlip(true) : guideMode === "bulk-trader" ? toggleBulkTrader(true) : guideMode === "money-bank" ? toggleMoneyBank(true) : toggleXTrader(true); }}>Let's start trading</button>
+                <button type="button" className="xt-guide-start" onClick={() => { setGuideOpen(false); guideMode === "trade-x" ? toggleTradeX(true) : guideMode === "digit-flip" ? toggleDigitFlip(true) : guideMode === "bulk-trader" ? toggleBulkTrader(true) : guideMode === "money-bank" ? toggleMoneyBank(true) : guideMode === "cash-grab" ? toggleCashGrab(true) : toggleXTrader(true); }}>Let's start trading</button>
               ) : (
                 <button type="button" className="xt-guide-nav next" onClick={() => setGuidePage((page) => Math.min(activeGuidePages.length - 1, page + 1))}>Next<ChevronRight size={15} /></button>
               )}
