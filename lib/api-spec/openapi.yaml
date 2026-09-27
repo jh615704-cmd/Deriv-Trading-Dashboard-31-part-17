@@ -195,6 +195,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+  /access/trading-protection:
+    get:
+      security:
+        - accessSession: []
+      operationId: getTradingProtection
+      tags: [access]
+      summary: Read administrator trading protection settings
+      responses:
+        "200":
+          description: Global trading protection settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingProtectionSettings"
+        "403":
+          description: Primary administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      security:
+        - accessSession: []
+      operationId: updateTradingProtection
+      tags: [access]
+      summary: Update administrator trading protection settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradingProtectionSettingsUpdate"
+      responses:
+        "200":
+          description: Updated global trading protection settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingProtectionSettings"
+        "403":
+          description: Primary administrator access key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /access/keys:
     get:
       security:
@@ -844,6 +889,21 @@ components:
           required: [access_key]
           properties:
             access_key: { type: string }
+    TradingProtectionSettings:
+      type: object
+      required: [weekdays_enabled, weekends_enabled, dual_weekends_weekdays_enabled, updated_at]
+      properties:
+        weekdays_enabled: { type: boolean }
+        weekends_enabled: { type: boolean }
+        dual_weekends_weekdays_enabled: { type: boolean }
+        updated_at: { type: ["string", "null"], format: date-time }
+    TradingProtectionSettingsUpdate:
+      type: object
+      required: [weekdays_enabled, weekends_enabled, dual_weekends_weekdays_enabled]
+      properties:
+        weekdays_enabled: { type: boolean }
+        weekends_enabled: { type: boolean }
+        dual_weekends_weekdays_enabled: { type: boolean }
     SuccessResponse:
       type: object
       required: [success]
@@ -1180,7 +1240,7 @@ components:
           maximum: 0.05
         symbol:
           type: string
-         count:
+        count:
           type: integer
           minimum: 1
         confirm_live_trade:

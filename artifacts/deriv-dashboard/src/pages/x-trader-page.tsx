@@ -433,6 +433,7 @@ export default function XTraderPage() {
   const [cashGrabSymbol, setCashGrabSymbol] = useState("R_75");
   const [cashGrabSelectedDigit, setCashGrabSelectedDigit] = useState(5);
   const [cashGrabStake, setCashGrabStake] = useState(.35);
+  const [cashGrabGrowthRate, setCashGrabGrowthRate] = useState(1);
   const [cashGrabCount, setCashGrabCount] = useState(1);
   const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(1);
   const [cashGrabMultiplier, setCashGrabMultiplier] = useState<number | null>(null);
@@ -1032,8 +1033,9 @@ export default function XTraderPage() {
       symbol: cashGrabSymbol,
       selectedDigit: cashGrabSelectedDigit,
       stake: cashGrabSyncBalance && currentAccount
-        ? Math.max(.35, currentAccount.balance * (cashGrabBalancePercentage / 100))
-        : Math.max(.35, cashGrabStake),
+        ? Math.max(cashGrabFamily === "accumulator" ? 1 : .35, currentAccount.balance * (cashGrabBalancePercentage / 100))
+        : Math.max(cashGrabFamily === "accumulator" ? 1 : .35, cashGrabStake),
+      growthRate: Math.min(5, Math.max(1, cashGrabGrowthRate)),
       bulkCount: Math.max(1, Math.trunc(cashGrabCount)),
       duration: cashGrabDuration,
       syncBalance: cashGrabSyncBalance,
@@ -1052,6 +1054,7 @@ export default function XTraderPage() {
     cashGrabDirection,
     cashGrabDuration,
     cashGrabFamily,
+    cashGrabGrowthRate,
     cashGrabJdyAi2,
     cashGrabJdyAi3,
     cashGrabSelectedDigit,
@@ -1870,10 +1873,11 @@ export default function XTraderPage() {
         digit_outcomes?: Array<{ digit: number; over_percentage: number; under_percentage: number }>;
       }>;
       const balance = currentAccount.balance;
+      const minimumStake = config.contractFamily === "accumulator" ? 1 : .35;
       const baseStake = config.syncBalance
-        ? Math.max(.35, balance * (config.balancePercentage / 100))
-        : Math.max(.35, config.stake);
-      const currentStake = Math.max(.35, cashGrabCurrentStakeRef.current || baseStake);
+        ? Math.max(minimumStake, balance * (config.balancePercentage / 100))
+        : Math.max(minimumStake, config.stake);
+      const currentStake = Math.max(minimumStake, cashGrabCurrentStakeRef.current || baseStake);
       const lossToRecover = Math.max(0, -cashGrabSessionPnlRef.current);
       const recoveryTarget = lossToRecover + (baseStake * 0.25);
       const desiredMultiplier = Math.max(2, Math.min(9, 1 + (recoveryTarget / Math.max(baseStake, .35))));
@@ -2053,7 +2057,7 @@ export default function XTraderPage() {
           duration_unit: "t",
           contract_type: contractType,
           ...(contractType === "DIGITDIFF" ? { barrier: config.selectedDigit } : {}),
-          ...(contractType === "ACCU" ? { growth_rate: 0.01 } : {}),
+           ...(contractType === "ACCU" ? { growth_rate: config.growthRate / 100 } : {}),
           symbol: config.symbol,
            count: 1,
           confirm_live_trade: true,
@@ -3698,6 +3702,7 @@ export default function XTraderPage() {
           lastDigit={lastDigit}
           digitObservations={cashGrabDigitObservations}
           stake={cashGrabStake}
+           growthRate={cashGrabGrowthRate}
           bulkCount={cashGrabCount}
           duration={cashGrabDuration}
           syncBalance={cashGrabSyncBalance}
@@ -3740,6 +3745,7 @@ export default function XTraderPage() {
            }}
           onSelectedDigitChange={setCashGrabSelectedDigit}
           onStakeChange={setCashGrabStake}
+           onGrowthRateChange={setCashGrabGrowthRate}
           onBulkCountChange={setCashGrabCount}
           onDurationChange={setCashGrabDuration}
           onSyncBalanceChange={setCashGrabSyncBalance}

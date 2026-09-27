@@ -1438,6 +1438,44 @@ body { overflow-x: hidden; }
   box-shadow: 0 24px 70px rgba(3, 36, 24, .24), inset 0 1px 0 rgba(211, 255, 228, .04);
   color: var(--admin-text);
 }
+.admin-protection-card { margin: 18px 0; padding: 22px; border: 1px solid rgba(102, 239, 174, .28); background: linear-gradient(145deg, rgba(11, 53, 38, .96), rgba(7, 31, 23, .94)); }
+.admin-protection-intro { max-width: 760px; margin: -4px 0 18px; color: var(--admin-muted); font-size: 12px; line-height: 1.6; }
+.admin-protection-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.admin-protection-toggle { display: flex; align-items: center; gap: 11px; min-height: 70px; padding: 12px; border: 1px solid var(--admin-line); border-radius: 10px; background: rgba(3, 24, 17, .46); cursor: pointer; transition: border-color .2s, background .2s; }
+.admin-protection-toggle.selected { border-color: var(--admin-line-strong); background: rgba(23, 103, 67, .24); }
+.admin-protection-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.admin-protection-toggle > span:last-child { display: grid; gap: 3px; min-width: 0; }
+.admin-protection-toggle b { color: var(--admin-text); font-size: 11px; }
+.admin-protection-toggle small { color: var(--admin-dim); font-size: 10px; }
+.admin-protection-switch { position: relative; flex: 0 0 auto; width: 38px; height: 22px; border-radius: 99px; background: #244837; transition: background .2s; }
+.admin-protection-switch i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #789889; transition: transform .2s, background .2s; }
+.admin-protection-toggle.selected .admin-protection-switch { background: var(--admin-accent); }
+.admin-protection-toggle.selected .admin-protection-switch i { transform: translateX(16px); background: #f3fff7; }
+.admin-protection-footnote { display: flex; align-items: center; gap: 7px; margin-top: 14px; color: var(--admin-dim); font-size: 10px; }
+@media (max-width: 760px) {
+  .admin-protection-grid { grid-template-columns: 1fr; }
+  .admin-protection-card { padding: 17px; }
+}
+.xt-history {
+  max-height: min(420px, 58vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(76, 160, 142, .65) rgba(4, 27, 20, .45);
+  scrollbar-width: thin;
+}
+.history-table-wrap {
+  max-height: min(420px, 58vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(76, 160, 142, .65) rgba(225, 235, 235, .55);
+  scrollbar-width: thin;
+}
+.history-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--paper);
+}
 .admin-console::before {
   position: absolute;
   z-index: -1;

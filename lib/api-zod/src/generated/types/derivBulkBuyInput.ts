@@ -29,10 +29,7 @@ export interface DerivBulkBuyInput {
      */
   growth_rate?: number;
   symbol?: string;
-  /**
-     * @minimum 1
-     * @maximum 6
-     */
+  /** @minimum 1 */
   count: number;
   confirm_live_trade: true;
 }

@@ -45,6 +45,7 @@ export interface CashGrabStartConfig {
   symbol: string;
   selectedDigit: number;
   stake: number;
+  growthRate: number;
   bulkCount: number;
   duration: CashGrabDuration;
   syncBalance: boolean;
@@ -67,6 +68,7 @@ export interface CashGrabPanelProps {
   lastDigit?: number | null;
   digitObservations: readonly CashGrabDigitObservation[];
   stake: number;
+  growthRate: number;
   bulkCount: number;
   duration: CashGrabDuration;
   syncBalance: boolean;
@@ -105,6 +107,7 @@ export interface CashGrabPanelProps {
   onAutoSwitchSafestPairChange: (enabled: boolean) => void;
   onSelectedDigitChange: (digit: number) => void;
   onStakeChange: (stake: number) => void;
+  onGrowthRateChange: (rate: number) => void;
   onBulkCountChange: (count: number) => void;
   onDurationChange: (duration: CashGrabDuration) => void;
   onSyncBalanceChange: (enabled: boolean) => void;
@@ -127,6 +130,7 @@ const contractFamilies: readonly { value: CashGrabContractFamily; label: string;
 
 const durations: readonly CashGrabDuration[] = [1, 2, 3, 4, 5];
 const counts = [1, 2, 3, 4, 5, 6];
+const accumulatorGrowthRates = [1, 2, 3, 4, 5];
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
@@ -171,6 +175,7 @@ export default function CashGrabPanel({
   lastDigit = null,
   digitObservations,
   stake,
+  growthRate,
   bulkCount,
   duration,
   syncBalance,
@@ -204,6 +209,7 @@ export default function CashGrabPanel({
   onAutoSwitchSafestPairChange,
   onSelectedDigitChange,
   onStakeChange,
+  onGrowthRateChange,
   onBulkCountChange,
   onDurationChange,
   onSyncBalanceChange,
@@ -222,6 +228,7 @@ export default function CashGrabPanel({
   const selectedOverallPercentage = selectedObservation?.overallPercentage ?? 0;
   const selectedSymbolLabel = symbols.find((item) => item.value === symbol)?.label ?? symbol;
   const visibleBalancePercentage = Math.max(0.5, balancePercentage);
+  const minimumStake = contractFamily === "accumulator" ? 1 : 0.35;
   const syncedStake = accountBalance == null ? null : accountBalance * (visibleBalancePercentage / 100);
   const displayedSessionPnl = sessionPnl >= 0 ? `+${formatMoney(sessionPnl, currency)}` : formatMoney(sessionPnl, currency);
   const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
@@ -234,7 +241,8 @@ export default function CashGrabPanel({
       direction,
       symbol,
       selectedDigit: clamp(Math.trunc(selectedDigit), 0, 9),
-      stake: Math.max(0.35, stake),
+      stake: Math.max(minimumStake, stake),
+      growthRate: clamp(growthRate, 1, 5),
       bulkCount: Math.max(1, Math.trunc(bulkCount)),
       duration,
       syncBalance,
@@ -396,8 +404,8 @@ export default function CashGrabPanel({
               </div>
               <div className="cash-grab-field-grid">
                 <label>
-                  <span className="cash-grab-field-label">STAKE · MIN 0.35</span>
-                  <span className="cash-grab-money-input"><b>{currency}</b><input type="number" min="0.35" step="0.01" value={stake} onChange={(event) => onStakeChange(Math.max(0.35, Number(event.target.value) || 0.35))} disabled={interactionDisabled || syncBalance} aria-label={`Stake in ${currency}`} data-testid="input-cash-grab-stake" /></span>
+                   <span className="cash-grab-field-label">STAKE · MIN {minimumStake.toFixed(2)}</span>
+                   <span className="cash-grab-money-input"><b>{currency}</b><input type="number" min={minimumStake} step="0.01" value={stake} onChange={(event) => onStakeChange(Math.max(minimumStake, Number(event.target.value) || minimumStake))} disabled={interactionDisabled || syncBalance} aria-label={`Stake in ${currency}`} data-testid="input-cash-grab-stake" /></span>
                   <small>Per contract</small>
                 </label>
                  <label>
@@ -405,6 +413,17 @@ export default function CashGrabPanel({
                    <span className="cash-grab-money-input"><b>×</b><input type="number" min="0.5" step="0.1" value={multiplier ?? ""} placeholder="Optional" onChange={(event) => onMultiplierChange(event.target.value === "" ? null : Math.max(0.5, Number(event.target.value) || 0.5))} disabled={interactionDisabled} aria-label="Multiplier after a loss" data-testid="input-cash-grab-multiplier" /></span>
                    <small>Blank keeps the stake flat · minimum 0.5 · no maximum</small>
                  </label>
+                 {contractFamily === "accumulator" && (
+                   <label>
+                     <span className="cash-grab-field-label">GROWTH RATE</span>
+                     <span className="cash-grab-rate-grid" role="group" aria-label="Accumulator growth rate">
+                       {accumulatorGrowthRates.map((rate) => (
+                         <button type="button" key={rate} className={growthRate === rate ? "selected" : ""} onClick={() => onGrowthRateChange(rate)} disabled={interactionDisabled} aria-pressed={growthRate === rate}>{rate}%</button>
+                       ))}
+                     </span>
+                     <small>Accumulator growth sent to Deriv per tick</small>
+                   </label>
+                 )}
                 <label>
                   <span className="cash-grab-field-label">BULK COUNT · MIN 1</span>
                   <input className="cash-grab-number-input" type="number" min="1" step="1" value={bulkCount} onChange={(event) => onBulkCountChange(Math.max(1, Math.trunc(Number(event.target.value) || 1)))} disabled={interactionDisabled} aria-label="Number of contracts to send" data-testid="input-cash-grab-count" />

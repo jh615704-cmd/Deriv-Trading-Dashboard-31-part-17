@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAccessKeysQueryKey,
+  getGetTradingProtectionQueryKey,
   useCreateAccessKey,
   useDeleteAccessKey,
   useListAccessKeys,
   useResetAccessKey,
   useUpdateAccessKey,
+  useGetTradingProtection,
+  useUpdateTradingProtection,
   type AccessFeature,
   type AccessKeySummary,
 } from "@workspace/api-client-react";
@@ -179,6 +182,8 @@ export default function AdminUsersPage() {
   const resetKey = useResetAccessKey();
   const deleteKey = useDeleteAccessKey();
   const updateKey = useUpdateAccessKey();
+  const protectionQuery = useGetTradingProtection({ query: { retry: false, queryKey: getGetTradingProtectionQueryKey() } });
+  const updateProtection = useUpdateTradingProtection();
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<"user" | "admin">("user");
   const [maxDevices, setMaxDevices] = useState(1);
@@ -187,11 +192,25 @@ export default function AdminUsersPage() {
   const [newKey, setNewKey] = useState<{ value: string; kind: "user" | "admin"; label: string } | null>(null);
   const [formError, setFormError] = useState("");
   const [deletingKeyIds, setDeletingKeyIds] = useState<Set<string>>(new Set());
+  const [protection, setProtection] = useState({
+    weekdays_enabled: false,
+    weekends_enabled: false,
+    dual_weekends_weekdays_enabled: false,
+  });
   const keys = keysQuery.data ?? [];
   const onlineCount = keys.filter((key) => key.online).length;
   const userCount = keys.filter((key) => key.kind === "user").length;
   const activeCount = keys.filter((key) => key.status === "active").length;
   const canCreate = Boolean(label.trim()) && features.length > 0 && !createKey.isPending;
+
+  useEffect(() => {
+    if (!protectionQuery.data) return;
+    setProtection({
+      weekdays_enabled: protectionQuery.data.weekdays_enabled,
+      weekends_enabled: protectionQuery.data.weekends_enabled,
+      dual_weekends_weekdays_enabled: protectionQuery.data.dual_weekends_weekdays_enabled,
+    });
+  }, [protectionQuery.data]);
 
   const refreshEverything = async () => {
     await queryClient.invalidateQueries();
@@ -301,6 +320,28 @@ export default function AdminUsersPage() {
     toast({ title: "Copied", description: "The access key is on your clipboard." });
   };
 
+  const updateProtectionSetting = (key: keyof typeof protection, value: boolean) => {
+    const next = { ...protection, [key]: value };
+    setProtection(next);
+    updateProtection.mutate(
+      { data: next },
+      {
+        onSuccess: (saved) => {
+          setProtection({
+            weekdays_enabled: saved.weekdays_enabled,
+            weekends_enabled: saved.weekends_enabled,
+            dual_weekends_weekdays_enabled: saved.dual_weekends_weekdays_enabled,
+          });
+          toast({ title: "Global protection updated", description: "The selected market-quality shield now applies to all users." });
+        },
+        onError: (error) => {
+          setProtection(protection);
+          toast({ variant: "destructive", title: "Protection update failed", description: errorMessage(error) });
+        },
+      },
+    );
+  };
+
   const stats = useMemo(() => [
     { label: "TOTAL KEYS", value: keys.length, detail: `${userCount} user keys`, icon: KeyRound },
     { label: "ONLINE NOW", value: onlineCount, detail: "Presence within 90 seconds", icon: Activity },
@@ -331,6 +372,36 @@ export default function AdminUsersPage() {
             <button type="button" className="dismiss-key" onClick={() => setNewKey(null)} aria-label="Hide new key">×</button>
           </section>
         )}
+
+        <section className="panel admin-protection-card">
+          <div className="panel-header">
+            <div><span className="panel-overline">GLOBAL ENTRY SHIELD</span><h3>Market-quality protection</h3></div>
+            <ShieldCheck size={19} className="panel-icon" />
+          </div>
+          <p className="admin-protection-intro">These administrator-only switches add a shared pre-entry quality check for every trading feature and every access key. They do not stop running contracts, change stop controls, or alter settlement behavior.</p>
+          {protectionQuery.isError ? (
+            <div className="admin-form-error">Unable to load the global protection settings. Refresh the page and sign in again as the primary administrator.</div>
+          ) : (
+            <div className="admin-protection-grid">
+              <label className={`admin-protection-toggle ${protection.weekdays_enabled ? "selected" : ""}`}>
+                <input type="checkbox" checked={protection.weekdays_enabled} onChange={(event) => updateProtectionSetting("weekdays_enabled", event.target.checked)} disabled={updateProtection.isPending} />
+                <span className="admin-protection-switch"><i /></span>
+                <span><b>Weekdays</b><small>Monday–Friday</small></span>
+              </label>
+              <label className={`admin-protection-toggle ${protection.weekends_enabled ? "selected" : ""}`}>
+                <input type="checkbox" checked={protection.weekends_enabled} onChange={(event) => updateProtectionSetting("weekends_enabled", event.target.checked)} disabled={updateProtection.isPending} />
+                <span className="admin-protection-switch"><i /></span>
+                <span><b>Weekends</b><small>Friday–Sunday</small></span>
+              </label>
+              <label className={`admin-protection-toggle ${protection.dual_weekends_weekdays_enabled ? "selected" : ""}`}>
+                <input type="checkbox" checked={protection.dual_weekends_weekdays_enabled} onChange={(event) => updateProtectionSetting("dual_weekends_weekdays_enabled", event.target.checked)} disabled={updateProtection.isPending} />
+                <span className="admin-protection-switch"><i /></span>
+                <span><b>Dual Weekends and Weekdays</b><small>Every day</small></span>
+              </label>
+            </div>
+          )}
+          <div className="admin-protection-footnote"><Activity size={14} /> Active switches hold entries with thin samples or weak observed setups. Settings stay hidden from regular users.</div>
+        </section>
 
         <section className="admin-create-layout">
           <div className="panel admin-create-card">

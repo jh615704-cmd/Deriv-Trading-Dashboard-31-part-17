@@ -166,6 +166,20 @@ export type AccessKeyCreated = AccessSession & {
   access_key: string;
 };
 
+export interface TradingProtectionSettings {
+  weekdays_enabled: boolean;
+  weekends_enabled: boolean;
+  dual_weekends_weekdays_enabled: boolean;
+  /** @nullable */
+  updated_at: string | null;
+}
+
+export interface TradingProtectionSettingsUpdate {
+  weekdays_enabled: boolean;
+  weekends_enabled: boolean;
+  dual_weekends_weekdays_enabled: boolean;
+}
+
 export interface SuccessResponse {
   success: boolean;
 }
@@ -504,10 +518,7 @@ export interface DerivBulkBuyInput {
      */
   growth_rate?: number;
   symbol?: string;
-  /**
-     * @minimum 1
-     * @maximum 6
-     */
+  /** @minimum 1 */
   count: number;
   confirm_live_trade: true;
 }

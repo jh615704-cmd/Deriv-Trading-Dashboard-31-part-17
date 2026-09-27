@@ -30,3 +30,6 @@ DERIV_ALLOW_LIVE_TRADING = "true"
 
 [nix]
 channel = "stable-25_05"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-c1758cb9-1eab-49a4-9a51-74f1ac83523b"

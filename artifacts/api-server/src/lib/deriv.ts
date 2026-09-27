@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "./logger";
+import { assertTradingProtection, getTradingProtectionSettings } from "./trading-protection";
 
 const API_BASE = "https://api.derivws.com";
 const appId = process.env.DERIV_APP_ID;
@@ -1174,6 +1175,7 @@ export async function buyContract(input: BuyInput) {
   }
   validateContractBarrier(normalizedInput);
   validateAccumulatorInput(normalizedInput);
+  assertTradingProtection(await getTradingProtectionSettings(), getStatus(), normalizedInput);
   assertNoActiveContract();
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
   if (remainingCooldown > 0) {
@@ -1245,6 +1247,7 @@ export async function bulkBuyContracts(input: {
   }
   validateContractBarrier(input);
   validateAccumulatorInput(input);
+  assertTradingProtection(await getTradingProtectionSettings(), getStatus(), input);
 
   const proposalInput = {
     amount,
@@ -1333,6 +1336,8 @@ export async function dualBuyContracts(input: {
   if (input.amount * 2 > getState().account.balance) {
     throw new Error("The selected dual stake exceeds the current account balance");
   }
+  const protection = await getTradingProtectionSettings();
+  assertTradingProtection(protection, getStatus(), { ...input, contract_type: "DIGITOVER" });
   assertNoActiveContract();
 
   const proposals: Array<{ proposal: DerivProposal; contract_type: "DIGITOVER" | "DIGITUNDER" }> = [];

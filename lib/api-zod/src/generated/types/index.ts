@@ -62,3 +62,5 @@ export * from './errorResponse';
 export * from './healthStatus';
 export * from './successResponse';
 export * from './tokenDeleteResponse';
+export * from './tradingProtectionSettings';
+export * from './tradingProtectionSettingsUpdate';

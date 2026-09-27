@@ -629,6 +629,10 @@
   font-weight: 750;
   text-align: right;
 }
+.cash-grab-rate-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.cash-grab-rate-grid button { min-height: 34px; border: 1px solid rgba(54, 133, 150, .46); border-radius: 7px; background: rgba(5, 37, 57, .72); color: #8db6c2; cursor: pointer; font-size: 9px; font-weight: 800; }
+.cash-grab-rate-grid button.selected { border-color: #4cdda0; background: rgba(33, 129, 91, .32); color: #b7ffd7; box-shadow: 0 0 0 2px rgba(76, 221, 160, .1); }
+.cash-grab-rate-grid button:disabled { cursor: not-allowed; opacity: .55; }
 
 .cash-grab-number-input {
   padding: 0 10px;

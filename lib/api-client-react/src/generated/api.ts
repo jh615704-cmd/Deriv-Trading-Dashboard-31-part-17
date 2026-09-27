@@ -51,7 +51,9 @@ import type {
   ErrorResponse,
   HealthStatus,
   SuccessResponse,
-  TokenDeleteResponse
+  TokenDeleteResponse,
+  TradingProtectionSettings,
+  TradingProtectionSettingsUpdate
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -672,6 +674,154 @@ export const useLogoutAccessSession = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getLogoutAccessSessionMutationOptions(options));
+    }
+
+export const getGetTradingProtectionUrl = () => {
+
+
+
+
+  return `/api/access/trading-protection`
+}
+
+/**
+ * @summary Read administrator trading protection settings
+ */
+export const getTradingProtection = async ( options?: Parameters<typeof customFetch>[1]): Promise<TradingProtectionSettings> => {
+
+  return customFetch<TradingProtectionSettings>(getGetTradingProtectionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTradingProtectionQueryKey = () => {
+    return [
+    `/api/access/trading-protection`
+    ] as const;
+    }
+
+
+export const getGetTradingProtectionQueryOptions = <TData = Awaited<ReturnType<typeof getTradingProtection>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTradingProtection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTradingProtectionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTradingProtection>>> = ({ signal }) => getTradingProtection({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTradingProtection>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTradingProtectionQueryResult = NonNullable<Awaited<ReturnType<typeof getTradingProtection>>>
+export type GetTradingProtectionQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read administrator trading protection settings
+ */
+
+export function useGetTradingProtection<TData = Awaited<ReturnType<typeof getTradingProtection>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTradingProtection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTradingProtectionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateTradingProtectionUrl = () => {
+
+
+
+
+  return `/api/access/trading-protection`
+}
+
+/**
+ * @summary Update administrator trading protection settings
+ */
+export const updateTradingProtection = async (tradingProtectionSettingsUpdate: TradingProtectionSettingsUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TradingProtectionSettings> => {
+
+  return customFetch<TradingProtectionSettings>(getUpdateTradingProtectionUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(tradingProtectionSettingsUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateTradingProtectionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTradingProtection>>, TError,{data: BodyType<TradingProtectionSettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTradingProtection>>, TError,{data: BodyType<TradingProtectionSettingsUpdate>}, TContext> => {
+
+const mutationKey = ['updateTradingProtection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTradingProtection>>, {data: BodyType<TradingProtectionSettingsUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateTradingProtection(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTradingProtectionMutationResult = NonNullable<Awaited<ReturnType<typeof updateTradingProtection>>>
+    export type UpdateTradingProtectionMutationBody = BodyType<TradingProtectionSettingsUpdate>
+    export type UpdateTradingProtectionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update administrator trading protection settings
+ */
+export const useUpdateTradingProtection = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTradingProtection>>, TError,{data: BodyType<TradingProtectionSettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTradingProtection>>,
+        TError,
+        {data: BodyType<TradingProtectionSettingsUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateTradingProtectionMutationOptions(options));
     }
 
 export const getListAccessKeysUrl = () => {

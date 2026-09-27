@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, asc, eq, isNull, ne } from "drizzle-orm";
-import { db, accessKeySessionsTable, accessKeysTable } from "@workspace/db";
+import { db, accessKeySessionsTable, accessKeysTable, tradingProtectionSettingsTable } from "@workspace/db";
 import {
   CreateAccessKeyBody,
   CreateAccessKeyResponse,
@@ -171,6 +171,41 @@ router.post("/access/logout", requireAccess, async (req, res): Promise<void> => 
     .where(eq(accessKeySessionsTable.id, res.locals.accessSessionId));
   res.append("Set-Cookie", clearAccessCookie(secureCookie(req.get("x-forwarded-proto"))));
   res.json({ success: true });
+});
+
+router.get("/access/trading-protection", requireAccess, requireAccessAdmin, async (_req, res): Promise<void> => {
+  const [settings] = await db.select().from(tradingProtectionSettingsTable).limit(1);
+  res.json({
+    weekdays_enabled: settings?.weekdaysEnabled ?? false,
+    weekends_enabled: settings?.weekendsEnabled ?? false,
+    dual_weekends_weekdays_enabled: settings?.dualWeekendsWeekdaysEnabled ?? false,
+    updated_at: settings?.updatedAt ?? null,
+  });
+});
+
+router.patch("/access/trading-protection", requireAccess, requireAccessAdmin, async (req, res): Promise<void> => {
+  const body = req.body as Record<string, unknown>;
+  const values = {
+    weekdaysEnabled: typeof body.weekdays_enabled === "boolean" ? body.weekdays_enabled : false,
+    weekendsEnabled: typeof body.weekends_enabled === "boolean" ? body.weekends_enabled : false,
+    dualWeekendsWeekdaysEnabled: typeof body.dual_weekends_weekdays_enabled === "boolean"
+      ? body.dual_weekends_weekdays_enabled
+      : false,
+    updatedAt: new Date(),
+  };
+  const [existing] = await db.select({ id: tradingProtectionSettingsTable.id })
+    .from(tradingProtectionSettingsTable)
+    .limit(1);
+  const [settings] = existing
+    ? await db.update(tradingProtectionSettingsTable).set(values)
+      .where(eq(tradingProtectionSettingsTable.id, existing.id)).returning()
+    : await db.insert(tradingProtectionSettingsTable).values({ id: 1, ...values }).returning();
+  res.json({
+    weekdays_enabled: settings.weekdaysEnabled,
+    weekends_enabled: settings.weekendsEnabled,
+    dual_weekends_weekdays_enabled: settings.dualWeekendsWeekdaysEnabled,
+    updated_at: settings.updatedAt,
+  });
 });
 
 router.use("/access/keys", requireAccess, requireAccessAdmin);

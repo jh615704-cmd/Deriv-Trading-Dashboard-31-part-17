@@ -86,7 +86,7 @@ export const LoginAccessKeyResponse = zod.object({
   "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])),
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])),
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 })
@@ -103,7 +103,7 @@ export const GetAccessSessionResponse = zod.object({
   "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])),
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])),
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 })
@@ -126,6 +126,34 @@ export const LogoutAccessSessionResponse = zod.object({
 
 
 /**
+ * @summary Read administrator trading protection settings
+ */
+export const GetTradingProtectionResponse = zod.object({
+  "weekdays_enabled": zod.boolean(),
+  "weekends_enabled": zod.boolean(),
+  "dual_weekends_weekdays_enabled": zod.boolean(),
+  "updated_at": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Update administrator trading protection settings
+ */
+export const UpdateTradingProtectionBody = zod.object({
+  "weekdays_enabled": zod.boolean(),
+  "weekends_enabled": zod.boolean(),
+  "dual_weekends_weekdays_enabled": zod.boolean()
+})
+
+export const UpdateTradingProtectionResponse = zod.object({
+  "weekdays_enabled": zod.boolean(),
+  "weekends_enabled": zod.boolean(),
+  "dual_weekends_weekdays_enabled": zod.boolean(),
+  "updated_at": zod.coerce.date().nullable()
+})
+
+
+/**
  * @summary List access keys for administrators
  */
 export const ListAccessKeysResponseItem = zod.object({
@@ -136,7 +164,7 @@ export const ListAccessKeysResponseItem = zod.object({
   "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])),
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])),
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 }).and(zod.object({
@@ -164,7 +192,7 @@ export const CreateAccessKeyBody = zod.object({
   "label": zod.string().min(1).max(createAccessKeyBodyLabelMax),
   "kind": zod.enum(['admin', 'user']),
   "max_devices": zod.number().int().min(createAccessKeyBodyMaxDevicesMin).max(createAccessKeyBodyMaxDevicesMax).describe('Maximum active devices; 0 means unlimited and is allowed only for administrator keys.'),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])).min(1)
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])).min(1)
 })
 
 export const CreateAccessKeyResponse = zod.object({
@@ -175,7 +203,7 @@ export const CreateAccessKeyResponse = zod.object({
   "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])),
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])),
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 }).and(zod.object({
@@ -199,7 +227,7 @@ export const updateAccessKeyBodyMaxDevicesMax = 50;
 export const UpdateAccessKeyBody = zod.object({
   "status": zod.enum(['active', 'paused', 'blocked', 'banned', 'deleted']).optional(),
   "max_devices": zod.number().int().min(updateAccessKeyBodyMaxDevicesMin).max(updateAccessKeyBodyMaxDevicesMax).optional().describe('Maximum active devices; 0 means unlimited and is allowed only for administrator keys.'),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])).min(1).optional()
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])).min(1).optional()
 })
 
 export const UpdateAccessKeyResponse = zod.object({
@@ -210,7 +238,7 @@ export const UpdateAccessKeyResponse = zod.object({
   "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'settings', 'history', 'admin'])),
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])),
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 }).and(zod.object({
@@ -250,7 +278,7 @@ export const ResetAccessKeyResponse = zod.object({
   "is_admin": zod.boolean(),
   "status": zod.enum(['active', 'paused', 'blocked', 'banned']),
   "max_devices": zod.number().int(),
-  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'settings', 'history', 'admin'])),
+  "features": zod.array(zod.enum(['edge', 'digit-flip', 'trade-x', 'bulk-trader', 'cash-grab', 'money-bank', 'jdy-ai-3', 'settings', 'history', 'admin'])),
   "online": zod.boolean(),
   "last_seen_at": zod.coerce.date().nullable()
 }).and(zod.object({
@@ -954,6 +982,9 @@ export const bulkBuyDerivContractsBodyBarrierMax = 9;
 export const bulkBuyDerivContractsBodyGrowthRateMin = 0.01;
 export const bulkBuyDerivContractsBodyGrowthRateMax = 0.05;
 
+
+
+
 export const BulkBuyDerivContractsBody = zod.object({
   "amount": zod.number().gt(bulkBuyDerivContractsBodyAmountExclusiveMin),
   "duration": zod.number().int().min(1).max(bulkBuyDerivContractsBodyDurationMax),
@@ -962,7 +993,7 @@ export const BulkBuyDerivContractsBody = zod.object({
   "barrier": zod.number().int().min(bulkBuyDerivContractsBodyBarrierMin).max(bulkBuyDerivContractsBodyBarrierMax).optional(),
   "growth_rate": zod.number().min(bulkBuyDerivContractsBodyGrowthRateMin).max(bulkBuyDerivContractsBodyGrowthRateMax).optional(),
   "symbol": zod.string().optional(),
-  "count": zod.number().int().min(1).max(100),
+  "count": zod.number().int().min(1),
   "confirm_live_trade": zod.literal(true)
 })
 
