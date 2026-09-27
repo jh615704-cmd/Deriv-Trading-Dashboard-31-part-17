@@ -51,6 +51,7 @@ export interface CashGrabStartConfig {
   balancePercentage: number;
   multiplier: number | null;
   autoSelectBest: boolean;
+  autoSwitchSafestPair: boolean;
   jdyAi2: boolean;
   jdyAi3: boolean;
 }
@@ -78,6 +79,14 @@ export interface CashGrabPanelProps {
   jdyAi3: boolean;
   jdyAi3Available: boolean;
   jdyAi3Status?: CashGrabAiStatus;
+  autoSwitchSafestPair: boolean;
+  autoSwitchSafestPairStatus?: CashGrabAiStatus;
+  autoSwitchSafestPairRecommendation?: {
+    symbol: string;
+    multiplier: number;
+    observedWinRate: number;
+    nextStake: number;
+  } | null;
   running: boolean;
   isConnected: boolean;
   isReal: boolean;
@@ -92,6 +101,7 @@ export interface CashGrabPanelProps {
   onDirectionChange: (direction: CashGrabDirection) => void;
   onSymbolChange: (symbol: string) => void;
   onAutoSelectBestChange: (enabled: boolean) => void;
+  onAutoSwitchSafestPairChange: (enabled: boolean) => void;
   onSelectedDigitChange: (digit: number) => void;
   onStakeChange: (stake: number) => void;
   onBulkCountChange: (count: number) => void;
@@ -125,7 +135,11 @@ const formatMoney = (value: number, currency: string) =>
 
 const statusLabel = (status: CashGrabAiStatus, enabled: boolean) => {
   if (!enabled || status === "off") return "OFF";
-  return "WORKING";
+  if (status === "ready") return "READY";
+  if (status === "watching") return "SCANNING";
+  if (status === "quiet") return "HOLD";
+  if (status === "blocked") return "STOPPED";
+  return "ON";
 };
 
 const statusDescription = (status: CashGrabAiStatus, enabled: boolean) => {
@@ -168,6 +182,9 @@ export default function CashGrabPanel({
   jdyAi3,
   jdyAi3Available,
   jdyAi3Status = "off",
+  autoSwitchSafestPair,
+  autoSwitchSafestPairStatus = "off",
+  autoSwitchSafestPairRecommendation = null,
   running,
   isConnected,
   isReal,
@@ -182,6 +199,7 @@ export default function CashGrabPanel({
   onDirectionChange,
   onSymbolChange,
   onAutoSelectBestChange,
+  onAutoSwitchSafestPairChange,
   onSelectedDigitChange,
   onStakeChange,
   onBulkCountChange,
@@ -221,6 +239,7 @@ export default function CashGrabPanel({
       balancePercentage: visibleBalancePercentage,
       multiplier: multiplier == null ? null : Math.max(0.5, multiplier),
       autoSelectBest,
+      autoSwitchSafestPair,
       jdyAi2,
       jdyAi3,
     });
@@ -446,7 +465,29 @@ export default function CashGrabPanel({
                 <i aria-hidden="true" />
                 <strong className={`cash-grab-ai-status ${jdyAi3 ? jdyAi3Status : "off"}`}>{statusLabel(jdyAi3Status, jdyAi3)}</strong>
               </label>
-              <p className="cash-grab-note"><Info size={14} /> JDY AI status is supplied by the parent gate. This panel makes no extra AI request and does not call a trade decision.</p>
+              <label className="cash-grab-toggle-row">
+                <span className="cash-grab-toggle-copy">
+                  <b>AUTO-SWITCH SAFEST PAIR</b>
+                  <small>{autoSwitchSafestPair
+                    ? autoSwitchSafestPairRecommendation
+                      ? `ON · ${autoSwitchSafestPairRecommendation.symbol} · ${autoSwitchSafestPairRecommendation.observedWinRate.toFixed(1)}% observed · ${autoSwitchSafestPairRecommendation.multiplier}x · next ${autoSwitchSafestPairRecommendation.nextStake.toFixed(2)}`
+                      : "ON · scanning every 20 seconds for a guarded setup"
+                    : "OFF · turn on to scan markets, balance, losses, and recovery settings"}
+                  </small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={autoSwitchSafestPair}
+                  onChange={(event) => onAutoSwitchSafestPairChange(event.target.checked)}
+                  disabled={!jdyAi3Available || isPlacingTrade || !isConnected}
+                  aria-label="Enable Auto-switch safest pair"
+                />
+                <i aria-hidden="true" />
+                <strong className={`cash-grab-ai-status ${autoSwitchSafestPair ? autoSwitchSafestPairStatus : "off"}`}>
+                  {statusLabel(autoSwitchSafestPairStatus, autoSwitchSafestPair)}
+                </strong>
+              </label>
+              <p className="cash-grab-note"><Info size={14} /> Turn this switch on to enable the guarded 20-second scanner. Turn it off or press STOP ACCUMULATOR to stop new trades immediately.</p>
             </section>
           </aside>
         </div>

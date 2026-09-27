@@ -39,7 +39,8 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
   const canUseTradeX = isAdmin || features.includes("trade-x");
   const canUseBulkTrader = isAdmin || features.includes("bulk-trader");
   const canUseCashGrab = isAdmin || features.includes("cash-grab");
-  const canUseTrading = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab;
+  const canUseMoneyBank = isAdmin || features.includes("money-bank");
+  const canUseTrading = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab || canUseMoneyBank;
   const canUseSettings = isAdmin || features.includes("settings");
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 

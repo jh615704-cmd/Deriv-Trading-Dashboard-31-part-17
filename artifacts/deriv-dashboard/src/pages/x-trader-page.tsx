@@ -320,6 +320,16 @@ type MoneyBankScannerRecommendation = {
   estimatedLosses: number;
 };
 
+type CashGrabAutoSwitchRecommendation = {
+  symbol: string;
+  observedWinRate: number;
+  observedLossRate: number;
+  sampleCount: number;
+  multiplier: number;
+  nextStake: number;
+  score: number;
+};
+
 export default function XTraderPage() {
   const accessSession = useGetAccessSession({ query: { retry: false, queryKey: getGetAccessSessionQueryKey() } });
   const queryClient = useQueryClient();
@@ -423,6 +433,9 @@ export default function XTraderPage() {
   const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(1);
   const [cashGrabMultiplier, setCashGrabMultiplier] = useState<number | null>(null);
   const [cashGrabAutoSelectBest, setCashGrabAutoSelectBest] = useState(false);
+  const [cashGrabAutoSwitchSafestPair, setCashGrabAutoSwitchSafestPair] = useState(false);
+  const [cashGrabAutoSwitchSafestPairStatus, setCashGrabAutoSwitchSafestPairStatus] = useState<CashGrabAiStatus>("off");
+  const [cashGrabAutoSwitchRecommendation, setCashGrabAutoSwitchRecommendation] = useState<CashGrabAutoSwitchRecommendation | null>(null);
   const [cashGrabSyncBalance, setCashGrabSyncBalance] = useState(false);
   const [cashGrabBalancePercentage, setCashGrabBalancePercentage] = useState(10);
   const [cashGrabJdyAi2, setCashGrabJdyAi2] = useState(false);
@@ -523,6 +536,9 @@ export default function XTraderPage() {
   const cashGrabProcessedSettlementIdsRef = useRef(new Set<string>());
   const cashGrabConfigRef = useRef<CashGrabStartConfig | null>(null);
   const cashGrabSessionPnlRef = useRef(0);
+  const cashGrabAutoSwitchBusyRef = useRef(false);
+  const cashGrabAutoSwitchNextAtRef = useRef<number | null>(null);
+  const cashGrabAutoSwitchRecommendationRef = useRef<CashGrabAutoSwitchRecommendation | null>(null);
   const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
   const moneyBankLevelRef = useRef(0);
@@ -1024,12 +1040,14 @@ export default function XTraderPage() {
       balancePercentage: Math.max(.5, cashGrabBalancePercentage),
       multiplier: cashGrabMultiplier == null ? null : Math.max(.5, cashGrabMultiplier),
       autoSelectBest: cashGrabAutoSelectBest,
+      autoSwitchSafestPair: cashGrabAutoSwitchSafestPair,
       jdyAi2: cashGrabJdyAi2,
       jdyAi3: cashGrabJdyAi3,
     };
   }, [
     cashGrabBalancePercentage,
     cashGrabAutoSelectBest,
+    cashGrabAutoSwitchSafestPair,
     cashGrabCount,
     cashGrabDirection,
     cashGrabDuration,
@@ -1789,15 +1807,115 @@ export default function XTraderPage() {
   const cashGrabContractTypes = ["DIGITEVEN", "DIGITODD", "CALL", "PUT", "DIGITDIFF", "ACCU"] as const;
 
   const cashGrabSafetyCheck = (config: CashGrabStartConfig) => {
-    const selectedSignal = (status.data?.market_signals ?? []).find((signal) => signal.symbol === config.symbol);
+    const selectedSignal = (status.data?.market_signals ?? []).find((signal) => signal.symbol === config.symbol) as
+      (MoneyBankMarketSignal & {
+        digit_even_percentage?: number;
+        digit_odd_percentage?: number;
+        digit_outcomes?: Array<{ digit: number; over_percentage: number; under_percentage: number }>;
+      }) | undefined;
     const sampleCount = selectedSignal?.sample_count ?? 0;
     const selectedObservation = cashGrabDigitObservations.find((observation) => observation.digit === config.selectedDigit);
+    const differsOutcome = selectedSignal?.digit_outcomes?.find((outcome) => outcome.digit === config.selectedDigit);
     const observedRate = config.contractFamily === "even-odd"
-      ? Math.max(selectedSignal?.digit_even_percentage ?? 0, selectedSignal?.digit_odd_percentage ?? 0)
-      : config.contractFamily === "rise-fall" || config.contractFamily === "accumulator"
-        ? Math.max(selectedSignal?.rise_percentage ?? 0, selectedSignal?.fall_percentage ?? 0)
-        : 100 - (selectedObservation?.marketPercentage ?? 0);
+      ? config.direction === "DIGITODD"
+        ? selectedSignal?.digit_odd_percentage ?? 0
+        : selectedSignal?.digit_even_percentage ?? 0
+      : config.contractFamily === "rise-fall"
+        ? config.direction === "PUT"
+          ? selectedSignal?.fall_percentage ?? 0
+          : selectedSignal?.rise_percentage ?? 0
+        : config.contractFamily === "accumulator"
+          ? Math.max(selectedSignal?.rise_percentage ?? 0, selectedSignal?.fall_percentage ?? 0)
+          : differsOutcome
+            ? differsOutcome.over_percentage + differsOutcome.under_percentage
+            : 100 - (selectedObservation?.marketPercentage ?? 0);
     return sampleCount >= 5 && observedRate >= 45;
+  };
+
+  const scanCashGrabAutoSwitch = async (
+    candidateConfig?: CashGrabStartConfig,
+  ): Promise<CashGrabAutoSwitchRecommendation | null> => {
+    if (!isConnected || cashGrabAutoSwitchBusyRef.current) return cashGrabAutoSwitchRecommendationRef.current;
+    const config = candidateConfig ?? cashGrabConfigRef.current;
+    if (!config || !currentAccount) return null;
+    cashGrabAutoSwitchBusyRef.current = true;
+    setCashGrabAutoSwitchSafestPairStatus("watching");
+    try {
+      const freshStatus = await status.refetch();
+      const signals = (freshStatus.data?.market_signals ?? []) as Array<MoneyBankMarketSignal & {
+        digit_even_percentage?: number;
+        digit_odd_percentage?: number;
+        digit_outcomes?: Array<{ digit: number; over_percentage: number; under_percentage: number }>;
+      }>;
+      const balance = currentAccount.balance;
+      const baseStake = config.syncBalance
+        ? Math.max(.35, balance * (config.balancePercentage / 100))
+        : Math.max(.35, config.stake);
+      const currentStake = Math.max(.35, cashGrabCurrentStakeRef.current || baseStake);
+      const lossToRecover = Math.max(0, -cashGrabSessionPnlRef.current);
+      const recoveryTarget = lossToRecover + (baseStake * 0.25);
+      const desiredMultiplier = Math.max(2, Math.min(9, 1 + (recoveryTarget / Math.max(baseStake, .35))));
+      const candidates: CashGrabAutoSwitchRecommendation[] = [];
+
+      for (const signal of signals) {
+        if (!cashGrabSymbols.some((item) => item.value === signal.symbol) || signal.sample_count < 5) continue;
+        const differsOutcome = signal.digit_outcomes?.find((outcome) => outcome.digit === config.selectedDigit);
+        const observedWinRate = config.contractFamily === "even-odd"
+          ? config.direction === "DIGITODD"
+            ? signal.digit_odd_percentage ?? 50
+            : signal.digit_even_percentage ?? 50
+          : config.contractFamily === "rise-fall"
+            ? config.direction === "PUT"
+              ? signal.fall_percentage ?? 50
+              : signal.rise_percentage ?? 50
+            : config.contractFamily === "differs" && differsOutcome
+              ? differsOutcome.over_percentage + differsOutcome.under_percentage
+              : Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50);
+        const observedLossRate = Math.max(0, 100 - observedWinRate);
+        for (let multiplier = 2; multiplier <= 9; multiplier += 1) {
+          const nextStake = Number((currentStake * multiplier).toFixed(2));
+          if (nextStake > balance) continue;
+          const sampleConfidence = Math.min(signal.sample_count, 200) / 20;
+          const recoveryFit = Math.max(0, 10 - Math.abs(multiplier - desiredMultiplier) * 2);
+          const score = observedWinRate * 2 - observedLossRate * 0.8 + sampleConfidence + recoveryFit;
+          candidates.push({
+            symbol: signal.symbol,
+            observedWinRate,
+            observedLossRate,
+            sampleCount: signal.sample_count,
+            multiplier,
+            nextStake: Number(currentStake.toFixed(2)),
+            score,
+          });
+        }
+      }
+
+      const recommendation = candidates.sort((left, right) =>
+        right.score - left.score
+        || right.observedWinRate - left.observedWinRate
+        || left.observedLossRate - right.observedLossRate
+        || right.sampleCount - left.sampleCount,
+      )[0] ?? null;
+      cashGrabAutoSwitchRecommendationRef.current = recommendation;
+      setCashGrabAutoSwitchRecommendation(recommendation);
+      if (recommendation) {
+        setCashGrabAutoSwitchSafestPairStatus("ready");
+        setConnectionMessage({
+          kind: "info",
+          text: `Auto-switch selected ${recommendation.symbol}: ${recommendation.observedWinRate.toFixed(1)}% observed win balance, ${recommendation.multiplier}x recovery, and ${recommendation.nextStake.toFixed(2)} next stake.`,
+        });
+      } else {
+        setCashGrabAutoSwitchSafestPairStatus("quiet");
+        setConnectionMessage({ kind: "info", text: "Auto-switch is waiting for enough live samples and balance room for a guarded 2x–9x recovery setting." });
+      }
+      return recommendation;
+    } catch (error) {
+      setCashGrabAutoSwitchSafestPairStatus("quiet");
+      setConnectionMessage({ kind: "error", text: `Auto-switch could not scan: ${errorMessage(error)}` });
+      return null;
+    } finally {
+      cashGrabAutoSwitchBusyRef.current = false;
+    }
   };
 
   const reconcileCashGrabSession = (latestRows: typeof rows) => {
@@ -1846,6 +1964,24 @@ export default function XTraderPage() {
       await sleep(500);
       latestRows = await getDerivHistory();
        applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
+    }
+    if (!cashGrabRunningRef.current) return;
+
+    if (config.autoSwitchSafestPair && Date.now() >= (cashGrabAutoSwitchNextAtRef.current ?? 0)) {
+      const recommendation = await scanCashGrabAutoSwitch(config);
+      cashGrabAutoSwitchNextAtRef.current = Date.now() + 20_000;
+      if (!cashGrabRunningRef.current) return;
+      if (!recommendation) return;
+      config = {
+        ...config,
+        symbol: recommendation.symbol,
+        multiplier: recommendation.multiplier,
+        autoSelectBest: false,
+      };
+      cashGrabConfigRef.current = config;
+      setCashGrabSymbol(recommendation.symbol);
+      setCashGrabMultiplier(recommendation.multiplier);
+      await selectMarket(recommendation.symbol);
     }
     if (!cashGrabRunningRef.current) return;
 
@@ -1931,8 +2067,24 @@ export default function XTraderPage() {
   const runCashGrabLoop = async () => {
     while (cashGrabRunningRef.current) {
       try {
+        const currentConfig = cashGrabConfigRef.current;
+        if (currentConfig?.autoSwitchSafestPair) {
+          const nextScanAt = cashGrabAutoSwitchNextAtRef.current ?? Date.now();
+          const waitForScan = Math.max(0, nextScanAt - Date.now());
+          if (waitForScan > 0) await sleep(waitForScan);
+        }
+        if (!cashGrabRunningRef.current) break;
         await executeCashGrabTrade();
-        if (cashGrabRunningRef.current) await sleep(900);
+        if (cashGrabRunningRef.current) {
+          const nextConfig = cashGrabConfigRef.current;
+          if (nextConfig?.autoSwitchSafestPair) {
+            const nextScanAt = cashGrabAutoSwitchNextAtRef.current ?? (Date.now() + 20_000);
+            const waitForScan = Math.max(250, nextScanAt - Date.now());
+            await sleep(waitForScan);
+          } else {
+            await sleep(900);
+          }
+        }
       } catch (error) {
         cashGrabRunningRef.current = false;
         setCashGrabRunning(false);
@@ -1944,9 +2096,13 @@ export default function XTraderPage() {
   const stopCashGrab = () => {
     cashGrabRunningRef.current = false;
     cashGrabRemainingTradesRef.current = 0;
+    cashGrabAutoSwitchNextAtRef.current = null;
     setCashGrabRunning(false);
     setCashGrabJdyAi2Status(cashGrabJdyAi2 ? "blocked" : "off");
     setCashGrabJdyAi3Status(cashGrabJdyAi3 ? "blocked" : "off");
+    setCashGrabAutoSwitchSafestPairStatus(
+      cashGrabAutoSwitchSafestPair || cashGrabConfigRef.current?.autoSwitchSafestPair ? "blocked" : "off",
+    );
   };
 
   const startCashGrab = async (requestedConfig?: CashGrabStartConfig) => {
@@ -1971,13 +2127,17 @@ export default function XTraderPage() {
       cashGrabSessionKnownIdsRef.current = new Set(existingIds);
       cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
       cashGrabConfigRef.current = config;
-      cashGrabRemainingTradesRef.current = Math.max(1, Math.trunc(config.bulkCount));
+      cashGrabRemainingTradesRef.current = config.autoSwitchSafestPair
+        ? Number.MAX_SAFE_INTEGER
+        : Math.max(1, Math.trunc(config.bulkCount));
       cashGrabCurrentStakeRef.current = Number(config.stake.toFixed(2));
       cashGrabSessionPnlRef.current = 0;
+      cashGrabAutoSwitchNextAtRef.current = config.autoSwitchSafestPair ? 0 : null;
       setCashGrabSessionPnl(0);
       setCashGrabTradeCount(0);
       setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
       setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
+      setCashGrabAutoSwitchSafestPairStatus(config.autoSwitchSafestPair ? "watching" : "off");
       cashGrabRunningRef.current = true;
       setCashGrabRunning(true);
       void runCashGrabLoop();
@@ -3453,6 +3613,9 @@ export default function XTraderPage() {
            jdyAi3={cashGrabJdyAi3}
            jdyAi3Available={canUseJdyAi3}
            jdyAi3Status={cashGrabJdyAi3Status}
+           autoSwitchSafestPair={cashGrabAutoSwitchSafestPair}
+           autoSwitchSafestPairStatus={cashGrabAutoSwitchSafestPairStatus}
+           autoSwitchSafestPairRecommendation={cashGrabAutoSwitchRecommendation}
           running={cashGrabRunning}
           isConnected={isConnected}
           isReal={isReal}
@@ -3493,10 +3656,44 @@ export default function XTraderPage() {
             setCashGrabJdyAi3Status(enabled ? "ready" : "off");
              if (!enabled) {
                stopCashGrab();
+                setCashGrabAutoSwitchSafestPair(false);
+                setCashGrabAutoSwitchSafestPairStatus("off");
+                cashGrabAutoSwitchNextAtRef.current = null;
+                if (cashGrabConfigRef.current) {
+                  cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: false, autoSwitchSafestPair: false };
+                }
              } else if (!cashGrabRunning && cashGrabConfigRef.current) {
               void startCashGrab({ ...cashGrabConfigRef.current, jdyAi3: true });
             }
           }}
+           onAutoSwitchSafestPairChange={(enabled) => {
+             const currentConfig = cashGrabConfigRef.current;
+             setCashGrabAutoSwitchSafestPair(enabled);
+             if (!enabled) {
+               cashGrabAutoSwitchNextAtRef.current = null;
+               cashGrabAutoSwitchRecommendationRef.current = null;
+               setCashGrabAutoSwitchRecommendation(null);
+               setCashGrabAutoSwitchSafestPairStatus("off");
+               if (currentConfig) cashGrabConfigRef.current = { ...currentConfig, autoSwitchSafestPair: false };
+               stopCashGrab();
+               setCashGrabAutoSwitchSafestPairStatus("off");
+               return;
+             }
+             cashGrabAutoSwitchRecommendationRef.current = null;
+             setCashGrabAutoSwitchRecommendation(null);
+             const nextConfig = currentConfig
+               ? { ...currentConfig, jdyAi3: true, autoSwitchSafestPair: true, autoSelectBest: false }
+               : null;
+             setCashGrabJdyAi3(true);
+             setCashGrabJdyAi3Status("watching");
+             setCashGrabAutoSwitchSafestPairStatus("watching");
+             cashGrabAutoSwitchNextAtRef.current = 0;
+             if (nextConfig) {
+               cashGrabConfigRef.current = nextConfig;
+               if (cashGrabRunning) cashGrabRemainingTradesRef.current = Number.MAX_SAFE_INTEGER;
+               if (!cashGrabRunning) void startCashGrab(nextConfig);
+             }
+           }}
           onLiveConfirmChange={setLiveConfirmed}
           onMoneyStart={(config) => void startCashGrab(config)}
           onMoneyStop={stopCashGrab}
