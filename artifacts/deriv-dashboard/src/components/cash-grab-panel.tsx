@@ -158,6 +158,11 @@ const statusDescription = (status: CashGrabAiStatus, enabled: boolean) => {
 
 function outcomeForTrade(trade: CashGrabTrade) {
   const open = trade.status.toLowerCase() === "open";
+  if (open && trade.contract_type === "ACCU") {
+    if (trade.profit > 0) return { label: "ACCUMULATING", tone: "positive" };
+    if (trade.profit < 0) return { label: "RUNNING", tone: "negative" };
+    return { label: "LIVE", tone: "open" };
+  }
   if (open) return { label: "OPEN", tone: "open" };
   if (trade.profit > 0) return { label: "WON", tone: "positive" };
   if (trade.profit < 0) return { label: "LOST", tone: "negative" };
@@ -550,11 +555,12 @@ export default function CashGrabPanel({
             <div className="cash-grab-empty-history"><Activity size={17} /><span><b>No Cash Grab trades yet</b><small>Settled and open contracts will appear here after MONEY START.</small></span></div>
           ) : recentTrades.map((trade) => {
             const outcome = outcomeForTrade(trade);
+             const liveAccumulator = trade.status.toLowerCase() === "open" && trade.contract_type === "ACCU";
             return (
               <div className="cash-grab-history-row" key={trade.contract_id} data-testid={`row-cash-grab-trade-${trade.contract_id}`}>
                 <span><b>{trade.contract_type}</b><small>{trade.symbol} · {trade.account_type}</small></span>
                 <span><small>STAKE</small>{formatMoney(trade.buy_price, currency)}</span>
-                <span><small>RESULT</small><strong className={outcome.tone}>{trade.status.toLowerCase() === "open" ? "—" : `${trade.profit >= 0 ? "+" : ""}${formatMoney(trade.profit, currency)}`}</strong></span>
+                 <span><small>{liveAccumulator ? "LIVE P/L" : "RESULT"}</small><strong className={outcome.tone}>{liveAccumulator || trade.status.toLowerCase() !== "open" ? `${trade.profit >= 0 ? "+" : ""}${formatMoney(trade.profit, currency)}` : "—"}</strong></span>
                 <span className={`cash-grab-outcome ${outcome.tone}`}><small>STATUS</small><b>{outcome.label}</b></span>
               </div>
             );
