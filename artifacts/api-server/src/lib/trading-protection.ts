@@ -18,7 +18,7 @@ export async function getTradingProtectionSettings(): Promise<TradingProtectionS
 function activeForToday(settings: TradingProtectionSettings, date = new Date()) {
   const day = date.getDay();
   const weekdays = day >= 1 && day <= 5;
-  const weekends = day === 0 || day === 5 || day === 6;
+  const weekends = day === 0 || day === 6;
   return (settings.dualWeekendsWeekdaysEnabled)
     || (settings.weekdaysEnabled && weekdays)
     || (settings.weekendsEnabled && weekends);

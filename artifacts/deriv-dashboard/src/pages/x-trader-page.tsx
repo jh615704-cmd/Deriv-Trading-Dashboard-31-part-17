@@ -235,6 +235,10 @@ const DIGIT_FLIP_SIGNAL_FLOOR = 80;
 const DIGIT_FLIP_MARKET_SCAN_INTERVAL_MS = 10_000;
 const EDGE_PERCENTAGE_SCAN_FLOOR = 90;
 const EDGE_MIN_MARKET_SAMPLE = 20;
+// Cash Grab does not expose the generic tick-duration control for Accumulators.
+// Deriv still needs a reference horizon to calculate the take-profit quote, and
+// five ticks is the supported default used by the accumulator workflow.
+const CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS: CashGrabDuration = 5;
 // The trading calendar is deliberately internal. "all-days" keeps the
 // strategy available on both weekdays and weekends without adding another
 // user-facing switch that could be mistaken for a market prediction.
@@ -435,7 +439,7 @@ export default function XTraderPage() {
   const [cashGrabStake, setCashGrabStake] = useState(.35);
   const [cashGrabGrowthRate, setCashGrabGrowthRate] = useState(1);
   const [cashGrabCount, setCashGrabCount] = useState(1);
-  const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(1);
+  const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS);
   const [cashGrabMultiplier, setCashGrabMultiplier] = useState<number | null>(null);
   const [cashGrabAutoSelectBest, setCashGrabAutoSelectBest] = useState(false);
   const [cashGrabAutoSwitchSafestPair, setCashGrabAutoSwitchSafestPair] = useState(false);
@@ -1447,7 +1451,7 @@ export default function XTraderPage() {
         duration: config.duration,
         duration_unit: "t",
         contract_type: config.direction,
-         barrier: entryDigit,
+        barrier: entryDigit,
         symbol: config.symbol,
         count: 1,
         confirm_live_trade: true,
@@ -2048,12 +2052,15 @@ export default function XTraderPage() {
       : config.contractFamily === "accumulator"
         ? "ACCU"
         : config.direction;
+    const contractDuration = contractType === "ACCU"
+      ? CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS
+      : config.duration;
     cashGrabActionLockRef.current = true;
     try {
       await bulkBuyMutation.mutateAsync({
         data: {
           amount,
-          duration: config.duration,
+          duration: contractDuration,
           duration_unit: "t",
           contract_type: contractType,
           ...(contractType === "DIGITDIFF" ? { barrier: config.selectedDigit } : {}),
@@ -2211,7 +2218,10 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "info", text: "Cash Grab is finishing MONEY STOP. Start again when the active contracts are closed." });
       return;
     }
-    const config = requestedConfig ?? cashGrabConfigRef.current;
+    const requested = requestedConfig ?? cashGrabConfigRef.current;
+    const config = requested?.contractFamily === "accumulator"
+      ? { ...requested, duration: CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS }
+      : requested;
     if (!config || !isConnected) {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before starting Cash Grab." });
       return;
@@ -3731,6 +3741,7 @@ export default function XTraderPage() {
           historyFading={historyFading}
           onContractFamilyChange={(next) => {
             setCashGrabFamily(next);
+             if (next === "accumulator") setCashGrabDuration(CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS);
             if (next === "even-odd" && cashGrabDirection !== "DIGITEVEN" && cashGrabDirection !== "DIGITODD") setCashGrabDirection("DIGITEVEN");
             if (next === "rise-fall" && cashGrabDirection !== "CALL" && cashGrabDirection !== "PUT") setCashGrabDirection("CALL");
           }}

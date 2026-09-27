@@ -388,10 +388,10 @@ export default function AdminUsersPage() {
                 <span className="admin-protection-switch"><i /></span>
                 <span><b>Weekdays</b><small>Monday–Friday</small></span>
               </label>
-              <label className={`admin-protection-toggle ${protection.weekends_enabled ? "selected" : ""}`}>
+                <label className={`admin-protection-toggle ${protection.weekends_enabled ? "selected" : ""}`}>
                 <input type="checkbox" checked={protection.weekends_enabled} onChange={(event) => updateProtectionSetting("weekends_enabled", event.target.checked)} disabled={updateProtection.isPending} />
                 <span className="admin-protection-switch"><i /></span>
-                <span><b>Weekends</b><small>Friday–Sunday</small></span>
+                  <span><b>Weekends</b><small>Saturday–Sunday</small></span>
               </label>
               <label className={`admin-protection-toggle ${protection.dual_weekends_weekdays_enabled ? "selected" : ""}`}>
                 <input type="checkbox" checked={protection.dual_weekends_weekdays_enabled} onChange={(event) => updateProtectionSetting("dual_weekends_weekdays_enabled", event.target.checked)} disabled={updateProtection.isPending} />

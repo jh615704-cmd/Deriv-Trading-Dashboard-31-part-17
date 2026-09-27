@@ -185,17 +185,21 @@ router.get("/access/trading-protection", requireAccess, requireAccessAdmin, asyn
 
 router.patch("/access/trading-protection", requireAccess, requireAccessAdmin, async (req, res): Promise<void> => {
   const body = req.body as Record<string, unknown>;
-  const values = {
-    weekdaysEnabled: typeof body.weekdays_enabled === "boolean" ? body.weekdays_enabled : false,
-    weekendsEnabled: typeof body.weekends_enabled === "boolean" ? body.weekends_enabled : false,
-    dualWeekendsWeekdaysEnabled: typeof body.dual_weekends_weekdays_enabled === "boolean"
-      ? body.dual_weekends_weekdays_enabled
-      : false,
-    updatedAt: new Date(),
-  };
-  const [existing] = await db.select({ id: tradingProtectionSettingsTable.id })
+  const [existing] = await db.select()
     .from(tradingProtectionSettingsTable)
     .limit(1);
+  const values = {
+    weekdaysEnabled: typeof body.weekdays_enabled === "boolean"
+      ? body.weekdays_enabled
+      : existing?.weekdaysEnabled ?? false,
+    weekendsEnabled: typeof body.weekends_enabled === "boolean"
+      ? body.weekends_enabled
+      : existing?.weekendsEnabled ?? false,
+    dualWeekendsWeekdaysEnabled: typeof body.dual_weekends_weekdays_enabled === "boolean"
+      ? body.dual_weekends_weekdays_enabled
+      : existing?.dualWeekendsWeekdaysEnabled ?? false,
+    updatedAt: new Date(),
+  };
   const [settings] = existing
     ? await db.update(tradingProtectionSettingsTable).set(values)
       .where(eq(tradingProtectionSettingsTable.id, existing.id)).returning()

@@ -430,23 +430,30 @@ export default function CashGrabPanel({
                    <small>Contracts run one at a time</small>
                 </label>
               </div>
-              <div className="cash-grab-choice-block">
-                <span className="cash-grab-field-label">DURATION · TICKS</span>
-                <div className="cash-grab-duration-grid" role="group" aria-label="Contract duration in ticks">
-                  {durations.map((option) => (
-                    <button type="button" key={option} className={duration === option ? "selected" : ""} onClick={() => onDurationChange(option)} disabled={interactionDisabled} aria-pressed={duration === option} data-testid={`button-cash-grab-duration-${option}`}>
-                      <b>{option}</b><small>{option === 1 ? "tick" : "ticks"}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
+               {contractFamily === "accumulator" ? (
+                 <div className="cash-grab-choice-block cash-grab-accumulator-duration-note">
+                   <span className="cash-grab-field-label">DURATION</span>
+                   <p><ShieldCheck size={13} /> Accumulator uses its selected growth rate. Deriv does not offer the regular tick-duration setting for this contract.</p>
+                 </div>
+               ) : (
+                 <div className="cash-grab-choice-block">
+                   <span className="cash-grab-field-label">DURATION · TICKS</span>
+                   <div className="cash-grab-duration-grid" role="group" aria-label="Contract duration in ticks">
+                     {durations.map((option) => (
+                       <button type="button" key={option} className={duration === option ? "selected" : ""} onClick={() => onDurationChange(option)} disabled={interactionDisabled} aria-pressed={duration === option} data-testid={`button-cash-grab-duration-${option}`}>
+                         <b>{option}</b><small>{option === 1 ? "tick" : "ticks"}</small>
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+               )}
               <div className="cash-grab-choice-block">
                 <span className="cash-grab-field-label">CONTRACTS TO SEND</span>
                 <div className="cash-grab-count-grid" role="group" aria-label="Bulk contract count">
                   {counts.map((option) => <button type="button" key={option} className={bulkCount === option ? "selected" : ""} onClick={() => onBulkCountChange(option)} disabled={interactionDisabled} aria-pressed={bulkCount === option} data-testid={`button-cash-grab-count-${option}`}>{option}</button>)}
                 </div>
               </div>
-              <p className="cash-grab-execution-summary"><span>{contractFamilies.find((item) => item.value === contractFamily)?.label}</span><b>{selectedSymbolLabel} · digit {selectedDigit}</b><em>{bulkCount} contract{bulkCount === 1 ? "" : "s"} · {duration} {duration === 1 ? "tick" : "ticks"}</em></p>
+               <p className="cash-grab-execution-summary"><span>{contractFamilies.find((item) => item.value === contractFamily)?.label}</span><b>{selectedSymbolLabel} · digit {selectedDigit}</b><em>{contractFamily === "accumulator" ? `${bulkCount} contract${bulkCount === 1 ? "" : "s"} · ${growthRate}% growth` : `${bulkCount} contract${bulkCount === 1 ? "" : "s"} · ${duration} ${duration === 1 ? "tick" : "ticks"}`}</em></p>
             </section>
 
             <section className="cash-grab-card cash-grab-balance-card">
