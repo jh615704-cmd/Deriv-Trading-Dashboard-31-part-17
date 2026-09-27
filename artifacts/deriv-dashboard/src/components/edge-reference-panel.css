@@ -356,7 +356,7 @@
 .edge-ref-session-reset:hover { color: #fff; border-color: #ff9da3; background: #b9364e; transform: translateY(-1px); }
 .edge-ref-session-reset:active { transform: translateY(0); }
 
-.edge-ref-history { padding: 17px 16px 8px; }
+.edge-ref-history { max-height: min(440px, 62vh); overflow-y: auto; overscroll-behavior: contain; padding: 17px 16px 8px; scrollbar-color: rgba(76, 221, 160, .65) rgba(4, 27, 20, .38); scrollbar-width: thin; touch-action: pan-y; }
 .edge-ref-history-heading { justify-content: space-between; margin-bottom: 12px; }
 .edge-ref-history-heading h2 { margin: 0; font-size: 15px; }
 .edge-ref-history-heading button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; color: #7f8b9a; background: transparent; cursor: pointer; }

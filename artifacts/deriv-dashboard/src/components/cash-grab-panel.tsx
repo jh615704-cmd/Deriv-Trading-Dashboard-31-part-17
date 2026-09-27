@@ -479,7 +479,7 @@ export default function CashGrabPanel({
                   type="checkbox"
                   checked={autoSwitchSafestPair}
                   onChange={(event) => onAutoSwitchSafestPairChange(event.target.checked)}
-                  disabled={!jdyAi3Available || isPlacingTrade || !isConnected}
+                  disabled={isPlacingTrade || !isConnected}
                   aria-label="Enable Auto-switch safest pair"
                 />
                 <i aria-hidden="true" />
@@ -487,7 +487,7 @@ export default function CashGrabPanel({
                   {statusLabel(autoSwitchSafestPairStatus, autoSwitchSafestPair)}
                 </strong>
               </label>
-              <p className="cash-grab-note"><Info size={14} /> Turn this switch on to enable the guarded 20-second scanner. Turn it off or press STOP ACCUMULATOR to stop new trades immediately.</p>
+               <p className="cash-grab-note"><Info size={14} /> This scanner is independent from JDY AI 3. It checks the best balance-feasible pair every 20 seconds and can be stopped immediately with MONEY STOP.</p>
             </section>
           </aside>
         </div>
@@ -520,7 +520,7 @@ export default function CashGrabPanel({
         <div className={`cash-grab-history-list ${historyFading ? "fading" : ""}`}>
           {!recentTrades.length ? (
             <div className="cash-grab-empty-history"><Activity size={17} /><span><b>No Cash Grab trades yet</b><small>Settled and open contracts will appear here after MONEY START.</small></span></div>
-          ) : recentTrades.slice(0, 12).map((trade) => {
+          ) : recentTrades.map((trade) => {
             const outcome = outcomeForTrade(trade);
             return (
               <div className="cash-grab-history-row" key={trade.contract_id} data-testid={`row-cash-grab-trade-${trade.contract_id}`}>

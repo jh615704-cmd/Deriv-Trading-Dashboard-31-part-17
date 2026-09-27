@@ -583,7 +583,7 @@ export function MoneyBankPanel({
            <div className="money-bank-history-actions"><button type="button" onClick={downloadHistory} disabled={!visibleTrades.length}><Download size={13} />Download</button><button type="button" onClick={clearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={13} />{historyClearArmed ? "Tap again to reset" : "Reset"}</button></div>
          </div>
          <div className={historyFading ? "money-bank-history-rows fading" : "money-bank-history-rows"}>
-            {!visibleTrades.length ? <p className="money-bank-empty-history">Trades will appear here after the first Accumulator contract.</p> : visibleTrades.slice(0, 12).map((trade) => {
+            {!visibleTrades.length ? <p className="money-bank-empty-history">Trades will appear here after the first Accumulator contract.</p> : visibleTrades.map((trade) => {
               const outcome = tradeOutcome(trade);
               return <div className={`money-bank-history-row ${trade.status === "open" ? "live" : ""}`} key={trade.contract_id}>
                 <span><b>{trade.contract_type}</b><small>{trade.symbol} · {trade.account_type}</small></span>

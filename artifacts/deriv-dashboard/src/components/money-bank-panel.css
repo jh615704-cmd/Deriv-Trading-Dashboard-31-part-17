@@ -1096,7 +1096,10 @@
 .money-bank-history-total b.negative { color: #ff9a8c; }
 .money-bank-history-row .neutral { color: #c4ddd0; }
 .money-bank-history-actions button:last-child:hover { border-color: #ff9a8c; color: #ffc0b8; }
-.money-bank-history-rows { display: grid; gap: 6px; }
+.money-bank-history-rows { display: grid; gap: 6px; max-height: min(360px, 52vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgba(117, 176, 143, .7) rgba(3, 25, 17, .45); scrollbar-width: thin; touch-action: pan-y; }
+.money-bank-history-rows::-webkit-scrollbar { width: 8px; }
+.money-bank-history-rows::-webkit-scrollbar-track { border-radius: 8px; background: rgba(3, 25, 17, .45); }
+.money-bank-history-rows::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: rgba(117, 176, 143, .7); background-clip: padding-box; }
 .money-bank-history-rows.fading { opacity: 0; transform: translateX(12px); transition: opacity .35s ease, transform .35s ease; }
 .money-bank-history-row { display: grid; grid-template-columns: minmax(0, 1.35fr) auto auto auto auto; align-items: center; gap: 10px; min-height: 44px; padding: 7px 9px; border: 1px solid rgba(66, 213, 142, .14); border-radius: 8px; background: rgba(2, 20, 13, .4); color: #d9f8e1; font-size: .7rem; }
 .money-bank-history-row.live { border-color: rgba(129, 244, 177, .42); }

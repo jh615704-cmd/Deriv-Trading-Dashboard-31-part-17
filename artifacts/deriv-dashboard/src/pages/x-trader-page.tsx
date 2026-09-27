@@ -214,7 +214,7 @@ const cashGrabGuidePages = [
   { title: "JDY AI 2", body: "JDY AI 2 is a pre-entry safety gate. It remains quiet until MONEY START, then it may hold an entry when the selected setup fails the current risk check.", points: ["It does not change your settings.", "A held entry is skipped, not replaced.", "It does not promise a win."] },
   { title: "JDY AI 3", body: "JDY AI 3 can begin the Cash Grab loop without a separate MONEY START tap. It uses the same honest pre-entry gate and does not claim a guaranteed outcome.", points: ["It uses the selected settings.", "Rejected entries are skipped.", "Disable it to return to manual start."] },
   { title: "MONEY START", body: "MONEY START snapshots the visible Cash Grab configuration and begins the controlled loop after account and live-trading checks pass.", points: ["Review market, family, direction, stake, count, and ticks.", "The loop waits between independent batches.", "Changing controls does not rewrite an active batch."] },
-  { title: "MONEY STOP", body: "MONEY STOP prevents another batch from being started. Contracts already sent may continue to settle on Deriv.", points: ["Stop is not cancellation.", "Open contracts remain visible.", "Review history after stopping."] },
+  { title: "MONEY STOP", body: "MONEY STOP prevents another batch from being started and closes every active Cash Grab contract from the current run.", points: ["The stop sweep covers every returned contract, not just the last one.", "Contracts already settled remain in history.", "Review history after stopping."] },
   { title: "Session P/L", body: "Session P/L totals the settled profit and loss for Cash Grab entries since the current run began.", points: ["Open contracts are not final P/L.", "The account balance comes from Deriv.", "A positive session does not predict the next result."] },
   { title: "Trading history", body: "History lists each returned contract with family, symbol, stake, status, and result. Independent contracts can show different outcomes in the same batch.", points: ["OPEN means no final result yet.", "WON and LOST reflect returned settlement data.", "History does not delete Deriv records."] },
   { title: "Clear history", body: "The clear action uses a second tap and a short fade to hide visible Cash Grab rows from this dashboard.", points: ["It does not cancel open contracts.", "It does not delete Deriv records.", "New returned rows can appear in a later session."] },
@@ -358,6 +358,7 @@ export default function XTraderPage() {
   const digitFlipBuyMutation = useBuyDerivContract();
   const moneyBankBuyMutation = useBuyDerivContract();
   const moneyBankSellMutation = useSellDerivContract();
+  const cashGrabSellMutation = useSellDerivContract();
 
   const [pat, setPat] = useState("");
   const [symbol, setSymbol] = useState("R_75");
@@ -539,6 +540,7 @@ export default function XTraderPage() {
   const cashGrabAutoSwitchBusyRef = useRef(false);
   const cashGrabAutoSwitchNextAtRef = useRef<number | null>(null);
   const cashGrabAutoSwitchRecommendationRef = useRef<CashGrabAutoSwitchRecommendation | null>(null);
+  const cashGrabClosePromiseRef = useRef<Promise<void> | null>(null);
   const moneyBankSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const moneyBankProcessedSettlementIdsRef = useRef(new Set<string>());
   const moneyBankLevelRef = useRef(0);
@@ -1874,7 +1876,7 @@ export default function XTraderPage() {
         const observedLossRate = Math.max(0, 100 - observedWinRate);
         for (let multiplier = 2; multiplier <= 9; multiplier += 1) {
           const nextStake = Number((currentStake * multiplier).toFixed(2));
-          if (nextStake > balance) continue;
+          if (nextStake > balance || observedWinRate < 50) continue;
           const sampleConfidence = Math.min(signal.sample_count, 200) / 20;
           const recoveryFit = Math.max(0, 10 - Math.abs(multiplier - desiredMultiplier) * 2);
           const score = observedWinRate * 2 - observedLossRate * 0.8 + sampleConfidence + recoveryFit;
@@ -1884,7 +1886,7 @@ export default function XTraderPage() {
             observedLossRate,
             sampleCount: signal.sample_count,
             multiplier,
-            nextStake: Number(currentStake.toFixed(2)),
+            nextStake,
             score,
           });
         }
@@ -2093,6 +2095,52 @@ export default function XTraderPage() {
     }
   };
 
+  const closeCashGrabContracts = async () => {
+    if (cashGrabClosePromiseRef.current) return cashGrabClosePromiseRef.current;
+    const operation = (async () => {
+      try {
+        for (let pass = 0; pass < 10; pass += 1) {
+          const latestRows = await getDerivHistory();
+          const openIds = latestRows
+            .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
+            .filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
+            .filter((trade) => trade.status === "open")
+            .map((trade) => trade.contract_id);
+          if (!openIds.length) {
+            queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+            return;
+          }
+
+          await Promise.all(openIds.map(async (contractId) => {
+            try {
+              await cashGrabSellMutation.mutateAsync({ data: { contract_id: contractId } });
+            } catch {
+              // A contract can settle between the history read and the close
+              // request. The next history sweep decides whether it still needs
+              // a close attempt.
+            }
+          }));
+          await sleep(250);
+        }
+
+        const finalRows = await getDerivHistory();
+        queryClient.setQueryData(getGetDerivHistoryQueryKey(), finalRows);
+        const stillOpen = finalRows.some((trade) =>
+          cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number])
+          && cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
+          && trade.status === "open",
+        );
+        if (stillOpen) {
+          throw new Error("MONEY STOP could not close every active Cash Grab contract. Deriv is still processing the close request.");
+        }
+      } finally {
+        cashGrabClosePromiseRef.current = null;
+      }
+    })();
+    cashGrabClosePromiseRef.current = operation;
+    return operation;
+  };
+
   const stopCashGrab = () => {
     cashGrabRunningRef.current = false;
     cashGrabRemainingTradesRef.current = 0;
@@ -2103,6 +2151,9 @@ export default function XTraderPage() {
     setCashGrabAutoSwitchSafestPairStatus(
       cashGrabAutoSwitchSafestPair || cashGrabConfigRef.current?.autoSwitchSafestPair ? "blocked" : "off",
     );
+    void closeCashGrabContracts().catch((error) => {
+      setConnectionMessage({ kind: "error", text: errorMessage(error) });
+    });
   };
 
   const startCashGrab = async (requestedConfig?: CashGrabStartConfig) => {
@@ -3401,7 +3452,7 @@ export default function XTraderPage() {
 
           {canViewHistory && <section className="xt-history edge-legacy-hidden" title="Recent dashboard trade history">
             <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent EDGE Trades</b><small>EDGE rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
-             {!edgeRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : edgeRows.slice(0, 12).map((trade) => {
+             {!edgeRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : edgeRows.map((trade) => {
               const settled = trade.status !== "open";
               return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
             })}
@@ -3459,7 +3510,7 @@ export default function XTraderPage() {
                 <div><small>WINS</small><strong>{tradeXWins}</strong></div>
                 <div><small>LOSSES</small><strong className={tradeXLosses ? "loss" : ""}>{tradeXLosses}</strong></div>
               </div>
-              {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.slice(0, 12).map((trade) => {
+              {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.map((trade) => {
                 const settled = trade.status !== "open";
                 return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>DIGIT DIFFERS {trade.barrier == null ? "" : trade.barrier}</b><small>{trade.symbol} · {trade.account_type} · expiry decides the result</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
               })}
@@ -3654,46 +3705,50 @@ export default function XTraderPage() {
           onJdyAi3Change={(enabled) => {
             setCashGrabJdyAi3(enabled);
             setCashGrabJdyAi3Status(enabled ? "ready" : "off");
-             if (!enabled) {
-               stopCashGrab();
-                setCashGrabAutoSwitchSafestPair(false);
-                setCashGrabAutoSwitchSafestPairStatus("off");
-                cashGrabAutoSwitchNextAtRef.current = null;
-                if (cashGrabConfigRef.current) {
-                  cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: false, autoSwitchSafestPair: false };
-                }
-             } else if (!cashGrabRunning && cashGrabConfigRef.current) {
+            if (!enabled) {
+              if (cashGrabConfigRef.current) {
+                cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: false };
+              }
+              if (!cashGrabAutoSwitchSafestPair && cashGrabRunning) stopCashGrab();
+            } else if (!cashGrabRunning && cashGrabConfigRef.current) {
               void startCashGrab({ ...cashGrabConfigRef.current, jdyAi3: true });
+            } else if (cashGrabConfigRef.current) {
+              cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: true };
             }
           }}
-           onAutoSwitchSafestPairChange={(enabled) => {
-             const currentConfig = cashGrabConfigRef.current;
-             setCashGrabAutoSwitchSafestPair(enabled);
-             if (!enabled) {
-               cashGrabAutoSwitchNextAtRef.current = null;
-               cashGrabAutoSwitchRecommendationRef.current = null;
-               setCashGrabAutoSwitchRecommendation(null);
-               setCashGrabAutoSwitchSafestPairStatus("off");
-               if (currentConfig) cashGrabConfigRef.current = { ...currentConfig, autoSwitchSafestPair: false };
-               stopCashGrab();
-               setCashGrabAutoSwitchSafestPairStatus("off");
-               return;
-             }
-             cashGrabAutoSwitchRecommendationRef.current = null;
-             setCashGrabAutoSwitchRecommendation(null);
-             const nextConfig = currentConfig
-               ? { ...currentConfig, jdyAi3: true, autoSwitchSafestPair: true, autoSelectBest: false }
-               : null;
-             setCashGrabJdyAi3(true);
-             setCashGrabJdyAi3Status("watching");
-             setCashGrabAutoSwitchSafestPairStatus("watching");
-             cashGrabAutoSwitchNextAtRef.current = 0;
-             if (nextConfig) {
-               cashGrabConfigRef.current = nextConfig;
-               if (cashGrabRunning) cashGrabRemainingTradesRef.current = Number.MAX_SAFE_INTEGER;
-               if (!cashGrabRunning) void startCashGrab(nextConfig);
-             }
-           }}
+          onAutoSwitchSafestPairChange={(enabled) => {
+            const currentConfig = cashGrabConfigRef.current;
+            setCashGrabAutoSwitchSafestPair(enabled);
+            if (!enabled) {
+              cashGrabAutoSwitchNextAtRef.current = null;
+              cashGrabAutoSwitchRecommendationRef.current = null;
+              setCashGrabAutoSwitchRecommendation(null);
+              setCashGrabAutoSwitchSafestPairStatus("off");
+              if (currentConfig) cashGrabConfigRef.current = { ...currentConfig, autoSwitchSafestPair: false };
+              stopCashGrab();
+              setCashGrabAutoSwitchSafestPairStatus("off");
+              return;
+            }
+            cashGrabAutoSwitchRecommendationRef.current = null;
+            setCashGrabAutoSwitchRecommendation(null);
+            const nextConfig = currentConfig
+              ? {
+                ...currentConfig,
+                autoSwitchSafestPair: true,
+                autoSelectBest: false,
+                // Safest-pair selection is not JDY AI 3. Preserve the
+                // explicit JDY switch state when this control changes.
+                jdyAi3: cashGrabJdyAi3,
+              }
+              : null;
+            setCashGrabAutoSwitchSafestPairStatus("watching");
+            cashGrabAutoSwitchNextAtRef.current = 0;
+            if (nextConfig) {
+              cashGrabConfigRef.current = nextConfig;
+              if (cashGrabRunning) cashGrabRemainingTradesRef.current = Number.MAX_SAFE_INTEGER;
+              if (!cashGrabRunning) void startCashGrab(nextConfig);
+            }
+          }}
           onLiveConfirmChange={setLiveConfirmed}
           onMoneyStart={(config) => void startCashGrab(config)}
           onMoneyStop={stopCashGrab}

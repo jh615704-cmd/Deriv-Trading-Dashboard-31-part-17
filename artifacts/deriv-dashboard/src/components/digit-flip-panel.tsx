@@ -477,7 +477,7 @@ export default function DigitFlipPanel({
         </div>
         {!recentTrades.length ? (
           <p className="df-empty">Even and Odd trades will appear here after a DigitFlip entry.</p>
-        ) : recentTrades.slice(0, 10).map((trade) => {
+        ) : recentTrades.map((trade) => {
           const settled = trade.status !== "open";
           return (
             <div className={`df-trade-row ${historyFading ? "fading" : ""}`} key={trade.contract_id}>

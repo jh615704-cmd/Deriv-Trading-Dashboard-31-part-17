@@ -236,7 +236,7 @@ export default function BulkTraderPanel({
 
       <section className="bulk-trader-history">
         <div className="xt-history-head"><div><Activity size={17} /><span><b>Bulk Trade History</b><small>Each returned contract is listed separately</small></span><strong className="bulk-session-pnl">Session P/L {recentTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0) >= 0 ? "+" : ""}{recentTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0).toFixed(2)}</strong></div><button type="button" data-testid="button-clear-bulk-history" onClick={onClearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={14} />{clearArmed ? "Tap again" : "Clear"}</button></div>
-        {!recentTrades.length ? <div className="xt-empty"><RefreshCw size={18} />Bulk contracts will appear here after the first action.</div> : recentTrades.slice(0, 18).map((trade) => {
+        {!recentTrades.length ? <div className="xt-empty"><RefreshCw size={18} />Bulk contracts will appear here after the first action.</div> : recentTrades.map((trade) => {
           const settled = trade.status !== "open";
           return <div className={`xt-trade ${historyFading ? "fading" : ""}`} data-testid={`row-bulk-trade-${trade.contract_id}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
         })}
