@@ -88,6 +88,9 @@ const markets = [
   ["JD75", "Jump 75 Index"], ["JD100", "Jump 100 Index"],
 ] as const;
 
+const realizedProfit = (trades: readonly { status: string; profit: number }[]) =>
+  trades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
+
 const guidePages = [
   { title: "Welcome to EDGE 🏔️", body: "EDGE is a digit-contract workspace for testing Over and Under ideas with a controlled stake, a selected market, and visible session results.", points: ["Use demo accounts while learning.", "Every trade uses the selected duration, stake, market, and barrier.", "The guide explains the controls before you start."] },
   { title: "Connect and choose an account", body: "Connect a Deriv PAT with read and trade permissions, then select the account you want to use. The active balance is refreshed from Deriv.", points: ["Demo accounts are the safest place to validate a strategy.", "Real accounts require live-trading confirmation.", "Account changes clear the active market session state."] },
@@ -444,6 +447,7 @@ export default function XTraderPage() {
   const [cashGrabJdyAi2Status, setCashGrabJdyAi2Status] = useState<CashGrabAiStatus>("off");
   const [cashGrabJdyAi3Status, setCashGrabJdyAi3Status] = useState<CashGrabAiStatus>("off");
   const [cashGrabRunning, setCashGrabRunning] = useState(false);
+  const [cashGrabStopping, setCashGrabStopping] = useState(false);
   const [cashGrabSessionPnl, setCashGrabSessionPnl] = useState(0);
   const [cashGrabTradeCount, setCashGrabTradeCount] = useState(0);
   const [cashGrabClearArmed, setCashGrabClearArmed] = useState(false);
@@ -634,7 +638,8 @@ export default function XTraderPage() {
   const tradeXRows = tradeXAllRows.filter((trade) => tradeXClaimedHistoryIdsRef.current.has(trade.contract_id) && !tradeXHiddenHistoryIds.has(trade.contract_id));
   const digitFlipRows = digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipHiddenHistoryIds.has(trade.contract_id));
   const bulkRows = bulkAllRows.filter((trade) => bulkClaimedHistoryIdsRef.current.has(trade.contract_id) && !bulkTraderHiddenHistoryIds.has(trade.contract_id));
-  const moneyBankRows = moneyBankAllRows as MoneyBankTrade[];
+  const moneyBankRows = moneyBankAllRows
+    .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)) as MoneyBankTrade[];
   const cashGrabRows = cashGrabAllRows
     .filter((trade) => !cashGrabHiddenHistoryIds.has(trade.contract_id))
     .filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)) as CashGrabTrade[];
@@ -673,7 +678,12 @@ export default function XTraderPage() {
     ? digitFlipAllRows.filter((trade) => digitFlipClaimedHistoryIdsRef.current.has(trade.contract_id) && !digitFlipSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
   const moneyBankSessionRows = moneyBankSessionKnownIdsRef.current
-    ? moneyBankAllRows.filter((trade) => !moneyBankSessionKnownIdsRef.current?.has(trade.contract_id))
+    ? moneyBankAllRows
+      .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
+      .filter((trade) => !moneyBankSessionKnownIdsRef.current?.has(trade.contract_id))
+    : [];
+  const cashGrabSessionRows = cashGrabSessionKnownIdsRef.current
+    ? cashGrabAllRows.filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id) && !cashGrabSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
   const moneyBankCompletedRows = moneyBankSessionRows.filter((trade) => trade.status !== "open");
   const moneyBankWins = moneyBankCompletedRows.filter((trade) => trade.profit > 0).length;
@@ -686,19 +696,9 @@ export default function XTraderPage() {
   const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
   const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
   const tradeXLosses = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit < 0).length;
-  const settledPnl = edgeSessionRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
-  const liveContract = status.data?.last_contract;
-  const liveContractRow = liveContract
-    ? edgeRows.find((trade) => trade.contract_id === liveContract.contract_id)
-    : undefined;
-  const liveUnsettledPnl = liveContract
-    && edgeSessionKnownIdsRef.current
-    && edgeClaimedHistoryIdsRef.current.has(liveContract.contract_id)
-    && !edgeSessionKnownIdsRef.current.has(liveContract.contract_id)
-    && (!liveContractRow || liveContractRow.status === "open")
-    ? liveContract.profit
-    : 0;
-  const fastSessionPnl = settledPnl + liveUnsettledPnl;
+  const fastSessionPnl = realizedProfit(edgeSessionRows);
+  const moneyBankHistorySessionPnl = realizedProfit(moneyBankSessionRows);
+  const cashGrabHistorySessionPnl = realizedProfit(cashGrabSessionRows);
   const streaks = status.data?.digit_streaks ?? [];
   const lastDigit = status.data?.last_digit;
   const digitFlipEvenPercentage = digitFlipSampleCount ? (digitFlipEvenCount / digitFlipSampleCount) * 100 : 50;
@@ -946,9 +946,7 @@ export default function XTraderPage() {
   }, [analysisDigits, barrier]);
 
   useEffect(() => {
-    const settled = digitFlipSessionRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
-    const live = digitFlipSessionRows.find((trade) => trade.status === "open")?.profit ?? 0;
-    setDigitFlipSessionPnl(settled + live);
+    setDigitFlipSessionPnl(realizedProfit(digitFlipSessionRows));
     if (digitFlipStakeMode !== "martingale") {
       digitFlipNextStakeRef.current = digitFlipStake;
       if (!digitFlipRunning) setDigitFlipCurrentStake(digitFlipStake);
@@ -1524,7 +1522,13 @@ export default function XTraderPage() {
       setMoneyBankClosing(true);
       try {
         let latestRows = await getDerivHistory();
-        const openIds = new Set(latestRows.filter((trade) => trade.contract_type === "ACCU" && trade.status === "open").map((trade) => trade.contract_id));
+        const openIds = new Set(
+          latestRows
+            .filter((trade) => trade.contract_type === "ACCU")
+            .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
+            .filter((trade) => trade.status === "open")
+            .map((trade) => trade.contract_id),
+        );
         for (const contractId of openIds) {
           await moneyBankSellMutation.mutateAsync({ data: { contract_id: contractId } });
         }
@@ -1556,21 +1560,32 @@ export default function XTraderPage() {
     for (let attempt = 0; attempt < 240; attempt += 1) {
       const stillOpen = openContractId
         ? latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")
-        : latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open");
+        : latestRows.some((trade) =>
+          trade.contract_type === "ACCU"
+          && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
+          && trade.status === "open",
+        );
       if (!stillOpen) break;
       await sleep(500);
       latestRows = await getDerivHistory();
     }
     const unsettledPrevious = openContractId
       ? latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")
-      : latestRows.some((trade) => trade.contract_type === "ACCU" && trade.status === "open");
+      : latestRows.some((trade) =>
+        trade.contract_type === "ACCU"
+        && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
+        && trade.status === "open",
+      );
     if (unsettledPrevious) {
       throw new Error("Money Bank stopped while the previous contract was still settling.");
     }
 
     const settledAccumulator = (openContractId
       ? latestRows.filter((trade) => trade.contract_id === openContractId)
-      : latestRows.filter((trade) => trade.contract_type === "ACCU" && trade.status !== "open")
+      : latestRows
+        .filter((trade) => trade.contract_type === "ACCU")
+        .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
+        .filter((trade) => trade.status !== "open")
     ).find((trade) => !moneyBankProcessedSettlementIdsRef.current.has(trade.contract_id));
     moneyBankOpenContractIdRef.current = null;
     if (settledAccumulator) {
@@ -1737,10 +1752,15 @@ export default function XTraderPage() {
       const latestRows = await getDerivHistory();
       const accumulatorIds = latestRows
         .filter((trade) => trade.contract_type === "ACCU")
+        .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
         .map((trade) => trade.contract_id);
       moneyBankSessionKnownIdsRef.current = new Set(accumulatorIds);
       moneyBankProcessedSettlementIdsRef.current = new Set(accumulatorIds);
-      moneyBankOpenContractIdRef.current = latestRows.find((trade) => trade.contract_type === "ACCU" && trade.status === "open")?.contract_id ?? null;
+      moneyBankOpenContractIdRef.current = latestRows.find((trade) =>
+        trade.contract_type === "ACCU"
+        && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
+        && trade.status === "open"
+      )?.contract_id ?? null;
       moneyBankLevelRef.current = 0;
       moneyBankConfigRef.current = config;
       moneyBankSafestSymbolRef.current = moneyBankSafestSymbol;
@@ -2099,16 +2119,40 @@ export default function XTraderPage() {
     if (cashGrabClosePromiseRef.current) return cashGrabClosePromiseRef.current;
     const operation = (async () => {
       try {
-        for (let pass = 0; pass < 10; pass += 1) {
-          const latestRows = await getDerivHistory();
-          const openIds = latestRows
+        for (let pass = 0; pass < 80; pass += 1) {
+          const cachedRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? rows;
+          const openIds = cachedRows
             .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
             .filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
             .filter((trade) => trade.status === "open")
             .map((trade) => trade.contract_id);
           if (!openIds.length) {
+            const latestRows = await getDerivHistory();
+            const refreshedOpenIds = latestRows
+              .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
+              .filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
+              .filter((trade) => trade.status === "open")
+              .map((trade) => trade.contract_id);
             queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-            return;
+            if (!refreshedOpenIds.length) {
+              // MONEY STOP can be clicked while the buy acknowledgement is
+              // still in flight. Keep the close sweep alive until that
+              // acknowledgement has been claimed and its contract is visible.
+              if (cashGrabActionLockRef.current) {
+                await sleep(50);
+                continue;
+              }
+              return;
+            }
+            await Promise.all(refreshedOpenIds.map(async (contractId) => {
+              try {
+                await cashGrabSellMutation.mutateAsync({ data: { contract_id: contractId } });
+              } catch {
+                // Settlement can win the race against a close request.
+              }
+            }));
+            await sleep(100);
+            continue;
           }
 
           await Promise.all(openIds.map(async (contractId) => {
@@ -2120,7 +2164,7 @@ export default function XTraderPage() {
               // a close attempt.
             }
           }));
-          await sleep(250);
+          await sleep(100);
         }
 
         const finalRows = await getDerivHistory();
@@ -2134,6 +2178,7 @@ export default function XTraderPage() {
           throw new Error("MONEY STOP could not close every active Cash Grab contract. Deriv is still processing the close request.");
         }
       } finally {
+        setCashGrabStopping(false);
         cashGrabClosePromiseRef.current = null;
       }
     })();
@@ -2145,6 +2190,7 @@ export default function XTraderPage() {
     cashGrabRunningRef.current = false;
     cashGrabRemainingTradesRef.current = 0;
     cashGrabAutoSwitchNextAtRef.current = null;
+    setCashGrabStopping(true);
     setCashGrabRunning(false);
     setCashGrabJdyAi2Status(cashGrabJdyAi2 ? "blocked" : "off");
     setCashGrabJdyAi3Status(cashGrabJdyAi3 ? "blocked" : "off");
@@ -2157,6 +2203,10 @@ export default function XTraderPage() {
   };
 
   const startCashGrab = async (requestedConfig?: CashGrabStartConfig) => {
+    if (cashGrabClosePromiseRef.current || cashGrabStopping) {
+      setConnectionMessage({ kind: "info", text: "Cash Grab is finishing MONEY STOP. Start again when the active contracts are closed." });
+      return;
+    }
     const config = requestedConfig ?? cashGrabConfigRef.current;
     if (!config || !isConnected) {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before starting Cash Grab." });
@@ -2170,31 +2220,27 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before starting Cash Grab." });
       return;
     }
-    try {
-      const latestRows = await getDerivHistory();
-      const existingIds = latestRows
-        .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
-        .map((trade) => trade.contract_id);
-      cashGrabSessionKnownIdsRef.current = new Set(existingIds);
-      cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
-      cashGrabConfigRef.current = config;
-      cashGrabRemainingTradesRef.current = config.autoSwitchSafestPair
-        ? Number.MAX_SAFE_INTEGER
-        : Math.max(1, Math.trunc(config.bulkCount));
-      cashGrabCurrentStakeRef.current = Number(config.stake.toFixed(2));
-      cashGrabSessionPnlRef.current = 0;
-      cashGrabAutoSwitchNextAtRef.current = config.autoSwitchSafestPair ? 0 : null;
-      setCashGrabSessionPnl(0);
-      setCashGrabTradeCount(0);
-      setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
-      setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
-      setCashGrabAutoSwitchSafestPairStatus(config.autoSwitchSafestPair ? "watching" : "off");
-      cashGrabRunningRef.current = true;
-      setCashGrabRunning(true);
-      void runCashGrabLoop();
-    } catch (error) {
-      setConnectionMessage({ kind: "error", text: errorMessage(error) });
-    }
+    const existingIds = rows
+      .filter((trade) => cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number]))
+      .map((trade) => trade.contract_id);
+    cashGrabSessionKnownIdsRef.current = new Set(existingIds);
+    cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
+    cashGrabConfigRef.current = config;
+    cashGrabRemainingTradesRef.current = config.autoSwitchSafestPair
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(1, Math.trunc(config.bulkCount));
+    cashGrabCurrentStakeRef.current = Number(config.stake.toFixed(2));
+    cashGrabSessionPnlRef.current = 0;
+    cashGrabAutoSwitchNextAtRef.current = config.autoSwitchSafestPair ? 0 : null;
+    setCashGrabStopping(false);
+    setCashGrabSessionPnl(0);
+    setCashGrabTradeCount(0);
+    setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
+    setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
+    setCashGrabAutoSwitchSafestPairStatus(config.autoSwitchSafestPair ? "watching" : "off");
+    cashGrabRunningRef.current = true;
+    setCashGrabRunning(true);
+    void runCashGrabLoop();
   };
 
   const deactivateCashGrab = () => {
@@ -3633,7 +3679,7 @@ export default function XTraderPage() {
             moneyBankSafestSymbolRef.current = next;
             setMoneyBankSafestSymbol(next);
           }}
-          sessionPnl={moneyBankSessionPnl}
+           sessionPnl={moneyBankHistorySessionPnl}
           tradeCount={moneyBankCompletedRows.length}
           onStart={(config) => void startMoneyBank(config)}
           onStop={stopMoneyBank}
@@ -3668,12 +3714,13 @@ export default function XTraderPage() {
            autoSwitchSafestPairStatus={cashGrabAutoSwitchSafestPairStatus}
            autoSwitchSafestPairRecommendation={cashGrabAutoSwitchRecommendation}
           running={cashGrabRunning}
+          stopping={cashGrabStopping}
           isConnected={isConnected}
           isReal={isReal}
           liveConfirmed={liveConfirmed}
           isPlacingTrade={bulkBuyMutation.isPending}
           recentTrades={cashGrabRows}
-          sessionPnl={cashGrabSessionPnl}
+           sessionPnl={cashGrabHistorySessionPnl}
           tradeCount={cashGrabTradeCount}
           clearArmed={cashGrabClearArmed}
           historyFading={historyFading}

@@ -266,7 +266,7 @@ export function MoneyBankPanel({
   }), [growthRate, marketSignals, snapshotVersion, takeProfitTicks]);
   const safestPair = snapshot.reduce((best, entry) => entry.winRate > best.winRate ? entry : best, snapshot[0]);
   const visibleTrades = recentTrades.filter((trade) => !historyHidden.has(trade.contract_id));
-  const historyPnl = visibleTrades.reduce((sum, trade) => sum + trade.profit, 0);
+  const historyPnl = visibleTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
 
   useEffect(() => {
     if (safestPair?.symbol) onSafestPairChange?.(safestPair.symbol);

@@ -88,6 +88,7 @@ export interface CashGrabPanelProps {
     nextStake: number;
   } | null;
   running: boolean;
+  stopping?: boolean;
   isConnected: boolean;
   isReal: boolean;
   liveConfirmed: boolean;
@@ -186,6 +187,7 @@ export default function CashGrabPanel({
   autoSwitchSafestPairStatus = "off",
   autoSwitchSafestPairRecommendation = null,
   running,
+  stopping = false,
   isConnected,
   isReal,
   liveConfirmed,
@@ -222,7 +224,7 @@ export default function CashGrabPanel({
   const visibleBalancePercentage = Math.max(0.5, balancePercentage);
   const syncedStake = accountBalance == null ? null : accountBalance * (visibleBalancePercentage / 100);
   const displayedSessionPnl = sessionPnl >= 0 ? `+${formatMoney(sessionPnl, currency)}` : formatMoney(sessionPnl, currency);
-  const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade;
+  const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
   const interactionDisabled = running || isPlacingTrade;
 
   const submitStart = () => {
@@ -503,8 +505,8 @@ export default function CashGrabPanel({
             <span className={isConnected ? "ok" : "warn"}><i />{isConnected ? "Deriv connection ready" : "Waiting for Deriv connection"}</span>
             {isReal && !liveConfirmed && <small>Confirm live funds before sending.</small>}
           </div>
-          {running ? (
-             <button type="button" className="cash-grab-primary stop" onClick={onMoneyStop} data-testid="button-cash-grab-stop"><Square size={14} fill="currentColor" /> MONEY STOP</button>
+          {running || stopping ? (
+             <button type="button" className="cash-grab-primary stop" onClick={onMoneyStop} disabled={stopping} data-testid="button-cash-grab-stop"><Square size={14} fill="currentColor" /> {stopping ? "STOPPING…" : "MONEY STOP"}</button>
           ) : (
             <button type="submit" className="cash-grab-primary" disabled={!canStart || (isReal && !liveConfirmed)} data-testid="button-cash-grab-start">{isPlacingTrade ? <span className="cash-grab-button-loading" /> : <Play size={14} fill="currentColor" />} {isPlacingTrade ? "PLACING…" : "MONEY START"}</button>
           )}
