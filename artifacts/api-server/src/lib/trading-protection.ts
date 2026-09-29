@@ -24,6 +24,10 @@ function activeForToday(settings: TradingProtectionSettings, date = new Date()) 
     || (settings.weekendsEnabled && weekends);
 }
 
+function finitePercentage(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+}
+
 type ProtectionSignal = {
   symbol: string;
   sample_count: number;
@@ -47,7 +51,15 @@ export function assertTradingProtection(
   if (!activeForToday(settings)) return;
   const selectedSymbol = input.symbol ?? status.symbol;
   const signal = status.market_signals?.find((entry) => entry.symbol === selectedSymbol);
-  if (!signal || signal.sample_count < 20) {
+   if (
+     !signal
+     || !Number.isInteger(signal.sample_count)
+     || signal.sample_count < 20
+     || !finitePercentage(signal.digit_even_percentage)
+     || !finitePercentage(signal.digit_odd_percentage)
+     || !finitePercentage(signal.rise_percentage)
+     || !finitePercentage(signal.fall_percentage)
+   ) {
     throw new Error("Global trading protection held this entry until the selected market has enough live samples.");
   }
 
@@ -66,23 +78,29 @@ export function assertTradingProtection(
       observedRate = signal.fall_percentage;
       break;
     case "ACCU":
-      observedRate = Math.max(signal.rise_percentage, signal.fall_percentage);
+      // ACCU grows only while the quote moves in the configured direction;
+      // accepting the stronger of rise/fall would approve a setup using the
+      // wrong side of the market.
+      observedRate = signal.rise_percentage;
       break;
     case "DIGITOVER":
-      observedRate = signal.digit_outcomes?.find((entry) => entry.digit === input.barrier)?.over_percentage ?? 0;
+      observedRate = signal.digit_outcomes?.find((entry) => entry.digit === input.barrier)?.over_percentage ?? Number.NaN;
       break;
     case "DIGITUNDER":
-      observedRate = signal.digit_outcomes?.find((entry) => entry.digit === input.barrier)?.under_percentage ?? 0;
+      observedRate = signal.digit_outcomes?.find((entry) => entry.digit === input.barrier)?.under_percentage ?? Number.NaN;
       break;
     case "DIGITDIFF": {
       const outcome = signal.digit_outcomes?.find((entry) => entry.digit === input.barrier);
-      observedRate = outcome ? outcome.over_percentage + outcome.under_percentage : 0;
+      observedRate = outcome && finitePercentage(outcome.over_percentage) && finitePercentage(outcome.under_percentage)
+        ? outcome.over_percentage + outcome.under_percentage
+        : Number.NaN;
       break;
     }
     default:
       observedRate = 0;
   }
-  if (observedRate < 52) {
-    throw new Error(`Global trading protection held this entry because the selected setup is only ${observedRate.toFixed(1)}% observed in the live sample.`);
+   if (!finitePercentage(observedRate) || observedRate < 52) {
+     const observedText = finitePercentage(observedRate) ? `${observedRate.toFixed(1)}%` : "not valid";
+     throw new Error(`Global trading protection held this entry because the selected setup is ${observedText} in the live sample.`);
   }
 }

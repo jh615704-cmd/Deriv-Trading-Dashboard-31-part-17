@@ -12,6 +12,7 @@ const liveTradingEnabled = process.env.DERIV_ALLOW_LIVE_TRADING === "true";
 const proposalTimeoutMs = 8_000;
 const proposalAttempts = 3;
 const buyAckTimeoutMs = 12_000;
+const maxBulkCount = 6;
 const supportedSymbols = new Set([
   "R_10", "R_25", "R_50", "R_75", "R_100",
   "1HZ10V", "1HZ15V", "1HZ25V", "1HZ30V", "1HZ50V", "1HZ75V", "1HZ90V", "1HZ100V",
@@ -630,7 +631,7 @@ function contractParameters(input: ProposalInput) {
     amount,
     basis: "stake" as const,
     contract_type: input.contract_type,
-    currency: defaultCurrency,
+    currency: getState().account?.currency ?? defaultCurrency,
     ...expiryOrTakeProfit,
     underlying_symbol: input.symbol ?? defaultSymbol,
     ...(input.barrier == null ? {} : { barrier: String(input.barrier) }),
@@ -794,7 +795,13 @@ async function connectInternal() {
 
     socket.on("message", (raw) => {
       if (!isCurrentSocket()) return;
-      const message = JSON.parse(raw.toString()) as Record<string, any>;
+      let message: Record<string, any>;
+      try {
+        message = JSON.parse(raw.toString()) as Record<string, any>;
+      } catch (error) {
+        logger.warn({ err: error }, "Ignoring malformed Deriv WebSocket message");
+        return;
+      }
       if (message.error) {
         const errorMessage = String(message.error.message ?? message.error.code ?? "Deriv rejected the request");
         const reqId = Number(message.req_id ?? message.echo_req?.req_id);
@@ -959,6 +966,7 @@ async function connectInternal() {
       }
       getState().socket = null;
       getState().account = null;
+      rejectProposalWaiters("Deriv WebSocket disconnected before the proposal was returned");
       rejectBuyWaiters("Deriv WebSocket disconnected before the contract purchase was acknowledged");
       rejectSellWaiters("Deriv WebSocket disconnected before the contract could be sold");
       logger.warn("Deriv WebSocket closed");
@@ -1052,6 +1060,7 @@ export async function testConnection() {
 }
 
 export async function requestProposal(input: ProposalInput) {
+  validateProposalInput(input);
   validateAccumulatorInput(input);
   getState().lastProposalContractType = input.contract_type;
   getState().lastProposalSymbol = input.symbol ?? defaultSymbol;
@@ -1122,6 +1131,9 @@ export async function selectAccount(accountId: string) {
   if (account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
   }
+  if (account.id !== getState().selectedAccountId) {
+    assertNoActiveContract();
+  }
 
   getState().selectedAccountId = account.id;
   rejectProposalWaiters("Deriv account changed before proposal completed");
@@ -1136,6 +1148,9 @@ export async function selectAccount(accountId: string) {
   getState().lastProposalSymbol = defaultSymbol;
   getState().lastProposalInput = null;
   getState().lastProposalRefreshAt = 0;
+  getState().history = [];
+  getState().contractInputs.clear();
+  getState().hiddenHistoryIds.clear();
   getState().digitEvenCount = 0;
   getState().digitOddCount = 0;
   getState().digitHistory = [];
@@ -1173,8 +1188,7 @@ export async function buyContract(input: BuyInput) {
   if (normalizedInput.amount > getState().account.balance) {
     throw new Error("The selected stake exceeds the current account balance");
   }
-  validateContractBarrier(normalizedInput);
-  validateAccumulatorInput(normalizedInput);
+  validateProposalInput(normalizedInput);
   assertTradingProtection(await getTradingProtectionSettings(), getStatus(), normalizedInput);
   assertNoActiveContract();
   const remainingCooldown = 1000 - (Date.now() - getState().lastBuyAt);
@@ -1207,18 +1221,32 @@ export async function buyContract(input: BuyInput) {
 }
 
 export async function sellContract(contractId: string) {
-  if (!contractId.trim()) throw new Error("A contract id is required to close a contract");
+  const normalizedContractId = contractId.trim();
+  if (!normalizedContractId) throw new Error("A contract id is required to close a contract");
+  const matching = getState().history.find((trade: DerivHistoryItem) => trade.contract_id === normalizedContractId);
+  if (!matching) throw new Error("That contract is not owned by the selected account");
+  if (matching.status !== "open") throw new Error("That contract is already settled");
   const connected = await connect();
   if (!connected) throw new Error("Deriv WebSocket is not ready");
-  const result = await sendSell(contractId.trim());
-  const matching = getState().history.find((trade: DerivHistoryItem) => trade.contract_id === contractId.trim());
-  if (matching) {
-    upsertHistory({
-      ...matching,
+  const result = await sendSell(normalizedContractId);
+  const soldAt = Math.floor(Date.now() / 1000);
+  const settledProfit = roundCents(result.sold_for - matching.buy_price);
+  upsertHistory({
+    ...matching,
+    status: "closed",
+    sell_time: soldAt,
+    current_value: result.sold_for,
+    payout: result.sold_for,
+    profit: settledProfit,
+  });
+  if (getState().lastContract?.contract_id === normalizedContractId) {
+    getState().lastContract = {
+      ...getState().lastContract,
       status: "closed",
-      sell_time: Math.floor(Date.now() / 1000),
-      profit: result.sold_for - matching.buy_price,
-    });
+      is_sold: true,
+      sell_price: result.sold_for,
+      profit: settledProfit,
+    };
   }
   return { ok: true, ...result };
 }
@@ -1235,6 +1263,9 @@ export async function bulkBuyContracts(input: {
   confirm_live_trade: true;
 }) {
   const amount = roundCents(input.amount);
+  if (!Number.isInteger(input.count) || input.count < 1 || input.count > maxBulkCount) {
+    throw new Error(`Bulk count must be between 1 and ${maxBulkCount}`);
+  }
   if (!getState().account) throw new Error("Select an account before buying contracts");
   if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
@@ -1245,8 +1276,7 @@ export async function bulkBuyContracts(input: {
   if (amount * input.count > getState().account.balance) {
     throw new Error("The selected bulk stake exceeds the current account balance");
   }
-  validateContractBarrier(input);
-  validateAccumulatorInput(input);
+  validateProposalInput({ ...input, amount });
   assertTradingProtection(await getTradingProtectionSettings(), getStatus(), input);
 
   const proposalInput = {
@@ -1258,6 +1288,7 @@ export async function bulkBuyContracts(input: {
     growth_rate: input.growth_rate,
     symbol: input.symbol,
   } satisfies ProposalInput;
+  assertNoActiveContract();
 
   // Quote the complete batch before buying anything. This prevents a
   // partially-started batch when one contract is unavailable, and lets the
@@ -1271,7 +1302,17 @@ export async function bulkBuyContracts(input: {
   // Direct parameter buys use the fresh quote as the maximum price and avoid
   // holding temporary proposal IDs until the whole batch is ready. Deriv can
   // invalidate those IDs between the proposal response and a later buy.
-  await Promise.all(proposals.map((proposal) => sendDirectBuy(proposal, proposalInput)));
+  const buyResults = await Promise.allSettled(
+    proposals.map((proposal) => sendDirectBuy(proposal, proposalInput)),
+  );
+  const failedBuy = buyResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failedBuy) {
+    const successfulBuys = buyResults
+      .filter((result): result is PromiseFulfilledResult<DerivBuy> => result.status === "fulfilled")
+      .map((result) => result.value);
+    await Promise.allSettled(successfulBuys.map((buy) => sendSell(buy.contract_id)));
+    throw new Error(`Bulk buy was not completed: ${failedBuy.reason instanceof Error ? failedBuy.reason.message : "one or more contracts failed"}`);
+  }
 
   return {
     ok: true,
@@ -1280,6 +1321,7 @@ export async function bulkBuyContracts(input: {
       ? `${proposals.length} live buy requests sent together.`
       : `${proposals.length} demo buy requests sent together.`,
     proposals,
+    buys: buyResults.map((result) => (result as PromiseFulfilledResult<DerivBuy>).value),
   };
 }
 
@@ -1297,16 +1339,23 @@ function validateContractBarrier(input: { contract_type: DigitContractType; barr
   if (input.contract_type === "DIGITUNDER" && barrier === 0) {
     throw new Error("DIGITUNDER barrier 0 offers no return. Choose a barrier from 1 to 9.");
   }
+  if (!requiresBarrier && barrier != null) {
+    throw new Error(`A digit barrier is not valid for ${input.contract_type}.`);
+  }
 }
 
 function validateAccumulatorInput(input: {
   contract_type: DigitContractType;
   amount: number;
+  duration?: number;
   growth_rate?: number;
 }) {
   if (input.contract_type !== "ACCU") return;
   if (input.amount < 1) {
     throw new Error("Accumulator stakes must be at least 1.00.");
+  }
+  if (input.duration != null && (!Number.isInteger(input.duration) || input.duration < 5)) {
+    throw new Error("Accumulator duration reference must be at least 5 ticks.");
   }
   if (
     input.growth_rate == null
@@ -1318,6 +1367,27 @@ function validateAccumulatorInput(input: {
   }
 }
 
+function validateProposalInput(input: ProposalInput) {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error("A positive stake is required.");
+  }
+  if (!Number.isInteger(input.duration) || input.duration < 1) {
+    throw new Error("A whole-number duration of at least 1 tick is required.");
+  }
+  if (input.duration_unit !== "t") {
+    throw new Error("Only tick durations are supported.");
+  }
+  if (input.symbol != null && !supportedSymbols.has(input.symbol)) {
+    throw new Error("That market is not supported.");
+  }
+  validateContractBarrier(input);
+  if (input.contract_type === "ACCU") {
+    validateAccumulatorInput(input);
+  } else if (input.growth_rate != null) {
+    throw new Error(`Growth rate is only valid for ACCU contracts, not ${input.contract_type}.`);
+  }
+}
+
 export async function dualBuyContracts(input: {
   amount: number;
   duration: number;
@@ -1326,6 +1396,16 @@ export async function dualBuyContracts(input: {
   symbol?: string;
   confirm_live_trade: true;
 }) {
+  const normalizedAmount = roundCents(input.amount);
+  const commonInput = {
+    amount: normalizedAmount,
+    duration: input.duration,
+    duration_unit: input.duration_unit,
+    barrier: input.barrier,
+    symbol: input.symbol,
+  };
+  validateProposalInput({ ...commonInput, contract_type: "DIGITOVER" });
+  validateProposalInput({ ...commonInput, contract_type: "DIGITUNDER" });
   if (!getState().account) throw new Error("Select an account before buying contracts");
   if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");
@@ -1333,35 +1413,46 @@ export async function dualBuyContracts(input: {
   if (getState().account.type === "real" && !input.confirm_live_trade) {
     throw new Error("Explicit live-trade confirmation is required");
   }
-  if (input.amount * 2 > getState().account.balance) {
+  if (normalizedAmount * 2 > getState().account.balance) {
     throw new Error("The selected dual stake exceeds the current account balance");
   }
   const protection = await getTradingProtectionSettings();
   assertTradingProtection(protection, getStatus(), { ...input, contract_type: "DIGITOVER" });
+  assertTradingProtection(protection, getStatus(), { ...input, contract_type: "DIGITUNDER" });
   assertNoActiveContract();
 
-  const proposals: Array<{ proposal: DerivProposal; contract_type: "DIGITOVER" | "DIGITUNDER" }> = [];
+  const proposals: Array<{ proposal: DerivProposal; input: ProposalInput }> = [];
   for (const contract_type of ["DIGITOVER", "DIGITUNDER"] as const) {
     const proposal = await requestFreshProposal({
-      amount: input.amount,
+       amount: normalizedAmount,
       duration: input.duration,
       duration_unit: input.duration_unit,
       contract_type,
       barrier: input.barrier,
       symbol: input.symbol,
     });
-    const connected = await connect();
-    if (!connected) throw new Error("Deriv WebSocket is not ready");
     const buyInput = {
-      amount: input.amount,
+       amount: normalizedAmount,
       duration: input.duration,
       duration_unit: input.duration_unit,
       contract_type,
       barrier: input.barrier,
       symbol: input.symbol,
     } satisfies ProposalInput;
-    await sendProposalBuy(proposal, buyInput);
-    proposals.push({ proposal, contract_type });
+     proposals.push({ proposal, input: buyInput });
+  }
+  const connected = await connect();
+  if (!connected) throw new Error("Deriv WebSocket is not ready");
+  const buyResults = await Promise.allSettled(
+    proposals.map(({ proposal, input: buyInput }) => sendProposalBuy(proposal, buyInput)),
+  );
+  const failedBuy = buyResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failedBuy) {
+    const successfulBuys = buyResults
+      .filter((result): result is PromiseFulfilledResult<DerivBuy> => result.status === "fulfilled")
+      .map((result) => result.value);
+    await Promise.allSettled(successfulBuys.map((buy) => sendSell(buy.contract_id)));
+    throw new Error(`Dual buy was not completed: ${failedBuy.reason instanceof Error ? failedBuy.reason.message : "one or more contracts failed"}`);
   }
 
   return {
@@ -1371,6 +1462,7 @@ export async function dualBuyContracts(input: {
       ? "Dual Mode sent one live Over and one live Under request."
       : "Dual Mode sent one demo Over and one demo Under request.",
     proposals: proposals.map(({ proposal }) => proposal),
+    buys: buyResults.map((result) => (result as PromiseFulfilledResult<DerivBuy>).value),
   };
 }
 

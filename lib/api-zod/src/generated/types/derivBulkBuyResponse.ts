@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DerivBuy } from './derivBuy';
 import type { DerivProposal } from './derivProposal';
 
 export interface DerivBulkBuyResponse {
@@ -12,4 +13,5 @@ export interface DerivBulkBuyResponse {
   message: string;
   count: number;
   proposals: DerivProposal[];
+  buys: DerivBuy[];
 }

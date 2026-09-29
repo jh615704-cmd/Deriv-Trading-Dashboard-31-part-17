@@ -518,7 +518,10 @@ export interface DerivBulkBuyInput {
      */
   growth_rate?: number;
   symbol?: string;
-  /** @minimum 1 */
+  /**
+     * @minimum 1
+     * @maximum 6
+     */
   count: number;
   confirm_live_trade: true;
 }
@@ -533,10 +536,7 @@ export const DerivDualBuyInputDurationUnit = {
 export interface DerivDualBuyInput {
   /** @exclusiveMinimum 0 */
   amount: number;
-  /**
-     * @minimum 1
-     * @maximum 6
-     */
+  /** @minimum 1 */
   duration: number;
   duration_unit: DerivDualBuyInputDurationUnit;
   /**
@@ -571,6 +571,7 @@ export interface DerivBulkBuyResponse {
   message: string;
   count: number;
   proposals: DerivProposal[];
+  buys: DerivBuy[];
 }
 
 export type DerivHistoryItemAccountType = typeof DerivHistoryItemAccountType[keyof typeof DerivHistoryItemAccountType];

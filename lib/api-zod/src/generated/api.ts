@@ -982,6 +982,7 @@ export const bulkBuyDerivContractsBodyBarrierMax = 9;
 export const bulkBuyDerivContractsBodyGrowthRateMin = 0.01;
 export const bulkBuyDerivContractsBodyGrowthRateMax = 0.05;
 
+export const bulkBuyDerivContractsBodyCountMax = 6;
 
 
 
@@ -993,7 +994,7 @@ export const BulkBuyDerivContractsBody = zod.object({
   "barrier": zod.number().int().min(bulkBuyDerivContractsBodyBarrierMin).max(bulkBuyDerivContractsBodyBarrierMax).optional(),
   "growth_rate": zod.number().min(bulkBuyDerivContractsBodyGrowthRateMin).max(bulkBuyDerivContractsBodyGrowthRateMax).optional(),
   "symbol": zod.string().optional(),
-  "count": zod.number().int().min(1),
+  "count": zod.number().int().min(1).max(bulkBuyDerivContractsBodyCountMax),
   "confirm_live_trade": zod.literal(true)
 })
 
@@ -1007,6 +1008,12 @@ export const BulkBuyDerivContractsResponse = zod.object({
   "payout": zod.number(),
   "spot": zod.number(),
   "longcode": zod.string().nullish()
+})),
+  "buys": zod.array(zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
 }))
 })
 
@@ -1034,7 +1041,6 @@ export const SellDerivContractResponse = zod.object({
  */
 export const dualBuyDerivContractsBodyAmountExclusiveMin = 0;
 
-export const dualBuyDerivContractsBodyDurationMax = 6;
 
 export const dualBuyDerivContractsBodyBarrierMin = 0;
 export const dualBuyDerivContractsBodyBarrierMax = 9;
@@ -1043,7 +1049,7 @@ export const dualBuyDerivContractsBodyBarrierMax = 9;
 
 export const DualBuyDerivContractsBody = zod.object({
   "amount": zod.number().gt(dualBuyDerivContractsBodyAmountExclusiveMin),
-  "duration": zod.number().int().min(1).max(dualBuyDerivContractsBodyDurationMax),
+  "duration": zod.number().int().min(1),
   "duration_unit": zod.enum(['t']),
   "barrier": zod.number().int().min(dualBuyDerivContractsBodyBarrierMin).max(dualBuyDerivContractsBodyBarrierMax),
   "symbol": zod.string().optional(),
@@ -1060,6 +1066,12 @@ export const DualBuyDerivContractsResponse = zod.object({
   "payout": zod.number(),
   "spot": zod.number(),
   "longcode": zod.string().nullish()
+})),
+  "buys": zod.array(zod.object({
+  "contract_id": zod.string(),
+  "buy_price": zod.number(),
+  "payout": zod.number(),
+  "start_time": zod.number().int().nullish()
 }))
 })
 

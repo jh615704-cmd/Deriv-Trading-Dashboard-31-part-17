@@ -431,7 +431,7 @@ export default function CashGrabPanel({
                  )}
                 <label>
                   <span className="cash-grab-field-label">BULK COUNT · MIN 1</span>
-                  <input className="cash-grab-number-input" type="number" min="1" step="1" value={bulkCount} onChange={(event) => onBulkCountChange(Math.max(1, Math.trunc(Number(event.target.value) || 1)))} disabled={interactionDisabled} aria-label="Number of contracts to send" data-testid="input-cash-grab-count" />
+                  <input className="cash-grab-number-input" type="number" min="1" max="6" step="1" value={bulkCount} onChange={(event) => onBulkCountChange(Math.min(6, Math.max(1, Math.trunc(Number(event.target.value) || 1))))} disabled={interactionDisabled} aria-label="Number of contracts to send" data-testid="input-cash-grab-count" />
                    <small>Contracts run one at a time</small>
                 </label>
               </div>

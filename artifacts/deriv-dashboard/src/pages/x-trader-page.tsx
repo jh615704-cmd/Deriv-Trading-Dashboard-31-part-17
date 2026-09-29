@@ -9,6 +9,7 @@ import {
   useGetDerivStatus,
   useGetDerivTokenStatus,
   useBulkBuyDerivContracts,
+  useDualBuyDerivContracts,
   useBuyDerivContract,
   useSellDerivContract,
   getDerivHistory,
@@ -362,6 +363,7 @@ export default function XTraderPage() {
   const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
+  const dualBuyMutation = useDualBuyDerivContracts();
   const digitFlipBuyMutation = useBuyDerivContract();
   const moneyBankBuyMutation = useBuyDerivContract();
   const moneyBankSellMutation = useSellDerivContract();
@@ -539,6 +541,7 @@ export default function XTraderPage() {
   const moneyBankScannerRotationRef = useRef(0);
   const moneyBankJdyScanInFlightRef = useRef(false);
   const cashGrabRunningRef = useRef(false);
+  const cashGrabRunIdRef = useRef(0);
   const cashGrabActionLockRef = useRef(false);
   const cashGrabRemainingTradesRef = useRef(0);
   const cashGrabCurrentStakeRef = useRef(.35);
@@ -906,6 +909,7 @@ export default function XTraderPage() {
     setEdgeAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
     setDigitFlipOutcomeSynced(false);
     setDigitFlipAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
+    setLiveConfirmed(false);
   }, [currentAccount?.id]);
 
   useEffect(() => {
@@ -1138,6 +1142,7 @@ export default function XTraderPage() {
     const epoch = status.data?.last_tick?.epoch;
     const digit = status.data?.last_digit;
     if (epoch == null || digit == null) return;
+    if (status.data?.last_tick?.symbol !== symbol) return;
     if (analysisEpochRef.current != null && epoch <= analysisEpochRef.current) return;
     analysisEpochRef.current = epoch;
     liveTickSequenceRef.current += 1;
@@ -1463,16 +1468,38 @@ export default function XTraderPage() {
   };
 
   const executeDualBatch = async () => {
-    const originalDirection = configRef.current.direction;
-    try {
-      for (const nextDirection of ["DIGITOVER", "DIGITUNDER"] as const) {
-        if (!runningRef.current) return;
-        configRef.current = { ...configRef.current, direction: nextDirection };
-        await executeBatch();
-      }
-    } finally {
-      configRef.current = { ...configRef.current, direction: originalDirection };
+    const config = configRef.current;
+    let latestRows = await getDerivHistory();
+    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
+      await sleep(500);
+      latestRows = await getDerivHistory();
     }
+    if (latestRows.some((trade) => trade.status === "open")) {
+      throw new Error("The previous contract is still settling. EDGE stopped without sending another dual trade.");
+    }
+    if (!runningRef.current) return;
+    const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
+    const declaredAccountBalance = Number(edgeAccountBalance);
+    if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
+      throw new Error("Sync the connected account balance before EDGE places another dual trade.");
+    }
+    if (amount * 2 > declaredAccountBalance || (currentAccount && amount * 2 > currentAccount.balance)) {
+      throw new Error(`EDGE stopped before the dual trade because the ${ (amount * 2).toFixed(2) } ${currentAccount?.currency ?? "USD"} stake exceeds the connected balance.`);
+    }
+    armMartingaleWatch(latestRows, amount, 2);
+    await dualBuyMutation.mutateAsync({
+      data: {
+        amount,
+        duration: config.duration,
+        duration_unit: "t",
+        barrier: config.barrier,
+        symbol: config.symbol,
+        confirm_live_trade: true,
+      },
+    });
+    await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
+    setSessionTrades((value) => value + 2);
+    refreshTradeResults();
   };
 
   const runLoop = async () => {
@@ -1529,15 +1556,9 @@ export default function XTraderPage() {
       setMoneyBankClosing(true);
       try {
         let latestRows = await getDerivHistory();
-        const openIds = new Set(
-          latestRows
-            .filter((trade) => trade.contract_type === "ACCU")
-            .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
-            .filter((trade) => trade.status === "open")
-            .map((trade) => trade.contract_id),
-        );
-        for (const contractId of openIds) {
-          await moneyBankSellMutation.mutateAsync({ data: { contract_id: contractId } });
+        const openContractId = moneyBankOpenContractIdRef.current;
+        if (openContractId && latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")) {
+          await moneyBankSellMutation.mutateAsync({ data: { contract_id: openContractId } });
         }
         await queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: "active" });
       } finally {
@@ -1687,7 +1708,7 @@ export default function XTraderPage() {
         text: `JDY AI confirmed the selected ${tradeSymbol} setup before entry.`,
       });
     }
-    const level = currentConfig.ladder[Math.min(6, moneyBankLevelRef.current)];
+    const level = currentConfig.ladder?.[Math.min(6, moneyBankLevelRef.current)];
     if (!level) throw new Error("Money Bank could not calculate the next recovery level.");
     const accountBalance = currentAccount?.balance ?? 0;
     if (!accountBalance || level.stake > accountBalance) {
@@ -1750,7 +1771,7 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Select a Deriv account before starting Money Bank." });
       return;
     }
-    if (config.ladder[0].stake > currentAccount.balance) {
+    if (!config.ladder?.[0] || config.ladder[0].stake > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "The calculated BASE is higher than the connected account balance." });
       return;
     }
@@ -1763,11 +1784,16 @@ export default function XTraderPage() {
         .map((trade) => trade.contract_id);
       moneyBankSessionKnownIdsRef.current = new Set(accumulatorIds);
       moneyBankProcessedSettlementIdsRef.current = new Set(accumulatorIds);
-      moneyBankOpenContractIdRef.current = latestRows.find((trade) =>
-        trade.contract_type === "ACCU"
-        && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
-        && trade.status === "open"
-      )?.contract_id ?? null;
+       const existingOpenAccumulator = latestRows.find((trade) =>
+         trade.contract_type === "ACCU"
+         && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
+         && trade.status === "open"
+       );
+       if (existingOpenAccumulator) {
+         setConnectionMessage({ kind: "info", text: "Money Bank is waiting for the existing Accumulator contract to settle before starting a new session." });
+         return;
+       }
+       moneyBankOpenContractIdRef.current = null;
       moneyBankLevelRef.current = 0;
       moneyBankConfigRef.current = config;
       moneyBankSafestSymbolRef.current = moneyBankSafestSymbol;
@@ -2035,7 +2061,8 @@ export default function XTraderPage() {
     setCashGrabJdyAi3Status(config.jdyAi3 ? "ready" : "off");
 
     const amount = Number(cashGrabCurrentStakeRef.current.toFixed(2));
-    if (!currentAccount || amount > currentAccount.balance) {
+    const batchCount = Math.max(1, Math.trunc(config.bulkCount));
+    if (!currentAccount || amount * batchCount > currentAccount.balance) {
       setConnectionMessage({ kind: "error", text: "Cash Grab stopped because the selected stake exceeds the connected balance." });
       cashGrabRunningRef.current = false;
       setCashGrabRunning(false);
@@ -2066,12 +2093,12 @@ export default function XTraderPage() {
           ...(contractType === "DIGITDIFF" ? { barrier: config.selectedDigit } : {}),
            ...(contractType === "ACCU" ? { growth_rate: config.growthRate / 100 } : {}),
           symbol: config.symbol,
-           count: 1,
+            count: batchCount,
           confirm_live_trade: true,
         },
       });
        cashGrabRemainingTradesRef.current -= 1;
-       setCashGrabTradeCount((value) => value + 1);
+       setCashGrabTradeCount((value) => value + batchCount);
        let afterRows = await claimFeatureRows(cashGrabClaimedHistoryIdsRef.current, latestRows, [...cashGrabContractTypes]) as typeof rows;
        let completed = reconcileCashGrabSession(afterRows);
        applyCashGrabSettlements(completed);
@@ -2097,8 +2124,8 @@ export default function XTraderPage() {
     }
   };
 
-  const runCashGrabLoop = async () => {
-    while (cashGrabRunningRef.current) {
+  const runCashGrabLoop = async (runId: number) => {
+    while (cashGrabRunningRef.current && cashGrabRunIdRef.current === runId) {
       try {
         const currentConfig = cashGrabConfigRef.current;
         if (currentConfig?.autoSwitchSafestPair) {
@@ -2106,9 +2133,9 @@ export default function XTraderPage() {
           const waitForScan = Math.max(0, nextScanAt - Date.now());
           if (waitForScan > 0) await sleep(waitForScan);
         }
-        if (!cashGrabRunningRef.current) break;
+        if (!cashGrabRunningRef.current || cashGrabRunIdRef.current !== runId) break;
         await executeCashGrabTrade();
-        if (cashGrabRunningRef.current) {
+        if (cashGrabRunningRef.current && cashGrabRunIdRef.current === runId) {
           const nextConfig = cashGrabConfigRef.current;
           if (nextConfig?.autoSwitchSafestPair) {
             const nextScanAt = cashGrabAutoSwitchNextAtRef.current ?? (Date.now() + 20_000);
@@ -2119,6 +2146,7 @@ export default function XTraderPage() {
           }
         }
       } catch (error) {
+        if (cashGrabRunIdRef.current !== runId) return;
         cashGrabRunningRef.current = false;
         setCashGrabRunning(false);
         setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -2198,6 +2226,7 @@ export default function XTraderPage() {
   };
 
   const stopCashGrab = () => {
+    cashGrabRunIdRef.current += 1;
     cashGrabRunningRef.current = false;
     cashGrabRemainingTradesRef.current = 0;
     cashGrabAutoSwitchNextAtRef.current = null;
@@ -2214,6 +2243,7 @@ export default function XTraderPage() {
   };
 
   const startCashGrab = async (requestedConfig?: CashGrabStartConfig) => {
+    if (cashGrabRunningRef.current) return;
     if (cashGrabClosePromiseRef.current || cashGrabStopping) {
       setConnectionMessage({ kind: "info", text: "Cash Grab is finishing MONEY STOP. Start again when the active contracts are closed." });
       return;
@@ -2240,9 +2270,11 @@ export default function XTraderPage() {
     cashGrabSessionKnownIdsRef.current = new Set(existingIds);
     cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
     cashGrabConfigRef.current = config;
+    // The selected count is the size of one batch. Manual mode sends that
+    // batch once; auto-switch mode continues with fresh batches.
     cashGrabRemainingTradesRef.current = config.autoSwitchSafestPair
       ? Number.MAX_SAFE_INTEGER
-      : Math.max(1, Math.trunc(config.bulkCount));
+      : 1;
     cashGrabCurrentStakeRef.current = Number(config.stake.toFixed(2));
     cashGrabSessionPnlRef.current = 0;
     cashGrabAutoSwitchNextAtRef.current = config.autoSwitchSafestPair ? 0 : null;
@@ -2254,7 +2286,8 @@ export default function XTraderPage() {
     setCashGrabAutoSwitchSafestPairStatus(config.autoSwitchSafestPair ? "watching" : "off");
     cashGrabRunningRef.current = true;
     setCashGrabRunning(true);
-    void runCashGrabLoop();
+    const runId = ++cashGrabRunIdRef.current;
+    void runCashGrabLoop(runId);
   };
 
   const deactivateCashGrab = () => {
@@ -2267,6 +2300,10 @@ export default function XTraderPage() {
   };
 
   const toggleCashGrab = (enabled: boolean) => {
+    if (enabled && !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling Cash Grab." });
+      return;
+    }
     setCashGrabEnabled(enabled);
     if (!enabled) {
       stopCashGrab();
@@ -2311,6 +2348,10 @@ export default function XTraderPage() {
   };
 
   const toggleXTrader = (enabled: boolean) => {
+    if (enabled && !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling EDGE." });
+      return;
+    }
     setXTraderEnabled(enabled);
     if (!enabled) {
       stop();
@@ -2323,11 +2364,15 @@ export default function XTraderPage() {
     setDigitFlipRunning(false);
     setTradeXEnabled(false);
     setBulkTraderEnabled(false);
-    void selectMarket(moneyBankSymbol);
+    void selectMarket(symbol);
   };
 
   const toggleMoneyBank = (enabled: boolean) => {
     if (enabled && !canUseMoneyBank) return;
+    if (enabled && !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling Money Bank." });
+      return;
+    }
     setEdge2Enabled(enabled);
     if (!enabled) {
       deactivateMoneyBank();
@@ -2675,6 +2720,10 @@ export default function XTraderPage() {
   };
 
   const toggleDigitFlip = (enabled: boolean) => {
+    if (enabled && !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling DigitFlip." });
+      return;
+    }
     setDigitFlipEnabled(enabled);
     if (!enabled) {
       digitFlipRunningRef.current = false;
@@ -2797,6 +2846,10 @@ export default function XTraderPage() {
   };
 
   const toggleTradeX = (enabled: boolean) => {
+    if (enabled && !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling Trade X." });
+      return;
+    }
     setTradeXEnabled(enabled);
     if (enabled) {
       deactivateMoneyBank();
@@ -2809,12 +2862,17 @@ export default function XTraderPage() {
       stop();
       autoSwitchRef.current = false;
       setAutoSwitch(false);
+      void selectMarket(tradeXSymbol);
       return;
     }
     setTradeXMessage("Trade X paused.");
   };
 
   const toggleBulkTrader = (enabled: boolean) => {
+    if (enabled && !isConnected) {
+      setConnectionMessage({ kind: "error", text: "Connect Deriv before enabling Bulk Trader." });
+      return;
+    }
     setBulkTraderEnabled(enabled);
     if (!enabled) return;
     deactivateMoneyBank();
@@ -2826,6 +2884,7 @@ export default function XTraderPage() {
     digitFlipRunningRef.current = false;
     setRunning(false);
     setDigitFlipRunning(false);
+    void selectMarket(bulkTraderSymbol);
   };
 
   const executeBulkTrade = async (contractType: BulkTraderContractType, barrierOverride?: number) => {
@@ -2909,7 +2968,7 @@ export default function XTraderPage() {
           duration,
           duration_unit: "t",
           contract_type: contractType,
-           barrier: entryDigit,
+          barrier: entryDigit,
           symbol: configRef.current.symbol,
           count: 1,
           confirm_live_trade: true,
@@ -2952,19 +3011,26 @@ export default function XTraderPage() {
     }
     edgeActionLockRef.current = true;
     try {
-      const originalDirection = configRef.current.direction;
-      try {
-        await fireTrade("DIGITOVER", true);
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          const latestRows = await getDerivHistory();
-          if (!latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) break;
-          await sleep(500);
-        }
-        configRef.current = { ...configRef.current, direction: "DIGITUNDER" };
-        await fireTrade("DIGITUNDER", true);
-      } finally {
-        configRef.current = { ...configRef.current, direction: originalDirection };
+      const latestRows = await getDerivHistory();
+      if (latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) {
+        setConnectionMessage({ kind: "info", text: "The previous EDGE contract is still settling. Wait before sending another dual trade." });
+        return;
       }
+      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+      armMartingaleWatch(latestRows, amount, 2);
+      await dualBuyMutation.mutateAsync({
+        data: {
+          amount,
+          duration,
+          duration_unit: "t",
+          barrier: configRef.current.barrier,
+          symbol: configRef.current.symbol,
+          confirm_live_trade: true,
+        },
+      });
+      await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
+      setSessionTrades((value) => value + 2);
+      await queryClient.invalidateQueries();
     } catch (error) {
       martingaleWatchRef.current = null;
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -3024,6 +3090,14 @@ export default function XTraderPage() {
   };
 
   const accountOptions = accounts.data ?? [];
+  const anyFeatureRunning = running
+    || xTraderEnabled
+    || tradeXEnabled
+    || digitFlipEnabled
+    || bulkTraderEnabled
+    || cashGrabRunning
+    || cashGrabStopping
+    || moneyBankRunning;
   const entryDigit = barrier;
   const activeGuidePages = guideMode === "trade-x"
     ? tradeXGuidePages
@@ -3077,7 +3151,13 @@ export default function XTraderPage() {
           <strong><span>{currentAccount?.currency ?? "USD"}</span>{(currentAccount?.balance ?? 0).toFixed(2)}</strong>
           <div>{currentAccount?.id ?? "No account connected"} <b className={isReal ? "real" : ""}>{currentAccount?.type ?? "—"}</b></div>
         </div>
-         <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, { onSuccess: () => void queryClient.invalidateQueries() })} disabled={!accountOptions.length || running || moneyBankRunning || digitFlipRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending || accountMutation.isPending}>
+         <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, {
+           onSuccess: () => {
+             setLiveConfirmed(false);
+             void queryClient.invalidateQueries();
+           },
+           onError: (error) => setConnectionMessage({ kind: "error", text: errorMessage(error) }),
+         })} disabled={!accountOptions.length || anyFeatureRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending || accountMutation.isPending}>
           {!accountOptions.length && <option value="">Connect PAT first</option>}
           {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
         </select><ChevronDown size={15} /></div></label>
@@ -3739,7 +3819,7 @@ export default function XTraderPage() {
           tradeCount={cashGrabTradeCount}
           clearArmed={cashGrabClearArmed}
           historyFading={historyFading}
-          onContractFamilyChange={(next) => {
+           onContractFamilyChange={(next) => {
             setCashGrabFamily(next);
              if (next === "accumulator") setCashGrabDuration(CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS);
             if (next === "even-odd" && cashGrabDirection !== "DIGITEVEN" && cashGrabDirection !== "DIGITODD") setCashGrabDirection("DIGITEVEN");
@@ -3774,9 +3854,7 @@ export default function XTraderPage() {
                 cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: false };
               }
               if (!cashGrabAutoSwitchSafestPair && cashGrabRunning) stopCashGrab();
-            } else if (!cashGrabRunning && cashGrabConfigRef.current) {
-              void startCashGrab({ ...cashGrabConfigRef.current, jdyAi3: true });
-            } else if (cashGrabConfigRef.current) {
+             } else if (cashGrabConfigRef.current) {
               cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: true };
             }
           }}

@@ -44,13 +44,10 @@ export async function bootstrapAdmin(): Promise<void> {
         password: initialPassword,
         publicMetadata: { role: "admin" },
       });
-    } else if (initialPassword) {
-      user = await clerk.users.updateUser(user.id, {
-        password: initialPassword,
-        signOutOfOtherSessions: true,
-      });
-      if (user.totpEnabled) await clerk.users.deleteUserTOTP(user.id);
-      if (user.backupCodeEnabled) await clerk.users.deleteUserBackupCodes(user.id);
+    } else {
+      // The configured password is an initial bootstrap credential, not a
+      // recurring reset. Reapplying it on every restart would silently revoke
+      // sessions and remove MFA configured by the administrator.
       if (user.banned) user = await clerk.users.unbanUser(user.id);
       if (user.locked) user = await clerk.users.unlockUser(user.id);
     }

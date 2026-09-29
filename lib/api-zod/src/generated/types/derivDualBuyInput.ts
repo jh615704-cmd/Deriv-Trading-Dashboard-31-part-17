@@ -10,10 +10,7 @@ import type { DerivDualBuyInputDurationUnit } from './derivDualBuyInputDurationU
 export interface DerivDualBuyInput {
   /** @exclusiveMinimum 0 */
   amount: number;
-  /**
-     * @minimum 1
-     * @maximum 6
-     */
+  /** @minimum 1 */
   duration: number;
   duration_unit: DerivDualBuyInputDurationUnit;
   /**
