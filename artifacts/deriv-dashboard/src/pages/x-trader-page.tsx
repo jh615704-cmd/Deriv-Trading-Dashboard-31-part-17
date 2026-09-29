@@ -530,6 +530,7 @@ export default function XTraderPage() {
   const analysisEpochRef = useRef<number | null>(null);
   const tradeXActionLockRef = useRef(false);
   const edgeActionLockRef = useRef(false);
+  const edgeSettlementLockRef = useRef(false);
   const bulkActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
   const moneyBankRunningRef = useRef(false);
@@ -1421,7 +1422,31 @@ export default function XTraderPage() {
     return latestRows;
   };
 
+  const waitForEdgeSettlement = async (contractIds: readonly string[]) => {
+    if (!contractIds.length) return;
+    const expectedIds = new Set(contractIds);
+    let latestRows = await getDerivHistory();
+    let sawContract = false;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const matching = latestRows.filter((trade) => expectedIds.has(trade.contract_id));
+      if (matching.length) sawContract = true;
+      if (sawContract && matching.every((trade) => trade.status !== "open")) {
+        queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+        return;
+      }
+      // Allow the history stream time to publish the buy acknowledgement. The
+      // next EDGE entry must never race that update, even for a one-tick trade.
+      await sleep(500);
+      latestRows = await getDerivHistory();
+    }
+    throw new Error("EDGE stopped because the previous trade did not settle in time.");
+  };
+
   const executeBatch = async () => {
+    if (edgeSettlementLockRef.current) return;
+    edgeSettlementLockRef.current = true;
+    edgeActionLockRef.current = true;
+    try {
     const config = configRef.current;
     const entryDigit = config.barrier;
     // Do not decide the next stake from an older settled result while the
@@ -1450,7 +1475,7 @@ export default function XTraderPage() {
       throw new Error(`EDGE stopped before the next trade because the ${amount.toFixed(2)} ${currentAccount?.currency ?? "USD"} stake exceeds the connected balance. Lower the stake or Martingale multiplier.`);
     }
     armMartingaleWatch(latestRows, amount, 1);
-    await bulkBuyMutation.mutateAsync({
+    const result = await bulkBuyMutation.mutateAsync({
       data: {
         amount,
         duration: config.duration,
@@ -1463,11 +1488,20 @@ export default function XTraderPage() {
       },
     });
     await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
+    await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
     setSessionTrades((value) => value + 1);
     refreshTradeResults();
+    } finally {
+      edgeActionLockRef.current = false;
+      edgeSettlementLockRef.current = false;
+    }
   };
 
   const executeDualBatch = async () => {
+    if (edgeSettlementLockRef.current) return;
+    edgeSettlementLockRef.current = true;
+    edgeActionLockRef.current = true;
+    try {
     const config = configRef.current;
     let latestRows = await getDerivHistory();
     for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
@@ -1487,7 +1521,7 @@ export default function XTraderPage() {
       throw new Error(`EDGE stopped before the dual trade because the ${ (amount * 2).toFixed(2) } ${currentAccount?.currency ?? "USD"} stake exceeds the connected balance.`);
     }
     armMartingaleWatch(latestRows, amount, 2);
-    await dualBuyMutation.mutateAsync({
+    const result = await dualBuyMutation.mutateAsync({
       data: {
         amount,
         duration: config.duration,
@@ -1498,8 +1532,13 @@ export default function XTraderPage() {
       },
     });
     await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
+    await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
     setSessionTrades((value) => value + 2);
     refreshTradeResults();
+    } finally {
+      edgeActionLockRef.current = false;
+      edgeSettlementLockRef.current = false;
+    }
   };
 
   const runLoop = async () => {
@@ -2929,32 +2968,33 @@ export default function XTraderPage() {
     setDuration(next);
   };
 
-  const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER", internalDual = false) => {
-    if (edgeActionLockRef.current && !internalDual) return;
+  const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
+    if (edgeActionLockRef.current || edgeSettlementLockRef.current) return;
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
       return;
     }
-    if (edgePercentageModeRef.current) {
-      const recommendation = await applyPercentageRecommendation();
-      if (!recommendation) return;
-      if (recommendation.direction === "DUAL" || recommendation.direction !== contractType) {
-        setConnectionMessage({
-          kind: "info",
-          text: `Percentage Scan recommends ${recommendation.direction === "DUAL" ? "Dual" : recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol}; no ${contractType === "DIGITOVER" ? "Over" : "Under"} trade was sent.`,
-        });
+    edgeActionLockRef.current = true;
+    edgeSettlementLockRef.current = true;
+    try {
+      if (edgePercentageModeRef.current) {
+        const recommendation = await applyPercentageRecommendation();
+        if (!recommendation) return;
+        if (recommendation.direction === "DUAL" || recommendation.direction !== contractType) {
+          setConnectionMessage({
+            kind: "info",
+            text: `Percentage Scan recommends ${recommendation.direction === "DUAL" ? "Dual" : recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol}; no ${contractType === "DIGITOVER" ? "Over" : "Under"} trade was sent.`,
+          });
+          return;
+        }
+      }
+      const amount = strategy === "martingale" ? nextStakeRef.current : stake;
+      const entryDigit = configRef.current.barrier;
+      if (currentAccount && amount > currentAccount.balance) {
+        setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
         return;
       }
-    }
-    const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-    const entryDigit = configRef.current.barrier;
-    if (currentAccount && amount > currentAccount.balance) {
-      setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
-      return;
-    }
-    if (!internalDual) edgeActionLockRef.current = true;
-    try {
       const latestRows = await getDerivHistory();
       if (latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) {
         setConnectionMessage({ kind: "info", text: "The previous EDGE contract is still settling. Wait before sending another trade." });
@@ -2962,7 +3002,7 @@ export default function XTraderPage() {
       }
       queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
       armMartingaleWatch(latestRows, amount, 1);
-      await bulkBuyMutation.mutateAsync({
+      const result = await bulkBuyMutation.mutateAsync({
         data: {
           amount,
           duration,
@@ -2975,6 +3015,7 @@ export default function XTraderPage() {
         },
       });
       await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
+      await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
       setDirection(contractType);
       setSessionTrades((value) => value + 1);
       await queryClient.invalidateQueries();
@@ -2982,35 +3023,37 @@ export default function XTraderPage() {
       martingaleWatchRef.current = null;
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
     } finally {
-      if (!internalDual) edgeActionLockRef.current = false;
+      edgeActionLockRef.current = false;
+      edgeSettlementLockRef.current = false;
     }
   };
 
   const fireDualTrade = async () => {
-    if (edgeActionLockRef.current) return;
+    if (edgeActionLockRef.current || edgeSettlementLockRef.current) return;
     if (!isConnected) return;
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
       return;
     }
-    if (edgePercentageModeRef.current) {
-      const recommendation = await applyPercentageRecommendation();
-      if (!recommendation) return;
-      if (recommendation.direction !== "DUAL") {
-        setConnectionMessage({
-          kind: "info",
-          text: `Percentage Scan recommends ${recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol}; Dual was not sent.`,
-        });
+    edgeActionLockRef.current = true;
+    edgeSettlementLockRef.current = true;
+    try {
+      if (edgePercentageModeRef.current) {
+        const recommendation = await applyPercentageRecommendation();
+        if (!recommendation) return;
+        if (recommendation.direction !== "DUAL") {
+          setConnectionMessage({
+            kind: "info",
+            text: `Percentage Scan recommends ${recommendation.direction === "DIGITOVER" ? "Over" : "Under"} ${recommendation.digit} on ${recommendation.symbol}; Dual was not sent.`,
+          });
+          return;
+        }
+      }
+      const amount = strategy === "martingale" ? nextStakeRef.current : stake;
+      if (currentAccount && amount * 2 > currentAccount.balance) {
+        setConnectionMessage({ kind: "error", text: "The dual stake is higher than the available balance." });
         return;
       }
-    }
-    const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-    if (currentAccount && amount * 2 > currentAccount.balance) {
-      setConnectionMessage({ kind: "error", text: "The dual stake is higher than the available balance." });
-      return;
-    }
-    edgeActionLockRef.current = true;
-    try {
       const latestRows = await getDerivHistory();
       if (latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) {
         setConnectionMessage({ kind: "info", text: "The previous EDGE contract is still settling. Wait before sending another dual trade." });
@@ -3018,7 +3061,7 @@ export default function XTraderPage() {
       }
       queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
       armMartingaleWatch(latestRows, amount, 2);
-      await dualBuyMutation.mutateAsync({
+      const result = await dualBuyMutation.mutateAsync({
         data: {
           amount,
           duration,
@@ -3029,6 +3072,7 @@ export default function XTraderPage() {
         },
       });
       await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
+      await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
       setSessionTrades((value) => value + 2);
       await queryClient.invalidateQueries();
     } catch (error) {
@@ -3036,6 +3080,7 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
     } finally {
       edgeActionLockRef.current = false;
+      edgeSettlementLockRef.current = false;
     }
   };
   const clearHistory = async () => {
