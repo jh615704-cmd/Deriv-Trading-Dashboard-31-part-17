@@ -668,7 +668,17 @@ importers:
         version: 0.31.10
 
   scripts:
+    dependencies:
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      pino-http:
+        specifier: ^10.5.0
+        version: 10.5.0
     devDependencies:
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.5
