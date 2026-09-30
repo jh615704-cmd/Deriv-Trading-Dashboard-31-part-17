@@ -287,7 +287,7 @@ export default function DigitFlipPanel({
           </div>
           <div className="df-best-copy">
             <span>BEST PARITY TO TRADE NOW</span>
-            <p><strong>{bestRate.toFixed(1)}% score</strong><em>·</em> payout 185% <em>·</em> {bestLabel}</p>
+            <p><strong>{bestRate.toFixed(1)}% score</strong><em>·</em> payout varies by quote <em>·</em> {bestLabel}</p>
           </div>
         </div>
       </section>
@@ -341,7 +341,7 @@ export default function DigitFlipPanel({
                   <span>
                     <b>{option.label}</b>
                     {index === 0 && <small>BEST</small>}
-                    <em>recent {rate.toFixed(0)}% · payout 185% · 200 ticks</em>
+                    <em>recent {rate.toFixed(0)}% · payout varies by quote · 200 ticks</em>
                   </span>
                   <strong>{renderMarketRate(signal)}</strong>
                 </button>

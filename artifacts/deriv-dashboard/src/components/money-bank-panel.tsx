@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Download, Info, Play, RefreshCw, RotateCcw, ShieldCheck, Square, TrendingUp, Trash2 } from "lucide-react";
+import { estimateAccumulatorReturnRate } from "../lib/money-bank-math";
 import "./money-bank-panel.css";
 
 export type MoneyBankStrategy = "budget" | "manual";
@@ -138,9 +139,7 @@ export function calculateRecoveryLadder(input: {
   growthRate: number;
   takeProfitTicks: number;
 }): MoneyBankLadderLevel[] {
-  const growth = clamp(input.growthRate, 1, 5) / 100;
-  const ticks = clamp(input.takeProfitTicks, 5, 50);
-  const payout = Math.max(0.08, Math.pow(1 + growth, ticks) - 1);
+  const payout = estimateAccumulatorReturnRate(input.growthRate, input.takeProfitTicks);
   const ratio = clamp(1.12 + (0.08 / (payout + 0.16)), 1.14, 1.42);
   const factors = LEVEL_NAMES.map((_, index) => Math.pow(ratio, index));
   const requestedBase = input.strategy === "budget"
@@ -240,7 +239,7 @@ export function MoneyBankPanel({
     growthRate,
     takeProfitTicks,
   });
-  const estimatedReturn = (Math.pow(1 + growthRate / 100, takeProfitTicks) - 1) * 100;
+  const estimatedReturn = estimateAccumulatorReturnRate(growthRate, takeProfitTicks) * 100;
   const recoveryStart = Math.max(5, Math.round(takeProfitTicks * 0.16));
   const selectedMarket = markets.find(([market]) => market === symbol)?.[1] ?? symbol;
   const totalCycleRisk = ladder.at(-1)?.cumulative ?? 0;

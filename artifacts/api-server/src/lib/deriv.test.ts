@@ -11,6 +11,8 @@ type BuyBehavior = "ack" | "reject" | "disconnect";
 
 let buyBehavior: BuyBehavior = "ack";
 let proposalNumber = 0;
+let proposalPayoutOverride: number | null = null;
+let buyPayoutOverride: number | null = null;
 const sockets: FakeWebSocket[] = [];
 
 class FakeWebSocket extends EventEmitter {
@@ -80,7 +82,7 @@ function handleClientMessage(socket: FakeWebSocket, message: SocketMessage) {
       proposal: {
         id: proposalId,
         ask_price: 1.25 + proposalNumber,
-        payout: 2.5 + proposalNumber,
+        payout: proposalPayoutOverride ?? 2.5 + proposalNumber,
         spot: 75.5,
         longcode: `proposal ${proposalNumber}`,
       },
@@ -111,7 +113,7 @@ function handleClientMessage(socket: FakeWebSocket, message: SocketMessage) {
     buy: {
       contract_id: `contract-${message.buy === "1" ? message.req_id ?? message.buy : message.buy}`,
       buy_price: message.price,
-      payout: 4.5,
+      payout: buyPayoutOverride ?? 4.5,
       start_time: 1_700_000_000,
     },
   });
@@ -163,6 +165,8 @@ before(() => {
 beforeEach(() => {
   buyBehavior = "ack";
   proposalNumber = 0;
+  proposalPayoutOverride = null;
+  buyPayoutOverride = null;
   sockets.length = 0;
 });
 
@@ -331,6 +335,27 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
       assert.equal(deriv.getHistory()[0].profit, 2.25);
        assert.equal(deriv.getHistory()[0].current_value, 4.5);
       assert.equal(deriv.getHistory()[0].sell_time, 1_700_000_001);
+    });
+  });
+
+  test("preserves the complete Deriv payout in quote, buy, and history responses", async () => {
+    const fullPayout = 125_000.75;
+    proposalPayoutOverride = fullPayout;
+    buyPayoutOverride = fullPayout;
+
+    const result = await withSelectedAccount("full-payout-user", () => deriv.buyContract({
+      amount: 1,
+      duration: 1,
+      duration_unit: "t",
+      contract_type: "DIGITEVEN",
+      symbol: "R_75",
+      confirm_live_trade: true,
+    }));
+
+    assert.equal(result.proposal.payout, fullPayout);
+    assert.equal(result.buy.payout, fullPayout);
+    await inUser("full-payout-user", async () => {
+      assert.equal(deriv.getHistory()[0]?.payout, fullPayout);
     });
   });
 
