@@ -1,21 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Activity, Trash2 } from "lucide-react";
-
-export type DerivHistoryRow = {
-  contract_id: string;
-  contract_type: string;
-  symbol: string;
-  account_type?: string;
-  barrier?: number | null;
-  buy_price: number;
-  current_value?: number | null;
-  payout?: number | null;
-  profit: number;
-  status: string;
-  buy_time?: number | null;
-  sell_time?: number | null;
-};
+import { createDerivHistoryRowView, type DerivHistoryRow } from "../lib/deriv-history";
+export type { DerivHistoryRow } from "../lib/deriv-history";
 
 type Props = {
   title: string;
@@ -28,15 +15,6 @@ type Props = {
   sessionPnl?: number;
   sessionTradeCount?: number;
   actions?: ReactNode;
-};
-
-const money = (amount: number, currency?: string) =>
-  `${currency ? `${currency} ` : ""}${amount.toFixed(2)}`;
-
-const timeLabel = (epoch?: number | null) => {
-  if (epoch == null || !Number.isFinite(epoch)) return "—";
-  const date = new Date(epoch * 1000);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 };
 
 export default function DerivHistory({ title, strategy, rows, currency, clearArmed = false, fading = false, onClear, sessionPnl, sessionTradeCount, actions }: Props) {
@@ -71,20 +49,12 @@ export default function DerivHistory({ title, strategy, rows, currency, clearArm
       </nav>
       <div className="deriv-history-list">
         {!visible.length ? <div className="deriv-history-empty">{rows.length ? "No contracts match this filter." : "Deriv contracts will appear here when this feature trades."}</div> : visible.map((row) => {
-          const status = row.status.toLowerCase();
-          const open = status === "open";
-          const outcome = open ? "OPEN" : row.profit > 0 ? "WON" : row.profit < 0 ? "LOST" : status.toUpperCase();
-          const barrier = row.barrier == null ? "" : ` · ${row.contract_type.startsWith("DIGIT") ? "digit" : "barrier"} ${row.barrier}`;
+          const view = createDerivHistoryRowView(row, currency);
           return <article className="deriv-history-row" key={row.contract_id} data-testid={`deriv-history-${row.contract_id}`}>
-            <div className="deriv-history-rowtop"><span className="deriv-history-feature">{strategy}</span><b className={`deriv-history-profit ${row.profit < 0 ? "negative" : "positive"}`}>{row.profit >= 0 ? "+" : ""}{money(row.profit, currency)}</b></div>
-            <div className="deriv-history-market"><b>{row.symbol}</b><span className="deriv-history-account">{row.account_type?.toUpperCase() ?? "ACCOUNT —"}</span><span className={`deriv-history-outcome ${open ? "open" : row.profit < 0 ? "loss" : "win"}`}>{outcome}</span><strong>{row.contract_type.replace("DIGIT", "")}{barrier}</strong></div>
+            <div className="deriv-history-rowtop"><span className="deriv-history-feature">{strategy}</span><b className={`deriv-history-profit ${view.profitClass}`}>{view.profit}</b></div>
+            <div className="deriv-history-market"><b>{view.symbol}</b><span className="deriv-history-account">{view.account}</span><span className={`deriv-history-outcome ${view.outcomeClass}`}>{view.outcome}</span><strong>{view.contract}{view.barrier ? ` · ${view.barrier}` : ""}</strong></div>
             <div className="deriv-history-details">
-              <span><small>OPENED</small><b>{timeLabel(row.buy_time)}</b></span>
-              <span><small>SETTLED</small><b>{timeLabel(row.sell_time)}</b></span>
-              <span><small>STAKE</small><b>{money(row.buy_price, currency)}</b></span>
-              {row.current_value != null && <span><small>CURRENT VALUE</small><b>{money(row.current_value, currency)}</b></span>}
-              {row.payout != null && <span><small>FULL PAYOUT</small><b>{money(row.payout, currency)}</b></span>}
-              <span><small>STATUS</small><b>{row.status}</b></span>
+              {view.details.map((detail) => <span key={detail.label}><small>{detail.label}</small><b>{detail.value}</b></span>)}
             </div>
           </article>;
         })}
