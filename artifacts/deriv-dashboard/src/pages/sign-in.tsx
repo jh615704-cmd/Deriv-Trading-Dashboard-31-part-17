@@ -54,10 +54,10 @@ export default function SignInPage() {
         <div className="flex justify-center mb-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl rounded-tr-sm bg-[#1bb59f] flex items-center justify-center text-[#0d2a32] text-xl font-black tracking-tighter">
-              J
+              S
             </div>
-            <span className="font-bold tracking-widest text-sm text-[#102f38] dark:text-[#f3fbf9]">
-              JDY <span className="text-[#18a894] dark:text-[#35d6b6]">AI</span>
+            <span className="font-bold tracking-wide text-sm text-[#102f38] dark:text-[#f3fbf9]">
+              Shadow Ai Trading <span className="text-[#18a894] dark:text-[#35d6b6]">AI Trading</span>
             </span>
           </div>
         </div>

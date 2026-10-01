@@ -49,8 +49,8 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
       <aside className="sidebar">
         <div>
           <div className="brand-lockup">
-            <span className="brand-mark">J</span>
-            <span>JDY <b>AI</b></span>
+            <span className="brand-mark">S</span>
+            <span>Shadow Ai Trading <b>AI Trading</b></span>
           </div>
           <p className="sidebar-kicker">Connection center</p>
           <nav className="sidebar-nav" aria-label="Primary navigation">

@@ -6,10 +6,9 @@ import {
   Play,
   ShieldCheck,
   Square,
-  Trash2,
-  Wallet,
   Wifi,
 } from "lucide-react";
+import DerivHistory from "./deriv-history";
 import "./cash-grab-panel.css";
 
 export type CashGrabContractFamily = "even-odd" | "rise-fall" | "differs" | "accumulator";
@@ -37,6 +36,10 @@ export interface CashGrabTrade {
   profit: number;
   status: string;
   current_value?: number | null;
+  payout?: number | null;
+  barrier?: number | null;
+  buy_time?: number | null;
+  sell_time?: number | null;
 }
 
 export interface CashGrabStartConfig {
@@ -138,37 +141,6 @@ const clamp = (value: number, minimum: number, maximum: number) =>
 const formatMoney = (value: number, currency: string) =>
   `${currency === "USD" ? "$" : `${currency} `}${value.toFixed(2)}`;
 
-const statusLabel = (status: CashGrabAiStatus, enabled: boolean) => {
-  if (!enabled || status === "off") return "OFF";
-  if (status === "ready") return "READY";
-  if (status === "watching") return "SCANNING";
-  if (status === "quiet") return "HOLD";
-  if (status === "blocked") return "STOPPED";
-  return "ON";
-};
-
-const statusDescription = (status: CashGrabAiStatus, enabled: boolean) => {
-  if (!enabled || status === "off") return "Parent-controlled gate is off";
-  if (status === "ready") return "Idle until MONEY START";
-  if (status === "watching") return "Reading the selected market";
-  if (status === "quiet") return "Waiting for a calmer entry";
-  if (status === "blocked") return "Entry held by the parent guard";
-  return "Ready for the next parent decision";
-};
-
-function outcomeForTrade(trade: CashGrabTrade) {
-  const open = trade.status.toLowerCase() === "open";
-  if (open && trade.contract_type === "ACCU") {
-    if (trade.profit > 0) return { label: "ACCUMULATING", tone: "positive" };
-    if (trade.profit < 0) return { label: "RUNNING", tone: "negative" };
-    return { label: "LIVE", tone: "open" };
-  }
-  if (open) return { label: "OPEN", tone: "open" };
-  if (trade.profit > 0) return { label: "WON", tone: "positive" };
-  if (trade.profit < 0) return { label: "LOST", tone: "negative" };
-  return { label: "CLOSED", tone: "neutral" };
-}
-
 export default function CashGrabPanel({
   contractFamily,
   direction,
@@ -189,13 +161,9 @@ export default function CashGrabPanel({
   balancePercentage,
   multiplier,
   jdyAi2,
-  jdyAi2Status = "off",
   jdyAi3,
   jdyAi3Available,
-  jdyAi3Status = "off",
   autoSwitchSafestPair,
-  autoSwitchSafestPairStatus = "off",
-  autoSwitchSafestPairRecommendation = null,
   running,
   stopping = false,
   isConnected,
@@ -211,14 +179,11 @@ export default function CashGrabPanel({
   onDirectionChange,
   onSymbolChange,
   onAutoSelectBestChange,
-  onAutoSwitchSafestPairChange,
   onSelectedDigitChange,
   onStakeChange,
   onGrowthRateChange,
   onBulkCountChange,
   onDurationChange,
-  onSyncBalanceChange,
-  onBalancePercentageChange,
   onMultiplierChange,
   onJdyAi2Change,
   onJdyAi3Change,
@@ -235,7 +200,6 @@ export default function CashGrabPanel({
   const visibleBalancePercentage = Math.max(0.5, balancePercentage);
   const minimumStake = contractFamily === "accumulator" ? 1 : 0.35;
   const syncedStake = accountBalance == null ? null : accountBalance * (visibleBalancePercentage / 100);
-  const displayedSessionPnl = sessionPnl >= 0 ? `+${formatMoney(sessionPnl, currency)}` : formatMoney(sessionPnl, currency);
   const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
   const interactionDisabled = running || isPlacingTrade;
 
@@ -461,67 +425,6 @@ export default function CashGrabPanel({
                <p className="cash-grab-execution-summary"><span>{contractFamilies.find((item) => item.value === contractFamily)?.label}</span><b>{selectedSymbolLabel} · digit {selectedDigit}</b><em>{contractFamily === "accumulator" ? `${bulkCount} contract${bulkCount === 1 ? "" : "s"} · ${growthRate}% growth` : `${bulkCount} contract${bulkCount === 1 ? "" : "s"} · ${duration} ${duration === 1 ? "tick" : "ticks"}`}</em></p>
             </section>
 
-            <section className="cash-grab-card cash-grab-balance-card">
-              <div className="cash-grab-card-heading">
-                <div><span className="cash-grab-overline">05 · BALANCE CONTROL</span><h4>Keep funds visible</h4></div>
-                <span className="cash-grab-balance-badge"><Wallet size={13} />{accountBalance == null ? "—" : formatMoney(accountBalance, currency)}</span>
-              </div>
-              <label className="cash-grab-toggle-row">
-                <span className="cash-grab-toggle-copy"><b>SYNC BALANCE</b><small>{syncBalance ? `Stake follows ${visibleBalancePercentage.toFixed(1)}% of balance` : "Use the manual stake above"}</small></span>
-                <input type="checkbox" checked={syncBalance} onChange={(event) => onSyncBalanceChange(event.target.checked)} disabled={interactionDisabled || accountBalance == null} aria-label="Sync stake to account balance" />
-                <i aria-hidden="true" />
-              </label>
-              <div className={`cash-grab-sync-detail ${syncBalance ? "enabled" : ""}`}>
-                <div className="cash-grab-sync-title"><span>DOUBLE SYNC</span><small>Selected balance percentage</small></div>
-                <label className="cash-grab-percent-input">
-                  <input type="number" min="0.5" step="0.1" value={visibleBalancePercentage} onChange={(event) => onBalancePercentageChange(Math.max(0.5, Number(event.target.value) || 0.5))} disabled={interactionDisabled || !syncBalance} aria-label="Selected balance percentage" />
-                  <b>%</b>
-                </label>
-                <p>{syncBalance && syncedStake != null ? `Current synced stake: ${formatMoney(Math.max(0.35, syncedStake), currency)} per contract.` : "Sync is optional. The parent retains final balance guards."}</p>
-              </div>
-            </section>
-
-            <section className="cash-grab-card cash-grab-ai-card">
-              <div className="cash-grab-card-heading">
-                <div><span className="cash-grab-overline">06 · GATE STATUS</span><h4>Quiet decision surfaces</h4></div>
-                <span className="cash-grab-ai-disclaimer">OBSERVATION ONLY</span>
-              </div>
-              <label className="cash-grab-toggle-row">
-                <span className="cash-grab-toggle-copy"><b>JDY AI 2</b><small>{statusDescription(jdyAi2Status, jdyAi2)}</small></span>
-                <input type="checkbox" checked={jdyAi2} onChange={(event) => onJdyAi2Change(event.target.checked)} disabled={interactionDisabled || !isConnected} aria-label="Enable JDY AI 2" />
-                <i aria-hidden="true" />
-                <strong className={`cash-grab-ai-status ${jdyAi2 ? jdyAi2Status : "off"}`}>{statusLabel(jdyAi2Status, jdyAi2)}</strong>
-              </label>
-              <label className="cash-grab-toggle-row">
-                <span className="cash-grab-toggle-copy"><b>JDY AI 3</b><small>{statusDescription(jdyAi3Status, jdyAi3)}</small></span>
-                 <input type="checkbox" checked={jdyAi3} onChange={(event) => onJdyAi3Change(event.target.checked)} disabled={!jdyAi3Available || isPlacingTrade || !isConnected} aria-label="Enable JDY AI 3" />
-                <i aria-hidden="true" />
-                <strong className={`cash-grab-ai-status ${jdyAi3 ? jdyAi3Status : "off"}`}>{statusLabel(jdyAi3Status, jdyAi3)}</strong>
-              </label>
-              <label className="cash-grab-toggle-row">
-                <span className="cash-grab-toggle-copy">
-                  <b>AUTO-SWITCH SAFEST PAIR</b>
-                  <small>{autoSwitchSafestPair
-                    ? autoSwitchSafestPairRecommendation
-                      ? `ON · ${autoSwitchSafestPairRecommendation.symbol} · ${autoSwitchSafestPairRecommendation.observedWinRate.toFixed(1)}% observed · ${autoSwitchSafestPairRecommendation.multiplier}x · next ${autoSwitchSafestPairRecommendation.nextStake.toFixed(2)}`
-                      : "ON · scanning every 20 seconds for a guarded setup"
-                    : "OFF · turn on to scan markets, balance, losses, and recovery settings"}
-                  </small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={autoSwitchSafestPair}
-                  onChange={(event) => onAutoSwitchSafestPairChange(event.target.checked)}
-                  disabled={isPlacingTrade || !isConnected}
-                  aria-label="Enable Auto-switch safest pair"
-                />
-                <i aria-hidden="true" />
-                <strong className={`cash-grab-ai-status ${autoSwitchSafestPair ? autoSwitchSafestPairStatus : "off"}`}>
-                  {statusLabel(autoSwitchSafestPairStatus, autoSwitchSafestPair)}
-                </strong>
-              </label>
-               <p className="cash-grab-note"><Info size={14} /> This scanner is independent from JDY AI 3. It checks the best balance-feasible pair every 20 seconds and can be stopped immediately with MONEY STOP.</p>
-            </section>
           </aside>
         </div>
 
@@ -544,30 +447,7 @@ export default function CashGrabPanel({
         </div>
       </form>
 
-      <footer className="cash-grab-history-footer">
-        <div className="cash-grab-history-heading">
-          <div><span className="cash-grab-overline">SESSION FOOTER</span><h3>Recent Cash Grab trades</h3></div>
-          <div className="cash-grab-session-metrics"><span><small>SESSION P/L</small><b className={sessionPnl < 0 ? "negative" : "positive"}>{displayedSessionPnl}</b></span><span><small>TRADE COUNT</small><b>{tradeCount}</b></span></div>
-          <button type="button" className="cash-grab-clear" onClick={onClearHistory} disabled={!recentTrades.length || historyFading} aria-label={clearArmed ? "Tap again to clear Cash Grab history" : "Clear Cash Grab history"} data-testid="button-clear-cash-grab-history"><Trash2 size={13} />{clearArmed ? "Tap again" : "Clear history"}</button>
-        </div>
-        <div className={`cash-grab-history-list ${historyFading ? "fading" : ""}`}>
-          {!recentTrades.length ? (
-            <div className="cash-grab-empty-history"><Activity size={17} /><span><b>No Cash Grab trades yet</b><small>Settled and open contracts will appear here after MONEY START.</small></span></div>
-          ) : recentTrades.map((trade) => {
-            const outcome = outcomeForTrade(trade);
-             const liveAccumulator = trade.status.toLowerCase() === "open" && trade.contract_type === "ACCU";
-            return (
-              <div className="cash-grab-history-row" key={trade.contract_id} data-testid={`row-cash-grab-trade-${trade.contract_id}`}>
-                <span><b>{trade.contract_type}</b><small>{trade.symbol} · {trade.account_type}</small></span>
-                <span><small>STAKE</small>{formatMoney(trade.buy_price, currency)}</span>
-                 <span><small>{liveAccumulator ? "LIVE P/L" : "RESULT"}</small><strong className={outcome.tone}>{liveAccumulator || trade.status.toLowerCase() !== "open" ? `${trade.profit >= 0 ? "+" : ""}${formatMoney(trade.profit, currency)}` : "—"}</strong></span>
-                <span className={`cash-grab-outcome ${outcome.tone}`}><small>STATUS</small><b>{outcome.label}</b></span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="cash-grab-history-note"><ShieldCheck size={14} /> <span>History is a record of returned contracts. Observed percentages and AI gate statuses are not guarantees of settlement.</span></div>
-      </footer>
+      <DerivHistory title="Cash Grab History" strategy="Cash Grab Strategy" rows={recentTrades} currency={currency} sessionPnl={sessionPnl} sessionTradeCount={tradeCount} clearArmed={clearArmed} fading={historyFading} onClear={onClearHistory} />
     </section>
   );
 }

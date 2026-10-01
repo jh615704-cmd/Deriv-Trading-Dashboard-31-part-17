@@ -37,6 +37,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
   const login = useLoginAccessKey();
   const heartbeat = useHeartbeatAccessSession();
   const [accessKey, setAccessKey] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
   const unlockTimerRef = useRef<number | null>(null);
@@ -158,12 +159,14 @@ export function AccessGate({ children }: { children: ReactNode }) {
       <div className="access-gate-orbit" aria-hidden="true" />
       <div className="access-gate-card">
         <div className="brand-lockup access-gate-brand">
-          <span className="brand-mark">J</span>
-          <span>JDY <b>AI</b></span>
+          <span className="brand-mark">S</span>
+          <span className="access-brand-copy"><strong>Shadow Ai Trading</strong><small>AI Trading</small></span>
         </div>
-        <div className="access-gate-eyebrow"><ShieldCheck size={14} /> PRIVATE ACCESS</div>
-        <h1>Enter your access key.</h1>
-        <p>Use the key provided by your administrator to open the trading workspace on this device.</p>
+        <div className="access-gate-risk"><b>RISK DISCLAIMER</b><p>Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. If your trade involves currency conversion, exchange rates affect your profits and losses. Never trade with borrowed money or money you cannot afford to lose.</p></div>
+        <div className="access-gate-lock"><ShieldCheck size={25} /></div>
+        <h1>Login to Shadow Ai</h1>
+        <p className="access-gate-intro">Use your access key to open your private trading workspace.</p>
+        <a className="access-message-link" href="https://t.me/JDY_HATED" target="_blank" rel="noreferrer"><MessageCircle size={16} /> Message me now</a>
         {error && <div className="access-gate-error" role="alert">{error}</div>}
         <form onSubmit={handleSubmit} className="access-gate-form">
           <label htmlFor="edge-access-key">ACCESS KEY</label>
@@ -174,19 +177,20 @@ export function AccessGate({ children }: { children: ReactNode }) {
               type="password"
               value={accessKey}
               onChange={(event) => setAccessKey(event.target.value)}
-              placeholder="USER-…"
+              placeholder="Enter your access key"
               autoComplete="off"
               autoFocus
               disabled={login.isPending}
             />
           </div>
-          <button type="submit" disabled={login.isPending || !accessKey.trim()}>
-            {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Unlock"}
+          <label className="access-terms"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} disabled={login.isPending} /><span>I acknowledge and agree to the terms and conditions of Shadow Ai Trading.</span></label>
+          <button type="submit" disabled={login.isPending || !accessKey.trim() || !termsAccepted}>
+            {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Log In"}
           </button>
         </form>
         <div className="access-gate-footer">
-          <span>User keys use their assigned device limit</span>
-          <a href="https://t.me/JDY_HATED" target="_blank" rel="noreferrer"><MessageCircle size={12} /> Need access? Message @JDY_HATED</a>
+          <span>Private access · This browser only</span>
+          <span>Contact: @JDY_HATED</span>
         </div>
       </div>
     </div>

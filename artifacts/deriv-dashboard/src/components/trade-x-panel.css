@@ -2056,3 +2056,25 @@
     min-height: 112px;
   }
 }
+
+.tx-digit-market { border: 2px solid #20a9ff !important; background: #092d50 !important; box-shadow: inset 0 0 0 1px rgba(32,169,255,.18) !important; }
+.tx-digit-selected { border-color: #22c7ee; }
+.tx-market-touch { top: 5px; left: auto; right: 6px; width: auto; height: auto; transform: none; color: #53ceff; font: 800 6px var(--app-font-mono, monospace); letter-spacing: .08em; }
+.tx-rank-empty { grid-column: 1 / -1; padding: 20px; border: 1px dashed #315a78; border-radius: 9px; color: #82a4c2; font-size: 10px; line-height: 1.5; }
+.tx-rank-row { border-color: rgba(76,133,176,.2); }
+.tx-rank-safe { box-shadow: inset 3px 0 #45d2a1; }
+.tx-rank-moderate { box-shadow: inset 3px 0 #e8c657; }
+.tx-rank-risky { box-shadow: inset 3px 0 #f19a4d; }
+.tx-rank-avoid { box-shadow: inset 3px 0 #ed6678; }
+.tx-rank-medal.medal-1 { color: #f2c95b; }
+.tx-rank-medal.medal-2 { color: #b8c7d7; }
+.tx-rank-medal.medal-3 { color: #ca9366; }
+.tx-rank-metrics b { color: #dcecff; }
+.tx-rank-metrics b small { display: inline; color: #80a4c2; font-size: 7px; }
+.tx-signal-detail { border-color: #245779; background: rgba(5,28,51,.88); }
+.tx-signal-detail-head strong { color: #57d5f4; }
+.tx-signal-metrics { color: #89a9c4; }
+.tx-signal-metrics b { color: #dcecff; }
+.tx-signal-progress { background: #142e49; }
+.tx-signal-progress i { background: #27b8e8; }
+.tx-signal-detail p { color: #86a5c1; }

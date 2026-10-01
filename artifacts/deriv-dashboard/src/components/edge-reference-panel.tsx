@@ -5,6 +5,7 @@ import {
   type BestEdgeSignal,
   type MarketSignal,
 } from "../lib/trading-sequence";
+import DerivHistory from "./deriv-history";
 import "./edge-reference-panel.css";
 
 type EdgeDirection = "DIGITOVER" | "DIGITUNDER";
@@ -400,6 +401,7 @@ export default function EdgeReferencePanel({
 
       <div className="edge-ref-run-row"><button className={`edge-ref-run ${running ? "running" : ""}`} onClick={() => void (running ? onStop() : onStart())} disabled={!isConnected || (!running && !canTrade)}>{running ? <><Pause size={16} fill="currentColor" /> Stop</> : <><Play size={15} fill="currentColor" /> Run</>}</button><button type="button" className="edge-ref-session-reset" onClick={onReset} aria-label="Reset session P/L, trades, and stake to base" title="Reset session"><span aria-hidden="true" /></button></div>
 
+      {canViewHistory && <DerivHistory title="EDGE History" strategy="EDGE Strategy" rows={recentTrades} fading={historyFading} clearArmed={clearTradesArmed} onClear={() => void onClearHistory()} />}
       {canViewHistory && <section className="edge-ref-history"><div className="edge-ref-history-heading"><h2>Recent Trades</h2><button onClick={() => void onClearHistory()} disabled={historyFading || !recentTrades.length}><Trash2 size={15} /></button></div>{!recentTrades.length ? <div className="edge-ref-empty">No trades yet. Configure and press Run.</div> : recentTrades.map((trade) => {
         const settled = trade.status !== "open";
         return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;

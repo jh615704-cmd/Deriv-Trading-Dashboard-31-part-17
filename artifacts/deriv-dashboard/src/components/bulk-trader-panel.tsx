@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Activity, BarChart3, Play, RefreshCw, Trash2 } from "lucide-react";
+import DerivHistory from "./deriv-history";
 
 export type BulkTraderType = "over-under" | "differs";
 export type BulkTraderPrediction = number;
@@ -129,12 +130,13 @@ export default function BulkTraderPanel({
   );
   const maxCount = Math.max(1, ...counts);
   const currentSignal = marketSignals.find((signal) => signal.symbol === symbol);
-  const observedRate = currentSignal?.observedPercentage ?? 50;
+  const observedRate = currentSignal?.observedPercentage ?? 0;
+  const observedRateLabel = currentSignal?.sampleCount ? `${displayPercentage(observedRate)} observed` : "Collecting sample";
   const previousDigit = visibleDigits.length > 1 ? visibleDigits[visibleDigits.length - 2] : null;
   const overRate = typeof prediction === "number" && visibleDigits.length
     ? (visibleDigits.filter((digit) => digit > prediction).length / visibleDigits.length) * 100
-    : 50;
-  const underRate = typeof prediction === "number" && visibleDigits.length ? 100 - overRate : 50;
+    : 0;
+  const underRate = typeof prediction === "number" && visibleDigits.length ? 100 - overRate : 0;
   const selectedDigit = typeof prediction === "number" ? prediction : null;
   const selectedRate = selectedDigit == null || !visibleDigits.length ? 0 : (counts[selectedDigit] / visibleDigits.length) * 100;
   const lowDigitSignal = selectedDigit != null && selectedRate < 7 && lastDigit === selectedDigit;
@@ -150,7 +152,7 @@ export default function BulkTraderPanel({
       { label: `Over ${selectedDigit ?? 0}${signalReady && recommendedDirection === "OVER" ? " · signal" : ""}`, type: "DIGITOVER" as const, percentage: overRate, disabled: overUnavailable },
       { label: `Under ${selectedDigit ?? 0}${signalReady && recommendedDirection === "UNDER" ? " · signal" : ""}`, type: "DIGITUNDER" as const, percentage: underRate, disabled: underUnavailable },
     ]
-    : [{ label: `Differs ${selectedDigit ?? 0}${signalReady ? " · signal" : ""}`, type: "DIGITDIFF" as const, percentage: selectedDigit == null ? 50 : 100 - ((counts[selectedDigit] + 1) / (visibleDigits.length + 10)) * 100 }];
+    : [{ label: `Differs ${selectedDigit ?? 0}${signalReady ? " · signal" : ""}`, type: "DIGITDIFF" as const, percentage: visibleDigits.length && selectedDigit != null ? 100 - (counts[selectedDigit] / visibleDigits.length) * 100 : 0 }];
 
   const fireAction = (contractType: BulkTraderContractType) => {
     onTrade(contractType, selectedDigit ?? 0);
@@ -171,7 +173,7 @@ export default function BulkTraderPanel({
       <div className="bulk-trader-grid">
         <div className="bulk-trader-main">
           <div className="bulk-trader-market">
-            <div className="bulk-trader-label"><small>MARKET SCAN · {marketLabel}</small><b>{analysisTickCount} ticks · {currentSignal ? `${currentSignal.sampleCount} observed` : "Waiting for sample"}</b></div>
+            <div className="bulk-trader-label"><small>MARKET SCAN · {marketLabel}</small><b>{analysisTickCount} ticks · {currentSignal?.sampleCount ? `${currentSignal.sampleCount} samples · ${observedRateLabel}` : "Waiting for sample"}</b></div>
             <select data-testid="select-bulk-market" value={autoSelectBest ? "__auto__" : symbol} onChange={(event) => event.target.value === "__auto__" ? onAutoSelectBestChange(true) : (onAutoSelectBestChange(false), onSymbolChange(event.target.value))} disabled={!isConnected || isPlacingTrade}>
               <option value="__auto__">{`Auto best · #1 ${rankedSymbols[0]?.label ?? "waiting for sample"}`}</option>
               {symbols.map((item) => {
@@ -205,8 +207,10 @@ export default function BulkTraderPanel({
                 const absent = count === 0;
                 let marker = "";
                 if (type === "over-under" && selectedDigit != null) marker = digit > selectedDigit ? "O" : digit < selectedDigit ? "U" : "=";
-                return <button type="button" data-testid={`button-digit-${digit}`} key={digit} className={`bulk-digit ${selectedDigit === digit ? "selected" : ""} ${lastDigit === digit ? "current" : ""} ${absent ? "absent" : ""}`} onClick={() => onPredictionChange(digit)}>
-                  <span className="bulk-digit-marker">{marker || "·"}</span><b>{digit}</b><small>{displayPercentage(sampleSize ? (count / sampleSize) * 100 : 0)}</small><i style={{ height: `${Math.max(absent ? 5 : 8, (count / maxCount) * 54)}%` }} />
+                let absenceStreak = 0;
+                for (let cursor = visibleDigits.length - 1; cursor >= 0 && visibleDigits[cursor] !== digit; cursor -= 1) absenceStreak += 1;
+                return <button type="button" data-testid={`button-digit-${digit}`} key={digit} className={`bulk-digit ${selectedDigit === digit ? "selected" : ""} ${lastDigit === digit ? "current" : ""} ${absent ? "absent" : ""}`} onClick={() => onPredictionChange(digit)} aria-pressed={selectedDigit === digit} aria-label={`Digit ${digit}, ${sampleSize ? displayPercentage((count / sampleSize) * 100) : "no sample"} observed, absent ${absenceStreak} ticks`}>
+                  <span className="bulk-digit-marker">{marker || "·"}</span><b>{digit}</b><small>{sampleSize ? displayPercentage((count / sampleSize) * 100) : "—"}</small><small className="bulk-digit-streak">{absenceStreak} absent</small><i style={{ height: `${sampleSize ? Math.max(absent ? 5 : 8, (count / maxCount) * 54) : 0}%` }} />
                   {lastDigit === digit && <em aria-label="current digit" />}
                 </button>;
               })}
@@ -227,13 +231,14 @@ export default function BulkTraderPanel({
            <label><small>BULK TRADES</small><div className="bulk-choice-row bulk-count-row">{countOptions.map((option) => <button type="button" data-testid={`button-count-${option}`} key={option} className={tradeCount === option ? "active" : ""} onClick={() => onTradeCountChange(option)}>{option}</button>)}</div><b>Contracts are quoted first, then sent together and tracked separately</b></label>
           {isReal && <label className="bulk-live-confirm"><input data-testid="input-confirm-live-funds" type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} /><span><b>Confirm live funds</b>Real-money contracts will be sent from the selected account.</span></label>}
           <div className={`bulk-trader-actions action-count-${actionButtons.length}`}>
-             {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed) || Boolean("disabled" in action && action.disabled)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{Boolean("disabled" in action && action.disabled) ? "Unavailable at this barrier" : `${displayPercentage(action.percentage)} observed`}</small></button>)}
+              {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed) || Boolean("disabled" in action && action.disabled)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{Boolean("disabled" in action && action.disabled) ? "Unavailable at this barrier" : visibleDigits.length ? `${displayPercentage(action.percentage)} observed` : "Collecting sample"}</small></button>)}
           </div>
           {type === "over-under" && (overUnavailable || underUnavailable) && <p className="bulk-contract-warning">Over 9 and Under 0 have no possible winning digit, so Deriv does not offer a return. Choose the other direction or another barrier.</p>}
           {isPlacingTrade && <div className="bulk-sending"><RefreshCw size={14} className="spin" />Sending contracts to Deriv…</div>}
         </aside>
       </div>
 
+      <DerivHistory title="Bulk Trader History" strategy="Bulk Trader Strategy" rows={recentTrades} clearArmed={clearArmed} fading={historyFading} onClear={onClearHistory} />
       <section className="bulk-trader-history">
         <div className="xt-history-head"><div><Activity size={17} /><span><b>Bulk Trade History</b><small>Each returned contract is listed separately</small></span><strong className="bulk-session-pnl">Session P/L {recentTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0) >= 0 ? "+" : ""}{recentTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0).toFixed(2)}</strong></div><button type="button" data-testid="button-clear-bulk-history" onClick={onClearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={14} />{clearArmed ? "Tap again" : "Clear"}</button></div>
         {!recentTrades.length ? <div className="xt-empty"><RefreshCw size={18} />Bulk contracts will appear here after the first action.</div> : recentTrades.map((trade) => {

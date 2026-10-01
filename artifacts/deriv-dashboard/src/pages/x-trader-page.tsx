@@ -33,7 +33,6 @@ import {
   chooseBestEdgeSignal,
   digitForTick,
   nextStakeAfterSettlement,
-  rankDigitsForDiffers,
   rankDigitsByDistribution,
   sessionStopReason,
   type BestEdgeSignal,
@@ -76,6 +75,7 @@ import CashGrabPanel, {
   type CashGrabStartConfig,
   type CashGrabTrade,
 } from "../components/cash-grab-panel";
+import DerivHistory from "../components/deriv-history";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -914,16 +914,16 @@ export default function XTraderPage() {
   }, [currentAccount?.id]);
 
   useEffect(() => {
-    if (!edgeOutcomeSynced || !currentAccount) return;
+    if (!currentAccount) return;
     const liveBalance = currentAccount.balance.toFixed(2);
     if (edgeAccountBalance !== liveBalance) setEdgeAccountBalance(liveBalance);
-  }, [currentAccount?.balance, edgeAccountBalance, edgeOutcomeSynced]);
+  }, [currentAccount?.balance, edgeAccountBalance]);
 
   useEffect(() => {
-    if (!digitFlipOutcomeSynced || !currentAccount) return;
+    if (!currentAccount) return;
     const liveBalance = currentAccount.balance.toFixed(2);
     if (digitFlipAccountBalance !== liveBalance) setDigitFlipAccountBalance(liveBalance);
-  }, [currentAccount?.balance, digitFlipAccountBalance, digitFlipOutcomeSynced]);
+  }, [currentAccount?.balance, digitFlipAccountBalance]);
 
   useEffect(() => {
     if (history.data == null || sessionAccountIdRef.current == null) return;
@@ -992,10 +992,7 @@ export default function XTraderPage() {
       const recentCount = analysisDigits.slice(midpoint).filter((value) => value === digit).length;
       return {
         digit,
-        // Laplace smoothing keeps every digit visible in a short live sample.
-        // A zero observation is still informative, but should not render as a
-        // frozen 0.0% probability while the other digits move.
-        percentage: Number((((count + 1) / (total + 10)) * 100).toFixed(1)),
+        percentage: total ? Number(((count / total) * 100).toFixed(1)) : 0,
         streak: absentStreak,
         momentum: recentCount > previousCount ? "up" : recentCount < previousCount ? "down" : "flat",
         sampleCount: total,
@@ -1004,9 +1001,15 @@ export default function XTraderPage() {
   }, [analysis.counts, analysisDigits]);
   const tradeXRankedDigits = useMemo(
     () => analysisTickCount > 0
-      ? rankDigitsForDiffers(analysis.counts, tradeXDistribution.map((item) => item.streak))
+      ? [...tradeXDistribution]
+        .sort((left, right) => {
+          const leftScore = Math.max(0, Math.min(100, 100 - left.percentage * 4 + Math.min(left.streak, 10) * 2));
+          const rightScore = Math.max(0, Math.min(100, 100 - right.percentage * 4 + Math.min(right.streak, 10) * 2));
+          return rightScore - leftScore || left.digit - right.digit;
+        })
+        .map((item) => item.digit)
       : [],
-    [analysis.counts, analysisTickCount, tradeXDistribution],
+    [analysisTickCount, tradeXDistribution],
   );
   const tradeXRankedEntryDigit = digitForTick(tradeXDuration, tradeXRankedDigits, tradeXSelectedDigit);
   const tradeXEntryDigit = tradeXManualSelect ? tradeXSelectedDigit : tradeXRankedEntryDigit;
@@ -1467,7 +1470,7 @@ export default function XTraderPage() {
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
     const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
-    const declaredAccountBalance = Number(edgeAccountBalance);
+    const declaredAccountBalance = currentAccount?.balance ?? 0;
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       throw new Error("Sync the connected account balance before EDGE places another trade.");
     }
@@ -1861,10 +1864,6 @@ export default function XTraderPage() {
     const declaredAccountBalance = Number(edgeAccountBalance);
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       setConnectionMessage({ kind: "error", text: "Enter a positive account balance before starting EDGE." });
-      return;
-    }
-    if (!edgeOutcomeSynced) {
-      setConnectionMessage({ kind: "error", text: "Select Sync balance in Expected outcome before starting EDGE." });
       return;
     }
     if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
@@ -2666,7 +2665,7 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "info", text: "DigitFlip is outside its configured trading calendar." });
       return false;
     }
-    const declaredAccountBalance = Number(digitFlipAccountBalance);
+    const declaredAccountBalance = currentAccount?.balance ?? 0;
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       setConnectionMessage({ kind: "error", text: "DigitFlip is paused until the account balance is entered." });
       return false;
@@ -2819,10 +2818,6 @@ export default function XTraderPage() {
     const declaredAccountBalance = Number(digitFlipAccountBalance);
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       setConnectionMessage({ kind: "error", text: "Enter a positive account balance before starting DigitFlip." });
-      return;
-    }
-    if (!digitFlipOutcomeSynced) {
-      setConnectionMessage({ kind: "error", text: "Select Sync balance before starting DigitFlip." });
       return;
     }
     if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
@@ -3157,9 +3152,8 @@ export default function XTraderPage() {
         : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const edgeBalanceReady = edgeOutcomeSynced
-    && Number.isFinite(Number(edgeAccountBalance))
-    && Number(edgeAccountBalance) > 0;
+  const edgeBalanceReady = Number.isFinite(currentAccount?.balance)
+    && (currentAccount?.balance ?? 0) > 0;
   const canTrade = isConnected && !running && edgeBalanceReady
     && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
     && Boolean(currentAccount) && stake <= Number(edgeAccountBalance)
@@ -3168,8 +3162,11 @@ export default function XTraderPage() {
   return (
     <main className="xt-app">
       <header className="xt-header">
-        <div className="xt-brand"><span>J</span><div><strong>JDY AI</strong><small>DERIV DIGIT TRADER</small></div>{accessSession.data?.is_admin === true && <Link href="/admin/users" className="xt-admin-link"><ShieldCheck size={14} /> ADMIN PANEL</Link>}</div>
-        <div className={`xt-connection ${isConnected ? "online" : ""}`}><i />{statusText}</div>
+        <div className="xt-brand"><span>S</span><div><strong>Shadow Ai Trading</strong><small>AI Trading</small></div>{accessSession.data?.is_admin === true && <Link href="/admin/users" className="xt-admin-link"><ShieldCheck size={14} /> ADMIN PANEL</Link>}</div>
+        <div className="xt-header-right">
+          <div className="xt-header-account"><span className={isReal ? "real" : ""}>{currentAccount?.type?.toUpperCase() ?? "NO ACCOUNT"}</span><b>{currentAccount ? `${currentAccount.currency} ${currentAccount.balance.toFixed(2)}` : "Connect Deriv"}</b></div>
+          <div className={`xt-connection ${isConnected ? "online" : ""}`}><i />{statusText}</div>
+        </div>
       </header>
 
       <section className="xt-connect-card">
@@ -3684,6 +3681,7 @@ export default function XTraderPage() {
             onRefreshAnalysis={refreshAnalysis}
           />
           {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}
+          {canViewHistory && <DerivHistory title="Trade X History" strategy="Trade X Strategy" rows={tradeXRows} currency={currentAccount?.currency} clearArmed={tradeXHistoryClearArmed} fading={historyFading} onClear={clearTradeXHistory} />}
           {canViewHistory && (
             <section className="xt-history xt-history-trade-x" title="Recent Trade X trade history">
               <div className="xt-history-head">

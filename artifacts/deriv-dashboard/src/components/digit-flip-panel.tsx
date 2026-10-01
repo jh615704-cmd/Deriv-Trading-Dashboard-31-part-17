@@ -5,9 +5,9 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
-  Trash2,
   Zap,
 } from "lucide-react";
+import DerivHistory from "./deriv-history";
 import "./digit-flip-panel.css";
 
 export type DigitFlipParity = "DIGITEVEN" | "DIGITODD";
@@ -29,6 +29,10 @@ export type DigitFlipTradeRow = {
   status: string;
   profit: number;
   buy_price: number;
+  barrier?: number | null;
+  payout?: number | null;
+  buy_time?: number | null;
+  sell_time?: number | null;
 };
 
 export type DigitFlipPanelProps = {
@@ -54,12 +58,11 @@ export type DigitFlipPanelProps = {
   sessionPnl: number;
   tradeCount: number;
   recentTrades: readonly DigitFlipTradeRow[];
+  currency?: string;
   assaultEnabled: boolean;
   magicEnabled: boolean;
   clearTradesArmed: boolean;
   historyFading: boolean;
-  accountBalance: string;
-  outcomeSynced: boolean;
   isPlacingTrade?: boolean;
   disabled?: boolean;
   onMarketTypeChange: (value: DigitFlipMarketType) => void;
@@ -77,8 +80,6 @@ export type DigitFlipPanelProps = {
   onRefreshSample: () => void;
   onAssaultChange: (value: boolean) => void;
   onMagicChange: (value: boolean) => void;
-  onAccountBalanceChange: (value: string) => void;
-  onOutcomeSyncedChange: (value: boolean) => void;
   onGuide: () => void;
 };
 
@@ -177,12 +178,11 @@ export default function DigitFlipPanel({
   sessionPnl,
   tradeCount,
   recentTrades,
+  currency,
   assaultEnabled,
   magicEnabled,
   clearTradesArmed,
   historyFading,
-  accountBalance,
-  outcomeSynced,
   isPlacingTrade = false,
   disabled = false,
   onMarketTypeChange,
@@ -200,8 +200,6 @@ export default function DigitFlipPanel({
   onRefreshSample,
   onAssaultChange,
   onMagicChange,
-  onAccountBalanceChange,
-  onOutcomeSyncedChange,
   onGuide,
 }: DigitFlipPanelProps) {
   const [marketPickerOpen, setMarketPickerOpen] = useState(false);
@@ -425,23 +423,6 @@ export default function DigitFlipPanel({
         <p>Presets apply every DigitFlip setting together: stake, duration, staking mode, multiplier, take profit, and stop loss.</p>
       </section>
 
-      <section className={`df-card df-outcome-card ${outcomeSynced ? "active" : ""}`}>
-        <div className="df-advanced-head">
-          <div>
-            <div className="df-section-label">Expected outcome</div>
-            <h3>Balance target</h3>
-          </div>
-          <span className={`df-sync-badge ${outcomeSynced ? "synced" : ""}`}>{outcomeSynced ? "SYNCED" : "NOT SYNCED"}</span>
-        </div>
-        <div className="df-outcome-grid">
-          <label><span>ACCOUNT BALANCE {outcomeSynced && "· LIVE SYNC"}</span><input type="number" min="0" step=".01" value={accountBalance} onChange={(event) => onAccountBalanceChange(event.target.value)} placeholder="0.00" disabled={disabled || running || outcomeSynced} /></label>
-        </div>
-        <div className="df-outcome-actions">
-          <button type="button" className={`df-sync-button ${outcomeSynced ? "selected" : ""}`} onClick={() => onOutcomeSyncedChange(!outcomeSynced)} disabled={disabled || running || !accountBalance || Number(accountBalance) <= 0}>{outcomeSynced ? "Unsync balance" : "Sync balance"}</button>
-          <span>{outcomeSynced ? "The connected Deriv balance is copied here automatically and checked before every entry." : "Enter the current account balance before starting a session."}</span>
-        </div>
-      </section>
-
       <section className="df-card df-advanced-card">
         <div className="df-advanced-head">
           <div>
@@ -470,25 +451,7 @@ export default function DigitFlipPanel({
         </div>
       </section>
 
-      <section className="df-card df-recent">
-        <div className="df-recent-heading">
-          <div><div className="df-section-label">Activity</div><h3>Recent DigitFlip trades</h3></div>
-          <button type="button" onClick={onClearTrades} disabled={!recentTrades.length}><Trash2 size={13} />{clearTradesArmed ? "Tap again" : "Clear"}</button>
-        </div>
-        {!recentTrades.length ? (
-          <p className="df-empty">Even and Odd trades will appear here after a DigitFlip entry.</p>
-        ) : recentTrades.map((trade) => {
-          const settled = trade.status !== "open";
-          return (
-            <div className={`df-trade-row ${historyFading ? "fading" : ""}`} key={trade.contract_id}>
-              <span><b>{trade.contract_type === "DIGITEVEN" ? "EVEN" : "ODD"}</b><small>{trade.symbol}</small></span>
-              <span><small>STAKE</small>{trade.buy_price.toFixed(2)}</span>
-              <span><small>STATUS</small>{trade.status}</span>
-              <strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong>
-            </div>
-          );
-        })}
-      </section>
+      <DerivHistory title="DigitFlip History" strategy="DigitFlip Strategy" rows={recentTrades} currency={currency} sessionPnl={sessionPnl} sessionTradeCount={tradeCount} clearArmed={clearTradesArmed} fading={historyFading} onClear={onClearTrades} />
     </section>
   );
 }

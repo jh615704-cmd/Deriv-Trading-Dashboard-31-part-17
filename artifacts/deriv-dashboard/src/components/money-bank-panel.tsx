@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Download, Info, Play, RefreshCw, RotateCcw, ShieldCheck, Square, TrendingUp, Trash2 } from "lucide-react";
 import { estimateAccumulatorReturnRate } from "../lib/money-bank-math";
+import DerivHistory from "./deriv-history";
 import "./money-bank-panel.css";
 
 export type MoneyBankStrategy = "budget" | "manual";
@@ -576,7 +577,8 @@ export function MoneyBankPanel({
          <p className="money-bank-safest-copy">Safest current pair: <b>{markets.find(([market]) => market === safestPair?.symbol)?.[1] ?? safestPair?.symbol ?? "Waiting for live samples"}</b></p>
        </section>
 
-       <section className="money-bank-card money-bank-history-card">
+        <DerivHistory title="Money Bank History" strategy="Money Bank Strategy" rows={visibleTrades} currency={currency} clearArmed={historyClearArmed} fading={historyFading} onClear={clearHistory} />
+        <section className="money-bank-card money-bank-history-card">
          <div className="money-bank-card-head">
            <div><small>TRADE HISTORY</small><h3>Money Bank trades</h3></div>
            <div className="money-bank-history-actions"><button type="button" onClick={downloadHistory} disabled={!visibleTrades.length}><Download size={13} />Download</button><button type="button" onClick={clearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={13} />{historyClearArmed ? "Tap again to reset" : "Reset"}</button></div>
