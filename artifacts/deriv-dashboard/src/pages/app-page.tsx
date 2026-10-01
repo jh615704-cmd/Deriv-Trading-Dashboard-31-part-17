@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, ArrowDownRight, ArrowUpRight, Check, ChevronDown, CircleAlert, CircleCheck,
-  Clock3, Copy, FlaskConical, RefreshCw, Signal, Trash2, WalletCards, Wifi, LockKeyhole
+  Activity, ArrowDownRight, ArrowUpRight, Check, CircleAlert, CircleCheck,
+  Clock3, Copy, FlaskConical, RefreshCw, Signal, Trash2, Wifi, LockKeyhole
 } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   getGetDerivAccountsQueryKey, getGetDerivHistoryQueryKey, getGetDerivStatusQueryKey,
   useBuyDerivContract, useClearDerivHistory, useGetDerivAccounts, useGetDerivHistory,
-  useGetDerivStatus, useSelectDerivAccount, useTestDerivConnection, useGetDerivTokenStatus
+  useGetDerivStatus, useTestDerivConnection, useGetDerivTokenStatus
 } from '@workspace/api-client-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { PatOnboarding } from '@/components/pat-onboarding';
@@ -46,7 +45,6 @@ export default function AppPage() {
    const historyQuery = useGetDerivHistory({ query: { queryKey: getGetDerivHistoryQueryKey(), refetchInterval: 1000, enabled: hasToken } });
   
   const testConnection = useTestDerivConnection();
-  const selectAccount = useSelectDerivAccount();
   const buyContract = useBuyDerivContract();
   const clearHistory = useClearDerivHistory();
   
@@ -54,7 +52,6 @@ export default function AppPage() {
   const status = statusQuery.data;
   const history = historyQuery.data ?? [];
   
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [amount, setAmount] = useState('1.00');
   const [duration, setDuration] = useState('5');
   const [buyCooldownUntil, setBuyCooldownUntil] = useState(0);
@@ -67,8 +64,7 @@ export default function AppPage() {
   const [confirmLiveTrade, setConfirmLiveTrade] = useState(false);
   const [clearHistoryArmed, setClearHistoryArmed] = useState(false);
 
-  const selectedAccount = accounts.find((account) => account.id === selectedId)
-    ?? (status?.account ? accounts.find((account) => account.id === status.account?.id) ?? status.account : undefined)
+  const selectedAccount = (status?.account ? accounts.find((account) => account.id === status.account?.id) ?? status.account : undefined)
     ?? accounts.find((account) => account.type === 'demo')
     ?? accounts[0];
   
@@ -106,6 +102,10 @@ export default function AppPage() {
   }, []);
 
   useEffect(() => {
+    setConfirmLiveTrade(false);
+  }, [selectedAccount?.id]);
+
+  useEffect(() => {
     if (status?.account) {
       queryClient.setQueryData(getGetDerivAccountsQueryKey(), (current: typeof accounts) =>
         current?.map((account) =>
@@ -132,30 +132,6 @@ export default function AppPage() {
         setTestMessage(error instanceof Error ? error.message : 'Connection test could not complete.');
       },
     });
-  };
-
-  const handleSelectAccount = (accountId: string) => {
-    const account = accounts.find((item) => item.id === accountId);
-    if (!account || account.id === selectedAccount?.id || selectAccount.isPending) return;
-    setSelectedId(account.id);
-    setTestMessage(`Switching to ${account.type} account…`);
-    setTestFailed(false);
-    setConfirmLiveTrade(false);
-    selectAccount.mutate(
-      { data: { account_id: account.id } },
-      {
-        onSuccess: (result) => {
-          setSelectedId(account.id);
-          queryClient.setQueryData(getGetDerivStatusQueryKey(), result);
-          setTestMessage(`${account.type === 'real' ? 'Real' : 'Demo'} account selected.`);
-        },
-        onError: (error) => {
-          setSelectedId(status?.account?.id ?? null);
-          setTestFailed(true);
-          setTestMessage(error instanceof Error ? error.message : 'Account selection failed.');
-        },
-      },
-    );
   };
 
   const handleBuy = () => {
@@ -240,37 +216,11 @@ export default function AppPage() {
   return (
     <AppShell 
       title="LIVE DASHBOARD" 
-      isReal={isReal} 
       onRefresh={() => { accountsQuery.refetch(); statusQuery.refetch(); }}
       headerContent={
-        <>
-          {selectedAccount && <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button" className={`header-balance-trigger ${isReal ? 'real' : ''}`} aria-label={`Selected ${selectedAccount.type} account balance ${selectedAccount.currency} ${money.format(liveBalance ?? selectedAccount.balance)}. Choose account`} data-testid="button-account-balance">
-                <WalletCards size={16} />
-                <span><small>{selectedAccount.type === 'real' ? 'LIVE BALANCE' : 'DEMO BALANCE'}</small><b>{selectedAccount.currency} {money.format(liveBalance ?? selectedAccount.balance)}</b></span>
-                <ChevronDown size={14} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="account-menu-content w-80">
-              <DropdownMenuLabel>Choose an account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {accounts.map((account) => {
-                const selected = account.id === selectedAccount.id;
-                const balance = selected ? liveBalance ?? account.balance : account.balance;
-                return <DropdownMenuItem key={account.id} className="account-menu-option" disabled={selectAccount.isPending} onSelect={() => handleSelectAccount(account.id)} data-testid={`menu-account-${account.id}`}>
-                  <span className={`account-menu-kind ${account.type}`}>{account.type === 'real' ? 'REAL' : 'DEMO'}</span>
-                  <span className="account-menu-identity"><b>{account.type === 'real' ? 'Real account' : 'Demo account'}</b><small>{account.id}</small></span>
-                  <span className="account-menu-balance"><b>{account.currency} {money.format(balance)}</b><small>{account.status}</small></span>
-                  {selected && <Check size={15} className="account-menu-check" />}
-                </DropdownMenuItem>;
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>}
-          <button type="button" className="icon-button" title="Refresh data" aria-label="Refresh account data" data-testid="button-refresh-data" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}>
-            <RefreshCw size={16} />
-          </button>
-        </>
+        <button type="button" className="icon-button" title="Refresh data" aria-label="Refresh account data" data-testid="button-refresh-data" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}>
+          <RefreshCw size={16} />
+        </button>
       }
     >
       <section className="intro-row">

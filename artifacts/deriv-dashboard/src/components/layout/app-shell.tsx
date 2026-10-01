@@ -15,16 +15,16 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/components/theme-provider';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DerivAccountSwitcher } from '@/components/deriv-account-switcher';
 
 interface AppShellProps {
   children: ReactNode;
   title: string;
-  isReal?: boolean;
   onRefresh?: () => void;
   headerContent?: ReactNode;
 }
 
-export function AppShell({ children, title, isReal, onRefresh, headerContent }: AppShellProps) {
+export function AppShell({ children, title, onRefresh, headerContent }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
@@ -91,10 +91,7 @@ export function AppShell({ children, title, isReal, onRefresh, headerContent }: 
             <strong>{title}</strong>
           </div>
           <div className="topbar-actions">
-            <span className={`environment-pill ${isReal ? 'environment-pill-live' : ''}`}>
-              <span className="environment-dot" />
-              {isReal ? 'LIVE DERIV ACCOUNT CONNECTED' : 'DERIV DEMO ACCOUNT'}
-            </span>
+            <DerivAccountSwitcher className="deriv-account-switcher-shell" enabled={canUseTrading} />
             {isAdmin && (
               <Link href="/admin/users" className="admin-top-link">
                 <ShieldCheck size={14} /> Admin panel

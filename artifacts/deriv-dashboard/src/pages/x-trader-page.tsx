@@ -13,7 +13,6 @@ import {
   useBuyDerivContract,
   useSellDerivContract,
   getDerivHistory,
-  useSelectDerivAccount,
   useSelectDerivSymbol,
   useTestDerivConnection,
   useTestDerivToken,
@@ -24,6 +23,7 @@ import {
   getGetDerivHistoryQueryKey,
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
+import { DerivAccountSwitcher } from "@/components/deriv-account-switcher";
 import {
   Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, Link2, Loader2,
   Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, X, Zap,
@@ -360,7 +360,6 @@ export default function XTraderPage() {
   const tokenMutation = useTestDerivToken();
   const connectionMutation = useTestDerivConnection();
   const deleteTokenMutation = useDeleteDerivToken();
-  const accountMutation = useSelectDerivAccount();
   const symbolMutation = useSelectDerivSymbol();
   const bulkBuyMutation = useBulkBuyDerivContracts();
   const dualBuyMutation = useDualBuyDerivContracts();
@@ -3116,7 +3115,6 @@ export default function XTraderPage() {
     setHistoryFading(false);
   };
 
-  const accountOptions = accounts.data ?? [];
   const anyFeatureRunning = running
     || xTraderEnabled
     || tradeXEnabled
@@ -3151,26 +3149,16 @@ export default function XTraderPage() {
       <header className="xt-header">
         <div className="xt-brand"><span>S</span><div><strong>Shadow Ai Trading</strong><small>AI Trading</small></div>{accessSession.data?.is_admin === true && <Link href="/admin/users" className="xt-admin-link"><ShieldCheck size={14} /> ADMIN PANEL</Link>}</div>
         <div className="xt-header-right">
-          <label className="xt-header-account-select">
-            <small>TRADING ACCOUNT</small>
-            <select
-              aria-label="Select Deriv trading account"
-              value={currentAccount?.id ?? ""}
-              onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, {
-                onSuccess: () => {
-                  setLiveConfirmed(false);
-                  void queryClient.invalidateQueries();
-                },
-                onError: (error) => setConnectionMessage({ kind: "error", text: errorMessage(error) }),
-              })}
-              disabled={!accountOptions.length || anyFeatureRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending || accountMutation.isPending}
-            >
-              {!accountOptions.length && <option value="">Connect PAT first</option>}
-              {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
-            </select>
-            <ChevronDown size={14} aria-hidden="true" />
-          </label>
-          <div className="xt-header-account"><span className={isReal ? "real" : ""}>{currentAccount?.type?.toUpperCase() ?? "NO ACCOUNT"}</span><b>{currentAccount ? `${currentAccount.currency} ${currentAccount.balance.toFixed(2)}` : "Connect Deriv"}</b></div>
+          <DerivAccountSwitcher
+            className="deriv-account-switcher-xt"
+            enabled={canUseDeriv}
+            disabled={anyFeatureRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending}
+            onAccountSelected={() => {
+              setLiveConfirmed(false);
+              void queryClient.invalidateQueries();
+            }}
+            onAccountSelectError={(message) => setConnectionMessage({ kind: "error", text: message })}
+          />
           <div className={`xt-connection ${isConnected ? "online" : ""}`}><i />{statusText}</div>
         </div>
       </header>
