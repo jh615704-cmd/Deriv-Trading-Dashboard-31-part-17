@@ -11,6 +11,7 @@ import {
 } from '@workspace/api-client-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { PatOnboarding } from '@/components/pat-onboarding';
+import { getAccountBalance } from '@/lib/account-balance';
 
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const time = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -70,7 +71,9 @@ export default function AppPage() {
   
   const isReal = selectedAccount?.type === 'real';
   const serverSelected = status?.account?.id === selectedAccount?.id;
-  const liveBalance = status?.account?.id === selectedAccount?.id ? status?.account?.balance : selectedAccount?.balance;
+  const liveBalance = status?.account?.id === selectedAccount?.id
+    ? getAccountBalance(status?.account)
+    : getAccountBalance(selectedAccount);
 
   const effectiveSymbol = symbol || status?.symbol || '';
   const isInitialLoading = tokenStatusQuery.isLoading || (hasToken && (accountsQuery.isLoading || statusQuery.isLoading));
@@ -107,10 +110,12 @@ export default function AppPage() {
 
   useEffect(() => {
     if (status?.account) {
+      const balance = getAccountBalance(status.account);
+      if (balance == null) return;
       queryClient.setQueryData(getGetDerivAccountsQueryKey(), (current: typeof accounts) =>
         current?.map((account) =>
           account.id === status.account?.id
-            ? { ...account, balance: status.account.balance }
+            ? { ...account, balance }
             : account,
         ) ?? current,
       );
@@ -296,7 +301,7 @@ export default function AppPage() {
         <div className="response-heading"><div><span className="panel-overline">LAST SERVER RESPONSE</span><h3>Proposal telemetry</h3></div><span className={`response-state ${proposal ? 'response-state-ready' : ''}`}><span />{proposal ? 'Live quote' : 'No quote yet'}</span></div>
         <div className="digit-meter" aria-label="Live odd and even market meter"><div className="digit-meter-labels"><span className="digit-meter-even"><i />EVEN <b>{status?.digit_even_percentage ?? 50}%</b></span><span className="digit-meter-odd"><i />ODD <b>{status?.digit_odd_percentage ?? 50}%</b></span></div><div className="digit-meter-track"><span className="digit-meter-even-fill" style={{ width: `${status?.digit_even_percentage ?? 50}%` }} /><span className="digit-meter-odd-fill" style={{ width: `${status?.digit_odd_percentage ?? 50}%` }} /></div><small>{status?.digit_sample_count ?? 0} live market digits observed</small></div>
         {proposal ? <div className="proposal-output"><div className="output-metric"><span>ASK PRICE</span><strong data-testid="text-ask-price">{money.format(proposal.ask_price)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>PAYOUT</span><strong data-testid="text-payout">{money.format(proposal.payout)}</strong><small>{selectedAccount?.currency ?? status?.currency ?? ''}</small></div><div className="output-metric"><span>SPOT</span><strong data-testid="text-spot">{proposal.spot.toFixed(4)}</strong><small>{proposal.id}</small></div><div className="longcode-output"><span>CONTRACT DESCRIPTION</span><div><p>{proposal.longcode ?? 'No longcode returned by Deriv.'}</p>{proposal.longcode && <button type="button" className="copy-button" onClick={copyLongcode} title="Copy contract description" aria-label="Copy contract description" data-testid="button-copy-longcode">{copied ? <Check size={15} /> : <Copy size={15} />}</button>}</div></div></div> : <div className="response-empty"><div className="empty-marker"><span /></div><div><strong>Proposal output will appear here</strong><p>Select a session and request a fresh server-side quote.</p></div></div>}
-        {status?.last_contract && <div className="contract-live-card" data-testid="live-contract-card"><div><span className="panel-overline">LIVE CONTRACT</span><strong>{status.last_contract.status}</strong><small>Contract {status.last_contract.contract_id}</small></div><div><span>PROFIT / LOSS</span><b className={status.last_contract.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(status.last_contract.profit)} {selectedAccount?.currency ?? status.currency}</b></div><div><span>LIVE BALANCE</span><b>{money.format(liveBalance ?? 0)} {selectedAccount?.currency ?? status.currency}</b></div></div>}
+        {status?.last_contract && <div className="contract-live-card" data-testid="live-contract-card"><div><span className="panel-overline">LIVE CONTRACT</span><strong>{status.last_contract.status}</strong><small>Contract {status.last_contract.contract_id}</small></div><div><span>PROFIT / LOSS</span><b className={status.last_contract.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{money.format(status.last_contract.profit)} {selectedAccount?.currency ?? status.currency}</b></div><div><span>LIVE BALANCE</span><b>{liveBalance == null ? '—' : money.format(liveBalance)} {selectedAccount?.currency ?? status.currency}</b></div></div>}
       </section>
 
       <section className="history-panel panel">

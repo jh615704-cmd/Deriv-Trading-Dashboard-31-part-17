@@ -76,6 +76,7 @@ import CashGrabPanel, {
   type CashGrabTrade,
 } from "../components/cash-grab-panel";
 import DerivHistory from "../components/deriv-history";
+import { getAccountBalance } from "../lib/account-balance";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -611,6 +612,7 @@ export default function XTraderPage() {
   });
 
   const currentAccount = status.data?.account;
+  const currentAccountBalance = getAccountBalance(currentAccount);
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const volatilityMarkets = markets.filter(([market]) => !market.startsWith("JD"));
@@ -813,8 +815,8 @@ export default function XTraderPage() {
         const signal = freshSignals.find((entry) => entry.symbol === marketSymbol);
         const observedBalance = signal ? Math.max(signal.rise_percentage ?? 50, signal.fall_percentage ?? 50) : 0;
         const stake = config.ladder[Math.min(6, moneyBankLevelRef.current)]?.stake ?? config.ladder[0]?.stake ?? 1;
-        const stakeRiskPenalty = currentAccount?.balance
-          ? Math.min(15, (stake / currentAccount.balance) * 100)
+        const stakeRiskPenalty = currentAccountBalance
+          ? Math.min(15, (stake / currentAccountBalance) * 100)
           : 20;
         const riskPenalty = growthRate * 1.5 + takeProfitTicks * 0.12 + stakeRiskPenalty;
         const predictedWinRate = Math.max(0, Math.min(100, observedBalance - riskPenalty));
@@ -894,22 +896,22 @@ export default function XTraderPage() {
     edgeSessionKnownIdsRef.current = null;
     digitFlipSessionKnownIdsRef.current = null;
     bulkSessionKnownIdsRef.current = null;
-    setEdgeAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
-    setDigitFlipAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
+    setEdgeAccountBalance(currentAccountBalance == null ? "" : currentAccountBalance.toFixed(2));
+    setDigitFlipAccountBalance(currentAccountBalance == null ? "" : currentAccountBalance.toFixed(2));
     setLiveConfirmed(false);
   }, [currentAccount?.id]);
 
   useEffect(() => {
-    if (!currentAccount) return;
-    const liveBalance = currentAccount.balance.toFixed(2);
+    if (currentAccountBalance == null) return;
+    const liveBalance = currentAccountBalance.toFixed(2);
     if (edgeAccountBalance !== liveBalance) setEdgeAccountBalance(liveBalance);
-  }, [currentAccount?.balance, edgeAccountBalance]);
+  }, [currentAccountBalance, edgeAccountBalance]);
 
   useEffect(() => {
-    if (!currentAccount) return;
-    const liveBalance = currentAccount.balance.toFixed(2);
+    if (currentAccountBalance == null) return;
+    const liveBalance = currentAccountBalance.toFixed(2);
     if (digitFlipAccountBalance !== liveBalance) setDigitFlipAccountBalance(liveBalance);
-  }, [currentAccount?.balance, digitFlipAccountBalance]);
+  }, [currentAccountBalance, digitFlipAccountBalance]);
 
   useEffect(() => {
     if (history.data == null || sessionAccountIdRef.current == null) return;
@@ -1030,8 +1032,8 @@ export default function XTraderPage() {
       direction: cashGrabDirection,
       symbol: cashGrabSymbol,
       selectedDigit: cashGrabSelectedDigit,
-      stake: cashGrabSyncBalance && currentAccount
-        ? Math.max(cashGrabFamily === "accumulator" ? 1 : .35, currentAccount.balance * (cashGrabBalancePercentage / 100))
+      stake: cashGrabSyncBalance && currentAccountBalance != null
+        ? Math.max(cashGrabFamily === "accumulator" ? 1 : .35, currentAccountBalance * (cashGrabBalancePercentage / 100))
         : Math.max(cashGrabFamily === "accumulator" ? 1 : .35, cashGrabStake),
       growthRate: Math.min(5, Math.max(1, cashGrabGrowthRate)),
       bulkCount: Math.max(1, Math.trunc(cashGrabCount)),
@@ -1456,11 +1458,11 @@ export default function XTraderPage() {
     queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
     const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
-    const declaredAccountBalance = currentAccount?.balance ?? 0;
+    const declaredAccountBalance = currentAccountBalance ?? 0;
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       throw new Error("Sync the connected account balance before EDGE places another trade.");
     }
-    if (amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
+    if (amount > declaredAccountBalance || (currentAccountBalance != null && amount > currentAccountBalance)) {
       throw new Error(`EDGE stopped before the next trade because the ${amount.toFixed(2)} ${currentAccount?.currency ?? "USD"} stake exceeds the connected balance. Lower the stake or Martingale multiplier.`);
     }
     armMartingaleWatch(latestRows, amount, 1);
@@ -1506,7 +1508,7 @@ export default function XTraderPage() {
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       throw new Error("Sync the connected account balance before EDGE places another dual trade.");
     }
-    if (amount * 2 > declaredAccountBalance || (currentAccount && amount * 2 > currentAccount.balance)) {
+    if (amount * 2 > declaredAccountBalance || (currentAccountBalance != null && amount * 2 > currentAccountBalance)) {
       throw new Error(`EDGE stopped before the dual trade because the ${ (amount * 2).toFixed(2) } ${currentAccount?.currency ?? "USD"} stake exceeds the connected balance.`);
     }
     armMartingaleWatch(latestRows, amount, 2);
@@ -1738,7 +1740,7 @@ export default function XTraderPage() {
     }
     const level = currentConfig.ladder?.[Math.min(6, moneyBankLevelRef.current)];
     if (!level) throw new Error("Money Bank could not calculate the next recovery level.");
-    const accountBalance = currentAccount?.balance ?? 0;
+    const accountBalance = currentAccountBalance ?? 0;
     if (!accountBalance || level.stake > accountBalance) {
       throw new Error(`Money Bank stopped because ${level.stake.toFixed(2)} ${currentAccount?.currency ?? "USD"} exceeds the connected balance.`);
     }
@@ -1795,11 +1797,11 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before starting Money Bank." });
       return;
     }
-    if (!currentAccount) {
+    if (!currentAccount || currentAccountBalance == null) {
       setConnectionMessage({ kind: "error", text: "Select a Deriv account before starting Money Bank." });
       return;
     }
-    if (!config.ladder?.[0] || config.ladder[0].stake > currentAccount.balance) {
+    if (!config.ladder?.[0] || config.ladder[0].stake > currentAccountBalance) {
       setConnectionMessage({ kind: "error", text: "The calculated BASE is higher than the connected account balance." });
       return;
     }
@@ -1843,6 +1845,10 @@ export default function XTraderPage() {
 
   const start = async () => {
     if (!isConnected) return;
+    if (currentAccountBalance == null || currentAccountBalance <= 0) {
+      setConnectionMessage({ kind: "error", text: "Sync the connected account balance before starting EDGE." });
+      return;
+    }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live-funds trading before starting." });
       return;
@@ -1852,8 +1858,8 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Enter a positive account balance before starting EDGE." });
       return;
     }
-    if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
-      setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount.currency ?? "USD"} balance.` });
+    if (currentAccountBalance != null && declaredAccountBalance > currentAccountBalance + 0.01) {
+      setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount?.currency ?? "USD"} balance.` });
       return;
     }
     try {
@@ -1916,7 +1922,7 @@ export default function XTraderPage() {
   ): Promise<CashGrabAutoSwitchRecommendation | null> => {
     if (!isConnected || cashGrabAutoSwitchBusyRef.current) return cashGrabAutoSwitchRecommendationRef.current;
     const config = candidateConfig ?? cashGrabConfigRef.current;
-    if (!config || !currentAccount) return null;
+    if (!config || currentAccountBalance == null) return null;
     cashGrabAutoSwitchBusyRef.current = true;
     setCashGrabAutoSwitchSafestPairStatus("watching");
     try {
@@ -1926,7 +1932,7 @@ export default function XTraderPage() {
         digit_odd_percentage?: number;
         digit_outcomes?: Array<{ digit: number; over_percentage: number; under_percentage: number }>;
       }>;
-      const balance = currentAccount.balance;
+      const balance = currentAccountBalance;
       const minimumStake = config.contractFamily === "accumulator" ? 1 : .35;
       const baseStake = config.syncBalance
         ? Math.max(minimumStake, balance * (config.balancePercentage / 100))
@@ -2086,7 +2092,7 @@ export default function XTraderPage() {
 
     const amount = Number(cashGrabCurrentStakeRef.current.toFixed(2));
     const batchCount = Math.max(1, Math.trunc(config.bulkCount));
-    if (!currentAccount || amount * batchCount > currentAccount.balance) {
+    if (currentAccountBalance == null || amount * batchCount > currentAccountBalance) {
       setConnectionMessage({ kind: "error", text: "Cash Grab stopped because the selected stake exceeds the connected balance." });
       cashGrabRunningRef.current = false;
       setCashGrabRunning(false);
@@ -2514,6 +2520,10 @@ export default function XTraderPage() {
       setTradeXMessage("Connect Deriv before sending a Trade X contract.");
       return false;
     }
+    if (currentAccountBalance == null) {
+      setTradeXMessage("Trade X is paused until the selected account balance is available.");
+      return false;
+    }
     if (isReal && !liveConfirmed) {
       setTradeXMessage("Confirm live funds before sending a Trade X contract.");
       return false;
@@ -2522,7 +2532,7 @@ export default function XTraderPage() {
       setTradeXMessage("Trade X is outside its configured trading calendar.");
       return false;
     }
-    if (currentAccount && config.stake * count > currentAccount.balance) {
+    if (currentAccountBalance == null || config.stake * count > currentAccountBalance) {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
       return false;
     }
@@ -2651,7 +2661,7 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "info", text: "DigitFlip is outside its configured trading calendar." });
       return false;
     }
-    const declaredAccountBalance = currentAccount?.balance ?? 0;
+    const declaredAccountBalance = currentAccountBalance ?? 0;
     if (!Number.isFinite(declaredAccountBalance) || declaredAccountBalance <= 0) {
       setConnectionMessage({ kind: "error", text: "DigitFlip is paused until the account balance is entered." });
       return false;
@@ -2682,7 +2692,7 @@ export default function XTraderPage() {
     const amount = config.stakeMode === "martingale"
       ? digitFlipNextStakeRef.current
       : config.stake;
-    if (amount > declaredAccountBalance || (currentAccount && amount > currentAccount.balance)) {
+    if (amount > declaredAccountBalance || (currentAccountBalance != null && amount > currentAccountBalance)) {
       setConnectionMessage({ kind: "error", text: "The DigitFlip stake is higher than the available balance." });
       return false;
     }
@@ -2797,6 +2807,10 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before running DigitFlip." });
       return;
     }
+    if (currentAccountBalance == null || currentAccountBalance <= 0) {
+      setConnectionMessage({ kind: "error", text: "Sync the connected account balance before starting DigitFlip." });
+      return;
+    }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before running DigitFlip." });
       return;
@@ -2806,8 +2820,8 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Enter a positive account balance before starting DigitFlip." });
       return;
     }
-    if (currentAccount && declaredAccountBalance > currentAccount.balance + 0.01) {
-      setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount.currency ?? "USD"} balance.` });
+    if (currentAccountBalance != null && declaredAccountBalance > currentAccountBalance + 0.01) {
+      setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount?.currency ?? "USD"} balance.` });
       return;
     }
     digitFlipSessionKnownIdsRef.current = new Set(digitFlipAllRows.map((trade) => trade.contract_id));
@@ -2916,6 +2930,10 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before sending a Bulk Trader contract." });
       return;
     }
+    if (currentAccountBalance == null) {
+      setConnectionMessage({ kind: "error", text: "Bulk Trader is paused until the selected account balance is available." });
+      return;
+    }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a Bulk Trader contract." });
       return;
@@ -2952,6 +2970,10 @@ export default function XTraderPage() {
   const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
     if (edgeActionLockRef.current || edgeSettlementLockRef.current) return;
     if (!isConnected) return;
+    if (currentAccountBalance == null) {
+      setConnectionMessage({ kind: "error", text: "EDGE is paused until the selected account balance is available." });
+      return;
+    }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
       return;
@@ -2972,7 +2994,7 @@ export default function XTraderPage() {
       }
       const amount = strategy === "martingale" ? nextStakeRef.current : stake;
       const entryDigit = configRef.current.barrier;
-      if (currentAccount && amount > currentAccount.balance) {
+      if (currentAccountBalance == null || amount > currentAccountBalance) {
         setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
         return;
       }
@@ -3012,6 +3034,10 @@ export default function XTraderPage() {
   const fireDualTrade = async () => {
     if (edgeActionLockRef.current || edgeSettlementLockRef.current) return;
     if (!isConnected) return;
+    if (currentAccountBalance == null) {
+      setConnectionMessage({ kind: "error", text: "EDGE is paused until the selected account balance is available." });
+      return;
+    }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a trade." });
       return;
@@ -3031,7 +3057,7 @@ export default function XTraderPage() {
         }
       }
       const amount = strategy === "martingale" ? nextStakeRef.current : stake;
-      if (currentAccount && amount * 2 > currentAccount.balance) {
+      if (currentAccountBalance == null || amount * 2 > currentAccountBalance) {
         setConnectionMessage({ kind: "error", text: "The dual stake is higher than the available balance." });
         return;
       }
@@ -3137,12 +3163,11 @@ export default function XTraderPage() {
         : guidePages;
   const statusText = isConnected ? "CONNECTED" : connectedToken ? "CONNECTING" : "DISCONNECTED";
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
-  const edgeBalanceReady = Number.isFinite(currentAccount?.balance)
-    && (currentAccount?.balance ?? 0) > 0;
+  const edgeBalanceReady = currentAccountBalance != null && currentAccountBalance > 0;
   const canTrade = isConnected && !running && edgeBalanceReady
     && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
     && Boolean(currentAccount) && stake <= Number(edgeAccountBalance)
-    && stake <= (currentAccount?.balance ?? 0);
+    && stake <= (currentAccountBalance ?? 0);
 
   return (
     <main className="xt-app">
@@ -3655,7 +3680,7 @@ export default function XTraderPage() {
             setMoneyBankSymbol(next);
             void selectMarket(next);
           }}
-          accountBalance={currentAccount?.balance}
+          accountBalance={currentAccountBalance}
           currency={currentAccount?.currency ?? "USD"}
           quote={status.data?.last_tick?.quote}
           growthRate={moneyBankGrowthRate}
@@ -3726,7 +3751,7 @@ export default function XTraderPage() {
           bulkCount={cashGrabCount}
           duration={cashGrabDuration}
           syncBalance={cashGrabSyncBalance}
-          accountBalance={currentAccount?.balance}
+          accountBalance={currentAccountBalance}
           currency={currentAccount?.currency ?? "USD"}
           balancePercentage={cashGrabBalancePercentage}
            multiplier={cashGrabMultiplier}

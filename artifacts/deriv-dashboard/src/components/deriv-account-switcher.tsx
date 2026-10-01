@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { getAccountBalance } from "@/lib/account-balance";
 
 const money = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -64,7 +65,9 @@ export function DerivAccountSwitcher({
   });
   const selectAccount = useSelectDerivAccount();
 
-  const accounts = accountsQuery.data ?? [];
+  const accounts = (accountsQuery.data ?? []).filter(
+    (account) => Boolean(account && typeof account.id === "string"),
+  );
   const serverAccount = statusQuery.data?.account;
   const accountOptions = serverAccount && !accounts.some((account) => account.id === serverAccount.id)
     ? [serverAccount, ...accounts]
@@ -73,9 +76,9 @@ export function DerivAccountSwitcher({
     ?? accountOptions.find((account) => account.type === "demo")
     ?? accountOptions[0];
   const selectedAccount = accountOptions.find((account) => account.id === pendingAccountId) ?? activeAccount;
-  const balance = selectedAccount?.id === serverAccount?.id
-    ? serverAccount.balance
-    : selectedAccount?.balance;
+  const balance = selectedAccount?.id === serverAccount?.id && serverAccount
+    ? getAccountBalance(serverAccount)
+    : getAccountBalance(selectedAccount);
 
   const handleSelectAccount = (accountId: string) => {
     const account = accountOptions.find((option) => option.id === accountId);
@@ -91,7 +94,12 @@ export function DerivAccountSwitcher({
           queryClient.setQueryData(getGetDerivAccountsQueryKey(), (current: typeof accounts) =>
             current?.map((item) =>
               item.id === result.account?.id
-                ? { ...item, balance: result.account.balance }
+              ? {
+                  ...item,
+                  ...(getAccountBalance(result.account) == null
+                    ? {}
+                    : { balance: getAccountBalance(result.account) }),
+                }
                 : item,
             ) ?? current,
           );
@@ -117,7 +125,7 @@ export function DerivAccountSwitcher({
 
   if (!hasToken || !selectedAccount) return null;
 
-  const formattedBalance = money.format(balance ?? selectedAccount.balance);
+  const formattedBalance = balance == null ? "—" : money.format(balance);
 
   return (
     <div className={`deriv-account-switcher ${className ?? ""}`}>
@@ -144,9 +152,9 @@ export function DerivAccountSwitcher({
           <DropdownMenuSeparator className="deriv-account-menu-separator" />
           {accountOptions.map((account) => {
             const isSelected = account.id === selectedAccount.id;
-            const accountBalance = account.id === serverAccount?.id
-              ? serverAccount.balance
-              : account.balance;
+            const accountBalance = account.id === serverAccount?.id && serverAccount
+              ? getAccountBalance(serverAccount)
+              : getAccountBalance(account);
 
             return (
               <DropdownMenuItem
@@ -162,7 +170,7 @@ export function DerivAccountSwitcher({
                 <span className="deriv-account-option-id">{account.id}</span>
                 <span className="deriv-account-option-currency">{account.currency}</span>
                 <span className="deriv-account-option-balance">
-                  {money.format(accountBalance)}
+                  {accountBalance == null ? "—" : money.format(accountBalance)}
                 </span>
                 <Check size={15} className="deriv-account-option-check" aria-hidden="true" />
               </DropdownMenuItem>
