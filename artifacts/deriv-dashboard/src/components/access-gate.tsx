@@ -185,7 +185,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
           </div>
           <label className="access-terms"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} disabled={login.isPending} /><span>I acknowledge and agree to the terms and conditions of Shadow Ai Trading.</span></label>
           <button type="submit" disabled={login.isPending || !accessKey.trim() || !termsAccepted}>
-            {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Log In"}
+            {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Unlock workspace"}
           </button>
         </form>
         <div className="access-gate-footer">

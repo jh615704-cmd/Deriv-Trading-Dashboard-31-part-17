@@ -7,7 +7,7 @@ import {
   RotateCcw,
   Zap,
 } from "lucide-react";
-import DerivHistory from "./deriv-history";
+import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 import "./digit-flip-panel.css";
 
 export type DigitFlipParity = "DIGITEVEN" | "DIGITODD";
@@ -22,18 +22,7 @@ export type DigitFlipMarketSignal = {
   sampleCount: number;
 };
 
-export type DigitFlipTradeRow = {
-  contract_id: string;
-  contract_type: string;
-  symbol: string;
-  status: string;
-  profit: number;
-  buy_price: number;
-  barrier?: number | null;
-  payout?: number | null;
-  buy_time?: number | null;
-  sell_time?: number | null;
-};
+export type DigitFlipTradeRow = DerivHistoryRow & { account_type: string };
 
 export type DigitFlipPanelProps = {
   enabled: boolean;

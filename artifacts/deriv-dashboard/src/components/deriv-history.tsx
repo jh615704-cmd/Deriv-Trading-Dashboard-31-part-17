@@ -36,7 +36,7 @@ const money = (amount: number, currency?: string) =>
 const timeLabel = (epoch?: number | null) => {
   if (epoch == null || !Number.isFinite(epoch)) return "—";
   const date = new Date(epoch * 1000);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString([], { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 };
 
 export default function DerivHistory({ title, strategy, rows, currency, clearArmed = false, fading = false, onClear, sessionPnl, sessionTradeCount, actions }: Props) {
@@ -76,13 +76,14 @@ export default function DerivHistory({ title, strategy, rows, currency, clearArm
           const outcome = open ? "OPEN" : row.profit > 0 ? "WON" : row.profit < 0 ? "LOST" : status.toUpperCase();
           const barrier = row.barrier == null ? "" : ` · ${row.contract_type.startsWith("DIGIT") ? "digit" : "barrier"} ${row.barrier}`;
           return <article className="deriv-history-row" key={row.contract_id} data-testid={`deriv-history-${row.contract_id}`}>
-            <div className="deriv-history-rowtop"><span className="deriv-history-feature">{strategy}</span><b className={`deriv-history-profit ${row.profit < 0 && !open ? "negative" : "positive"}`}>{open ? "—" : `${row.profit >= 0 ? "+" : ""}${money(row.profit, currency)}`}</b></div>
-            <div className="deriv-history-market"><b>{row.symbol}</b><span className={`deriv-history-outcome ${open ? "open" : row.profit < 0 ? "loss" : "win"}`}>{outcome}</span><strong>{row.contract_type.replace("DIGIT", "")}{barrier}</strong></div>
+            <div className="deriv-history-rowtop"><span className="deriv-history-feature">{strategy}</span><b className={`deriv-history-profit ${row.profit < 0 ? "negative" : "positive"}`}>{row.profit >= 0 ? "+" : ""}{money(row.profit, currency)}</b></div>
+            <div className="deriv-history-market"><b>{row.symbol}</b><span className="deriv-history-account">{row.account_type?.toUpperCase() ?? "ACCOUNT —"}</span><span className={`deriv-history-outcome ${open ? "open" : row.profit < 0 ? "loss" : "win"}`}>{outcome}</span><strong>{row.contract_type.replace("DIGIT", "")}{barrier}</strong></div>
             <div className="deriv-history-details">
               <span><small>OPENED</small><b>{timeLabel(row.buy_time)}</b></span>
-              {row.sell_time != null && <span><small>SETTLED</small><b>{timeLabel(row.sell_time)}</b></span>}
+              <span><small>SETTLED</small><b>{timeLabel(row.sell_time)}</b></span>
               <span><small>STAKE</small><b>{money(row.buy_price, currency)}</b></span>
-              {row.payout != null && <span><small>PAYOUT</small><b>{money(row.payout, currency)}</b></span>}
+              {row.current_value != null && <span><small>CURRENT VALUE</small><b>{money(row.current_value, currency)}</b></span>}
+              {row.payout != null && <span><small>FULL PAYOUT</small><b>{money(row.payout, currency)}</b></span>}
               <span><small>STATUS</small><b>{row.status}</b></span>
             </div>
           </article>;

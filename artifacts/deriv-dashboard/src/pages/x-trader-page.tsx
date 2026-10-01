@@ -25,8 +25,8 @@ import {
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import {
-  Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, Link2, Loader2,
-  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, Trash2, X, Zap,
+  Activity, BookOpen, Bot, ChevronDown, ChevronLeft, ChevronRight, Link2, Loader2,
+  Pause, Play, Power, RefreshCw, RotateCcw, ShieldAlert, ShieldCheck, X, Zap,
 } from "lucide-react";
 import {
   chooseBestDigitSignal,
@@ -190,12 +190,12 @@ const moneyBankGuidePages = [
   { title: "Reinvest Profit", body: "Reinvest Profit is off by default. When it is off, every win resets to the original BASE; when it is on, the win is added to the next BASE.", points: ["The switch changes the next cycle only.", "Compounding can increase exposure quickly.", "Review the next-stake value after every win."] },
   { title: "Profit Target", body: "Profit Target is an optional session limit in account currency. Leave it blank to run without a positive P/L stop.", points: ["The limit is checked after settlement.", "It does not close a contract early.", "Blank means no profit target is applied."] },
   { title: "Loss Limit", body: "Loss Limit is an optional session guard. Leave it blank to run without a negative P/L stop.", points: ["The limit is checked after settlement.", "It is a guardrail, not a loss guarantee.", "Blank means no loss limit is applied."] },
-  { title: "Auto-switch safest pair", body: "Auto-switch continuously ranks the supported Volatility 1-second pairs using the current growth rate, exact tick target, and live sample context.", points: ["The top pair is selected on start.", "The selected pair can change during recovery.", "The analysis is a selection aid, not a prediction."] },
-  { title: "Stats Snapshot", body: "Stats Snapshot models 100 completed virtual sessions for every supported pair. It never opens background contracts and refreshes from the live sample.", points: ["Each row shows wins, total sessions, and win rate.", "Refresh captures a new analysis time.", "Settings changes update the model inputs."] },
-  { title: "Reading account stats", body: "The balance snapshot shows account balance, session P/L, win rate, completed trades, current streak, peak streak, and next stake.", points: ["Open contracts are not counted as completed.", "Session values reset when a new Money Bank run starts.", "The account balance is supplied by Deriv."] },
+  { title: "Safest pair snapshot", body: "The snapshot compares the live samples for supported Volatility pairs. It is advisory and does not change your selected market or settings.", points: ["Wait for samples before comparing markets.", "The snapshot is descriptive, not a prediction.", "Select any market manually before starting."] },
+  { title: "Live pair samples", body: "The snapshot lists observed tick counts, rise and fall percentages, and the latest quote for each supported pair.", points: ["It shows observed market data, not simulated sessions.", "Refresh updates the capture time.", "Select a market manually before starting."] },
+  { title: "Account and session", body: "The selected account and live balance appear in the workspace header. Money Bank session P/L and trade count remain in the footer.", points: ["Open contracts remain unsettled until Deriv responds.", "Session values reset when a new Money Bank run starts.", "The account balance is supplied by Deriv."] },
   { title: "Start Accumulator", body: "Start Accumulator validates the connection, account, balance, live confirmation, and calculated BASE before starting the guarded loop.", points: ["Check the selected pair and ladder first.", "The loop waits for settlement before its next entry.", "Only one Money Bank action runs at a time."] },
   { title: "Stop Accumulator", body: "Stop Accumulator immediately prevents another pending entry and then sends a close request for every open Accumulator contract found in the session history.", points: ["Wait for the closing state to finish.", "A pending buy is closed when Deriv acknowledges it.", "Stopping does not delete trade history."] },
-  { title: "Trade history", body: "Money Bank history lists Accumulator contracts with symbol, account, stake, status, and P/L.", points: ["Open rows have no final P/L yet.", "Rows update as Deriv settles or closes them.", "History is scoped visually to Accumulator contracts."] },
+  { title: "Trade history", body: "Money Bank history lists each returned Accumulator contract with its market, account, barrier, price, current value, payout, profit, status, and timestamps.", points: ["Open rows update with current value and profit.", "Rows update as Deriv settles or closes them.", "History is scoped visually to Accumulator contracts."] },
   { title: "Download and Reset", body: "Download exports the visible Money Bank rows as a CSV file. Reset uses a two-tap confirmation and fades the visible rows before clearing them from this panel.", points: ["Download does not alter account records.", "Reset does not cancel open contracts.", "A fresh run can add new rows again."] },
   { title: "Live-money protection", body: "Real-money use requires the live-funds confirmation and the server's own live-trading guard. Never treat the snapshot as a guarantee.", points: ["Demo testing is strongly recommended.", "A disabled action means a required guard is missing.", "Keep an acceptable reserve in the account."] },
   { title: "Final checklist", body: "Money Bank is ready when the account, Volatility pair, growth rate, ticks, BASE strategy, optional limits, reinvest state, and auto-switch state are intentional.", points: ["Start small.", "Watch every settlement.", "Stop if the session no longer matches your plan."] },
@@ -215,8 +215,8 @@ const cashGrabGuidePages = [
   { title: "Bulk count", body: "Bulk count is the number of independent contracts sent in one request. There is no visible dashboard maximum; account balance and server capacity remain final guards.", points: ["A batch is not one combined contract.", "Contracts can settle differently.", "Review every returned row."] },
   { title: "Duration", body: "Choose 1 through 5 ticks for the contract duration. Shorter duration settles sooner but does not remove market risk.", points: ["The selected duration is sent unchanged.", "Duration does not improve probability by itself.", "Open contracts remain open until Deriv settles them."] },
   { title: "Sync Balance", body: "SYNC BALANCE can calculate the per-contract stake from a selected percentage of the connected balance. DOUBLE SYNC is a visible percentage control.", points: ["Sync is optional.", "The parent retains balance guards.", "A synced value is still a risk amount."] },
-  { title: "JDY AI 2", body: "JDY AI 2 is a pre-entry safety gate. It remains quiet until MONEY START, then it may hold an entry when the selected setup fails the current risk check.", points: ["It does not change your settings.", "A held entry is skipped, not replaced.", "It does not promise a win."] },
-  { title: "JDY AI 3", body: "JDY AI 3 can begin the Cash Grab loop without a separate MONEY START tap. It uses the same honest pre-entry gate and does not claim a guaranteed outcome.", points: ["It uses the selected settings.", "Rejected entries are skipped.", "Disable it to return to manual start."] },
+  { title: "Shadows 2", body: "Shadows 2 is a pre-entry safety gate. It remains quiet until MONEY START, then it may hold an entry when the selected setup fails the current risk check.", points: ["It does not change your settings.", "A held entry is skipped, not replaced.", "It does not promise a win."] },
+  { title: "Shadows 3", body: "Shadows 3 can begin the Cash Grab loop without a separate MONEY START tap. It uses the same honest pre-entry gate and does not claim a guaranteed outcome.", points: ["It uses the selected settings.", "Rejected entries are skipped.", "Disable it to return to manual start."] },
   { title: "MONEY START", body: "MONEY START snapshots the visible Cash Grab configuration and begins the controlled loop after account and live-trading checks pass.", points: ["Review market, family, direction, stake, count, and ticks.", "The loop waits between independent batches.", "Changing controls does not rewrite an active batch."] },
   { title: "MONEY STOP", body: "MONEY STOP prevents another batch from being started and closes every active Cash Grab contract from the current run.", points: ["The stop sweep covers every returned contract, not just the last one.", "Contracts already settled remain in history.", "Review history after stopping."] },
   { title: "Session P/L", body: "Session P/L totals the settled profit and loss for Cash Grab entries since the current run began.", points: ["Open contracts are not final P/L.", "The account balance comes from Deriv.", "A positive session does not predict the next result."] },
@@ -388,7 +388,6 @@ export default function XTraderPage() {
   const [edgeAutoSelectBest, setEdgeAutoSelectBest] = useState(false);
   const [edgeScannerMessage, setEdgeScannerMessage] = useState<string | null>(null);
   const [edgeAccountBalance, setEdgeAccountBalance] = useState("");
-  const [edgeOutcomeSynced, setEdgeOutcomeSynced] = useState(false);
   const [xTraderEnabled, setXTraderEnabled] = useState(false);
   const [tradeXEnabled, setTradeXEnabled] = useState(false);
   const [tradeXMarketType, setTradeXMarketType] = useState<TradeXMarketType>("volatility");
@@ -405,7 +404,6 @@ export default function XTraderPage() {
   const [moneyBankStrategy, setMoneyBankStrategy] = useState<MoneyBankStrategy>("budget");
   const [moneyBankBudget, setMoneyBankBudget] = useState(500);
   const [moneyBankManualBase, setMoneyBankManualBase] = useState(1);
-  const [moneyBankAutoSwitch, setMoneyBankAutoSwitch] = useState(false);
   const [moneyBankReinvestProfit, setMoneyBankReinvestProfit] = useState(false);
   const [moneyBankReinvestPercent, setMoneyBankReinvestPercent] = useState(100);
   const [moneyBankProfitTarget, setMoneyBankProfitTarget] = useState<number | null>(null);
@@ -477,7 +475,6 @@ export default function XTraderPage() {
   const [digitFlipSampleCount, setDigitFlipSampleCount] = useState(0);
   const [digitFlipEvenCount, setDigitFlipEvenCount] = useState(0);
   const [digitFlipAccountBalance, setDigitFlipAccountBalance] = useState("");
-  const [digitFlipOutcomeSynced, setDigitFlipOutcomeSynced] = useState(false);
   const [digitFlipClearArmed, setDigitFlipClearArmed] = useState(false);
   const [edgeHiddenHistoryIds, setEdgeHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipHiddenHistoryIds, setDigitFlipHiddenHistoryIds] = useState<Set<string>>(new Set());
@@ -695,16 +692,8 @@ export default function XTraderPage() {
     ? cashGrabAllRows.filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id) && !cashGrabSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
   const moneyBankCompletedRows = moneyBankSessionRows.filter((trade) => trade.status !== "open");
-  const moneyBankWins = moneyBankCompletedRows.filter((trade) => trade.profit > 0).length;
-  const moneyBankStreaks = moneyBankCompletedRows.reduce(({ current, peak }, trade) => {
-    const next = trade.profit > 0 ? current + 1 : 0;
-    return { current: next, peak: Math.max(peak, next) };
-  }, { current: 0, peak: 0 });
   const moneyBankSignals = (status.data?.market_signals ?? []) as MoneyBankMarketSignal[];
   const moneyBankScannerRecommendationRef = useRef<MoneyBankScannerRecommendation | null>(null);
-  const tradeXProfit = tradeXRows.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0);
-  const tradeXWins = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit > 0).length;
-  const tradeXLosses = tradeXRows.filter((trade) => trade.status !== "open" && trade.profit < 0).length;
   const fastSessionPnl = realizedProfit(edgeSessionRows);
   const moneyBankHistorySessionPnl = realizedProfit(moneyBankSessionRows);
   const cashGrabHistorySessionPnl = realizedProfit(cashGrabSessionRows);
@@ -874,7 +863,7 @@ export default function XTraderPage() {
       return decision;
     } catch (error) {
       setMoneyBankJdyState("not-good");
-      setConnectionMessage({ kind: "error", text: `JDY AI could not complete its scan: ${errorMessage(error)}` });
+      setConnectionMessage({ kind: "error", text: `Shadows could not complete its scan: ${errorMessage(error)}` });
       return null;
     } finally {
       moneyBankJdyScanInFlightRef.current = false;
@@ -906,9 +895,7 @@ export default function XTraderPage() {
     edgeSessionKnownIdsRef.current = null;
     digitFlipSessionKnownIdsRef.current = null;
     bulkSessionKnownIdsRef.current = null;
-    setEdgeOutcomeSynced(false);
     setEdgeAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
-    setDigitFlipOutcomeSynced(false);
     setDigitFlipAccountBalance(currentAccount ? currentAccount.balance.toFixed(2) : "");
     setLiveConfirmed(false);
   }, [currentAccount?.id]);
@@ -1728,7 +1715,7 @@ export default function XTraderPage() {
     }
     let tradeSymbol = currentConfig.autoSwitch ? moneyBankSafestSymbolRef.current : currentConfig.symbol;
     if (moneyBankJdyEnabled) {
-      // JDY must evaluate and send the market visible in the Money Bank form.
+      // The Money Bank gate evaluates the market selected in the form.
       // Auto-switch is intentionally ignored for this guarded entry.
       tradeSymbol = currentConfig.symbol;
       const decision = await scanJdyMoneyBank(currentConfig, tradeSymbol);
@@ -1739,15 +1726,15 @@ export default function XTraderPage() {
         setConnectionMessage({
           kind: "info",
           text: decision
-            ? `JDY AI cancelled this trade: not a good trade, with an estimated ${decision.estimatedLossStreak}-loss streak risk.`
-            : "JDY AI cancelled this trade because it could not confirm a safe setup.",
+            ? `Shadows cancelled this trade: not a good trade, with an estimated ${decision.estimatedLossStreak}-loss streak risk.`
+            : "Shadows cancelled this trade because it could not confirm a safe setup.",
         });
         return;
       }
       setMoneyBankJdyState("safe");
       setConnectionMessage({
         kind: "info",
-        text: `JDY AI confirmed the selected ${tradeSymbol} setup before entry.`,
+        text: `Shadows confirmed the selected ${tradeSymbol} setup before entry.`,
       });
     }
     const level = currentConfig.ladder?.[Math.min(6, moneyBankLevelRef.current)];
@@ -3164,6 +3151,25 @@ export default function XTraderPage() {
       <header className="xt-header">
         <div className="xt-brand"><span>S</span><div><strong>Shadow Ai Trading</strong><small>AI Trading</small></div>{accessSession.data?.is_admin === true && <Link href="/admin/users" className="xt-admin-link"><ShieldCheck size={14} /> ADMIN PANEL</Link>}</div>
         <div className="xt-header-right">
+          <label className="xt-header-account-select">
+            <small>TRADING ACCOUNT</small>
+            <select
+              aria-label="Select Deriv trading account"
+              value={currentAccount?.id ?? ""}
+              onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, {
+                onSuccess: () => {
+                  setLiveConfirmed(false);
+                  void queryClient.invalidateQueries();
+                },
+                onError: (error) => setConnectionMessage({ kind: "error", text: errorMessage(error) }),
+              })}
+              disabled={!accountOptions.length || anyFeatureRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending || accountMutation.isPending}
+            >
+              {!accountOptions.length && <option value="">Connect PAT first</option>}
+              {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
+            </select>
+            <ChevronDown size={14} aria-hidden="true" />
+          </label>
           <div className="xt-header-account"><span className={isReal ? "real" : ""}>{currentAccount?.type?.toUpperCase() ?? "NO ACCOUNT"}</span><b>{currentAccount ? `${currentAccount.currency} ${currentAccount.balance.toFixed(2)}` : "Connect Deriv"}</b></div>
           <div className={`xt-connection ${isConnected ? "online" : ""}`}><i />{statusText}</div>
         </div>
@@ -3185,24 +3191,6 @@ export default function XTraderPage() {
           </div>
         )}
         {connectionMessage && <p className={`xt-inline-message ${connectionMessage.kind}${connectionMessageFading ? " fading" : ""}`} role="status" aria-live="polite">{connectionMessage.text}</p>}
-      </section>
-
-      <section className="xt-account-grid">
-        <div className="xt-balance-card">
-          <small>ACTIVE BALANCE</small>
-          <strong><span>{currentAccount?.currency ?? "USD"}</span>{(currentAccount?.balance ?? 0).toFixed(2)}</strong>
-          <div>{currentAccount?.id ?? "No account connected"} <b className={isReal ? "real" : ""}>{currentAccount?.type ?? "—"}</b></div>
-        </div>
-         <label className="xt-select-card"><small>TRADING ACCOUNT</small><div><select value={currentAccount?.id ?? ""} onChange={(event) => accountMutation.mutate({ data: { account_id: event.target.value } }, {
-           onSuccess: () => {
-             setLiveConfirmed(false);
-             void queryClient.invalidateQueries();
-           },
-           onError: (error) => setConnectionMessage({ kind: "error", text: errorMessage(error) }),
-         })} disabled={!accountOptions.length || anyFeatureRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending || accountMutation.isPending}>
-          {!accountOptions.length && <option value="">Connect PAT first</option>}
-          {accountOptions.map((account) => <option key={account.id} value={account.id}>{account.id} · {account.type.toUpperCase()} · {account.currency} {account.balance.toFixed(2)}</option>)}
-        </select><ChevronDown size={15} /></div></label>
       </section>
 
       <section className="xt-feature-card xt-feature-card-cash-grab">
@@ -3310,6 +3298,7 @@ export default function XTraderPage() {
           symbols={tradeXSymbols}
           marketSignals={bulkTraderMarketSignals}
           marketLabel={markets.find(([id]) => id === bulkTraderSymbol)?.[1] ?? bulkTraderSymbol}
+          currency={currentAccount?.currency ?? "USD"}
           quote={status.data?.last_tick?.quote}
           lastDigit={lastDigit}
           digitHistory={analysisDigits}
@@ -3378,8 +3367,6 @@ export default function XTraderPage() {
            magicEnabled={digitFlipMagic}
            clearTradesArmed={digitFlipClearArmed}
            historyFading={historyFading}
-           accountBalance={digitFlipAccountBalance || (currentAccount ? currentAccount.balance.toFixed(2) : "")}
-            outcomeSynced={digitFlipOutcomeSynced}
           isPlacingTrade={digitFlipBuyMutation.isPending}
           disabled={!isConnected}
           onMarketTypeChange={(next) => {
@@ -3408,11 +3395,6 @@ export default function XTraderPage() {
            onRefreshSample={refreshDigitFlipSample}
            onAssaultChange={toggleDigitFlipAssault}
            onMagicChange={toggleDigitFlipMagic}
-            onAccountBalanceChange={setDigitFlipAccountBalance}
-           onOutcomeSyncedChange={(synced) => {
-             if (synced && currentAccount) setDigitFlipAccountBalance(currentAccount.balance.toFixed(2));
-             setDigitFlipOutcomeSynced(synced);
-           }}
           onGuide={() => { setGuideMode("digit-flip"); setGuidePage(0); setGuideOpen(true); }}
         />
       )}
@@ -3460,8 +3442,6 @@ export default function XTraderPage() {
           bestPairAnalyzer={edgeBestPairAnalyzer}
           autoSelectBest={edgeAutoSelectBest}
           scannerMessage={edgeScannerMessage}
-          accountBalance={edgeAccountBalance || (currentAccount ? currentAccount.balance.toFixed(2) : "")}
-          outcomeSynced={edgeOutcomeSynced}
           canTrade={canTrade}
           onStart={start}
           onStop={stop}
@@ -3530,11 +3510,6 @@ export default function XTraderPage() {
               setEdgeRecommendation(null);
               setEdgeScannerMessage(null);
             }
-          }}
-          onAccountBalanceChange={setEdgeAccountBalance}
-          onOutcomeSyncedChange={(synced) => {
-            if (synced && currentAccount) setEdgeAccountBalance(currentAccount.balance.toFixed(2));
-            setEdgeOutcomeSynced(synced);
           }}
           canViewHistory={canViewHistory}
           recentTrades={edgeRows}
@@ -3632,13 +3607,6 @@ export default function XTraderPage() {
             {strategy === "martingale" && <p className="xt-streak-note">Next stake after settlement: <b>{nextStake.toFixed(2)} {currentAccount?.currency ?? "USD"}</b>. Every loss multiplies the next stake; any profit resets it to normal.</p>}
           </section>
 
-          {canViewHistory && <section className="xt-history edge-legacy-hidden" title="Recent dashboard trade history">
-            <div className="xt-history-head"><div><CircleDollarSign size={18} /><span><b>Recent EDGE Trades</b><small>EDGE rows only · Deriv records are not deleted</small></span></div><button onClick={() => void clearHistory()} disabled={historyFading}><Trash2 size={15} />{clearHistoryArmed ? "Tap again" : "Clear"}</button></div>
-             {!edgeRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trades will appear here after EDGE starts.</div> : edgeRows.map((trade) => {
-              const settled = trade.status !== "open";
-              return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
-            })}
-           </section>}
         </>
       )}
 
@@ -3682,23 +3650,6 @@ export default function XTraderPage() {
           />
           {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}
           {canViewHistory && <DerivHistory title="Trade X History" strategy="Trade X Strategy" rows={tradeXRows} currency={currentAccount?.currency} clearArmed={tradeXHistoryClearArmed} fading={historyFading} onClear={clearTradeXHistory} />}
-          {canViewHistory && (
-            <section className="xt-history xt-history-trade-x" title="Recent Trade X trade history">
-              <div className="xt-history-head">
-                <div><CircleDollarSign size={18} /><span><b>Trade X Recent Trades</b><small>Digit Differs rows only · Deriv records are not deleted</small></span></div>
-                <button onClick={clearTradeXHistory} disabled={!tradeXRows.length}><Trash2 size={15} />{tradeXHistoryClearArmed ? "Tap again" : "Clear"}</button>
-              </div>
-              <div className="xt-pnl-strip" aria-label="Trade X profit and loss summary">
-                <div><small>TRADE X P/L</small><strong className={tradeXProfit < 0 ? "loss" : ""}>{tradeXProfit >= 0 ? "+" : ""}{tradeXProfit.toFixed(2)}</strong></div>
-                <div><small>WINS</small><strong>{tradeXWins}</strong></div>
-                <div><small>LOSSES</small><strong className={tradeXLosses ? "loss" : ""}>{tradeXLosses}</strong></div>
-              </div>
-              {!tradeXRows.length ? <div className="xt-empty"><RefreshCw size={20} />Trade X trades will appear here after a Digit Differs entry.</div> : tradeXRows.map((trade) => {
-                const settled = trade.status !== "open";
-                return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>DIGIT DIFFERS {trade.barrier == null ? "" : trade.barrier}</b><small>{trade.symbol} · {trade.account_type} · expiry decides the result</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
-              })}
-            </section>
-          )}
         </section>
       )}
 
@@ -3729,8 +3680,6 @@ export default function XTraderPage() {
           onBudgetChange={setMoneyBankBudget}
           manualBase={moneyBankManualBase}
           onManualBaseChange={setMoneyBankManualBase}
-          autoSwitch={moneyBankAutoSwitch}
-          onAutoSwitchChange={setMoneyBankAutoSwitch}
           reinvestProfit={moneyBankReinvestProfit}
           onReinvestProfitChange={setMoneyBankReinvestProfit}
           reinvestPercent={moneyBankReinvestPercent}
@@ -3763,59 +3712,9 @@ export default function XTraderPage() {
              void selectMarket(recommendation.symbol);
              setConnectionMessage({ kind: "info", text: "Money Bank adapted to the latest AI SCANNER recommendation." });
            }}
-           jdyEnabled={moneyBankJdyEnabled}
-           onJdyChange={(enabled) => {
-             setMoneyBankJdyEnabled(enabled);
-             setMoneyBankJdyState("idle");
-             setMoneyBankJdyDecision(null);
-           }}
-           jdyState={moneyBankJdyState}
-           jdyDecision={moneyBankJdyDecision}
-           onApplyJdyRecommendation={() => {
-             const recommendation = moneyBankJdyDecision;
-             if (!recommendation?.suggestedSymbol || recommendation.suggestedGrowthRate == null || recommendation.suggestedTakeProfitTicks == null) return;
-             setMoneyBankAutoSwitch(false);
-             setMoneyBankSymbol(recommendation.suggestedSymbol);
-             setMoneyBankGrowthRate(recommendation.suggestedGrowthRate);
-             setMoneyBankTakeProfitTicks(recommendation.suggestedTakeProfitTicks);
-             const suggestedStake = recommendation.suggestedStake == null ? moneyBankManualBase : recommendation.suggestedStake;
-             const nextConfig: MoneyBankStartConfig = {
-               symbol: recommendation.suggestedSymbol,
-               growthRate: recommendation.suggestedGrowthRate,
-               takeProfitTicks: recommendation.suggestedTakeProfitTicks,
-               strategy: "manual",
-               ladder: calculateRecoveryLadder({
-                 strategy: "manual",
-                 budget: moneyBankBudget,
-                 manualBase: suggestedStake,
-                 growthRate: recommendation.suggestedGrowthRate,
-                 takeProfitTicks: recommendation.suggestedTakeProfitTicks,
-               }),
-               autoSwitch: false,
-               reinvestProfit: moneyBankReinvestProfit,
-               reinvestPercent: moneyBankReinvestPercent,
-               profitTarget: moneyBankProfitTarget,
-               lossLimit: moneyBankLossLimit,
-             };
-             if (recommendation.suggestedStake != null) {
-               setMoneyBankStrategy("manual");
-               setMoneyBankManualBase(suggestedStake);
-             }
-             void selectMarket(recommendation.suggestedSymbol);
-             setConnectionMessage({ kind: "info", text: "JDY AI settings applied. Starting the recommended guarded setup." });
-             if (!moneyBankRunning) void startMoneyBank(nextConfig);
-           }}
           marketSignals={moneyBankSignals}
           recentTrades={moneyBankRows}
-          sessionWins={moneyBankWins}
-          currentStreak={moneyBankStreaks.current}
-          peakStreak={moneyBankStreaks.peak}
           lastSettledProfit={moneyBankLastSettledProfit}
-          nextStake={(moneyBankConfigRef.current?.ladder[Math.min(6, moneyBankLevelRef.current)] ?? calculateRecoveryLadder({ strategy: moneyBankStrategy, budget: moneyBankBudget, manualBase: moneyBankManualBase, growthRate: moneyBankGrowthRate, takeProfitTicks: moneyBankTakeProfitTicks })[Math.min(6, moneyBankLevelRef.current)])?.stake ?? 0}
-          onSafestPairChange={(next) => {
-            moneyBankSafestSymbolRef.current = next;
-            setMoneyBankSafestSymbol(next);
-          }}
            sessionPnl={moneyBankHistorySessionPnl}
           tradeCount={moneyBankCompletedRows.length}
           onStart={(config) => void startMoneyBank(config)}
@@ -3921,7 +3820,7 @@ export default function XTraderPage() {
                 ...currentConfig,
                 autoSwitchSafestPair: true,
                 autoSelectBest: false,
-                // Safest-pair selection is not JDY AI 3. Preserve the
+                // Safest-pair selection is separate from Shadows 3. Preserve the
                 // explicit JDY switch state when this control changes.
                 jdyAi3: cashGrabJdyAi3,
               }

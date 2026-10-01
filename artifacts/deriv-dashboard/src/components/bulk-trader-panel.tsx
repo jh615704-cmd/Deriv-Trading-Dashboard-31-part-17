@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { Activity, BarChart3, Play, RefreshCw, Trash2 } from "lucide-react";
-import DerivHistory from "./deriv-history";
+import { Activity, BarChart3, Play, RefreshCw } from "lucide-react";
+import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 
 export type BulkTraderType = "over-under" | "differs";
 export type BulkTraderPrediction = number;
@@ -21,22 +21,14 @@ export type BulkTraderMarketSignal = {
   observedPercentage: number;
 };
 
-export type BulkTraderHistoryRow = {
-  contract_id: string;
-  contract_type: string;
-  symbol: string;
-  account_type: string;
-  barrier?: number | null;
-  buy_price: number;
-  profit: number;
-  status: string;
-};
+export type BulkTraderHistoryRow = DerivHistoryRow & { account_type: string };
 
 type Props = {
   symbol: string;
   symbols: readonly BulkTraderSymbol[];
   marketSignals: readonly BulkTraderMarketSignal[];
   marketLabel: string;
+  currency?: string;
   quote?: number | null;
   lastDigit?: number | null;
   digitHistory: readonly number[];
@@ -84,6 +76,7 @@ export default function BulkTraderPanel({
   symbols,
   marketSignals,
   marketLabel,
+  currency,
   quote,
   lastDigit,
   digitHistory,
@@ -198,19 +191,19 @@ export default function BulkTraderPanel({
           <div className="bulk-trader-tick-card">
             <div className="bulk-trader-tick-head">
               <span><small>CURRENT TICK</small><strong className="bulk-current-digit">{lastDigit == null ? "—" : lastDigit}</strong><em>{isConnected ? "streaming now" : "offline"}</em></span>
-              <span><small>MARKET SIGNAL</small><strong className={signalReady ? "ready" : ""}>{signalReady ? "READY" : displayPercentage(observedRate)}</strong><em>{currentSignal ? `${currentSignal.sampleCount} tick sample` : "No sample yet"}</em></span>
+                <span><small>MARKET SIGNAL</small><strong className={signalReady ? "ready" : ""}>{signalReady ? "READY" : visibleDigits.length ? displayPercentage(observedRate) : "—"}</strong><em>{currentSignal ? `${currentSignal.sampleCount} tick sample${currentSignal.sampleCount === 1 ? "" : "s"}` : "No sample yet"}</em></span>
               <button type="button" className="bulk-analysis-badge" onClick={onRefreshAnalysis} disabled={!isConnected || isPlacingTrade} title="Restart live tick analysis" aria-label="Restart live tick analysis" data-testid="button-refresh-bulk-analysis"><BarChart3 size={13} /><small>ANALYSIS</small><b>{analysisTickCount}T</b><RefreshCw size={12} /></button>
             </div>
             <div className="bulk-trader-digit-row" aria-label="Current digit distribution">
               {counts.map((count, digit) => {
                 const sampleSize = visibleDigits.length;
-                const absent = count === 0;
+                const absent = sampleSize > 0 && count === 0;
                 let marker = "";
                 if (type === "over-under" && selectedDigit != null) marker = digit > selectedDigit ? "O" : digit < selectedDigit ? "U" : "=";
                 let absenceStreak = 0;
                 for (let cursor = visibleDigits.length - 1; cursor >= 0 && visibleDigits[cursor] !== digit; cursor -= 1) absenceStreak += 1;
-                return <button type="button" data-testid={`button-digit-${digit}`} key={digit} className={`bulk-digit ${selectedDigit === digit ? "selected" : ""} ${lastDigit === digit ? "current" : ""} ${absent ? "absent" : ""}`} onClick={() => onPredictionChange(digit)} aria-pressed={selectedDigit === digit} aria-label={`Digit ${digit}, ${sampleSize ? displayPercentage((count / sampleSize) * 100) : "no sample"} observed, absent ${absenceStreak} ticks`}>
-                  <span className="bulk-digit-marker">{marker || "·"}</span><b>{digit}</b><small>{sampleSize ? displayPercentage((count / sampleSize) * 100) : "—"}</small><small className="bulk-digit-streak">{absenceStreak} absent</small><i style={{ height: `${sampleSize ? Math.max(absent ? 5 : 8, (count / maxCount) * 54) : 0}%` }} />
+                return <button type="button" data-testid={`button-digit-${digit}`} key={digit} className={`bulk-digit ${selectedDigit === digit ? "selected" : ""} ${lastDigit === digit ? "current" : ""} ${absent ? "absent" : ""}`} onClick={() => onPredictionChange(digit)} aria-pressed={selectedDigit === digit} aria-label={`Digit ${digit}, ${sampleSize ? displayPercentage((count / sampleSize) * 100) : "no sample"} observed, ${sampleSize ? `absent ${absenceStreak} ticks` : "streak waiting for samples"}`}>
+                  <span className="bulk-digit-marker">{marker || "·"}</span><b>{digit}</b><small>{sampleSize ? displayPercentage((count / sampleSize) * 100) : "—"}</small><small className="bulk-digit-streak">{sampleSize ? `${absenceStreak} absent` : "waiting"}</small><i style={{ height: `${sampleSize ? Math.max(absent ? 5 : 8, (count / maxCount) * 54) : 0}%` }} />
                   {lastDigit === digit && <em aria-label="current digit" />}
                 </button>;
               })}
@@ -238,14 +231,7 @@ export default function BulkTraderPanel({
         </aside>
       </div>
 
-      <DerivHistory title="Bulk Trader History" strategy="Bulk Trader Strategy" rows={recentTrades} clearArmed={clearArmed} fading={historyFading} onClear={onClearHistory} />
-      <section className="bulk-trader-history">
-        <div className="xt-history-head"><div><Activity size={17} /><span><b>Bulk Trade History</b><small>Each returned contract is listed separately</small></span><strong className="bulk-session-pnl">Session P/L {recentTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0) >= 0 ? "+" : ""}{recentTrades.reduce((sum, trade) => sum + (trade.status === "open" ? 0 : trade.profit), 0).toFixed(2)}</strong></div><button type="button" data-testid="button-clear-bulk-history" onClick={onClearHistory} disabled={!recentTrades.length || historyFading}><Trash2 size={14} />{clearArmed ? "Tap again" : "Clear"}</button></div>
-        {!recentTrades.length ? <div className="xt-empty"><RefreshCw size={18} />Bulk contracts will appear here after the first action.</div> : recentTrades.map((trade) => {
-          const settled = trade.status !== "open";
-          return <div className={`xt-trade ${historyFading ? "fading" : ""}`} data-testid={`row-bulk-trade-${trade.contract_id}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
-        })}
-      </section>
+      <DerivHistory title="Bulk Trader History" strategy="Bulk Trader Strategy" rows={recentTrades} currency={currency} clearArmed={clearArmed} fading={historyFading} onClear={onClearHistory} />
     </section>
   );
 }

@@ -1,26 +1,17 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Pause, Play, ShieldAlert, Trash2 } from "lucide-react";
+import { ChevronDown, Pause, Play, ShieldAlert } from "lucide-react";
 import {
   chooseBestEdgeSignal,
   type BestEdgeSignal,
   type MarketSignal,
 } from "../lib/trading-sequence";
-import DerivHistory from "./deriv-history";
+import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 import "./edge-reference-panel.css";
 
 type EdgeDirection = "DIGITOVER" | "DIGITUNDER";
 type EdgeStrategy = "flat" | "martingale";
 
-type EdgeTradeRow = {
-  contract_id: string;
-  contract_type: string;
-  symbol: string;
-  account_type: string;
-  barrier?: number | null;
-  status: string;
-  profit: number;
-  buy_price: number;
-};
+type EdgeTradeRow = DerivHistoryRow & { account_type: string };
 
 type EdgeReferencePanelProps = {
   isConnected: boolean;
@@ -62,8 +53,6 @@ type EdgeReferencePanelProps = {
   bestPairAnalyzer: boolean;
   autoSelectBest: boolean;
   scannerMessage?: string | null;
-  accountBalance: string;
-  outcomeSynced: boolean;
   canTrade: boolean;
   onStart: () => void | Promise<void>;
   onStop: () => void;
@@ -72,8 +61,6 @@ type EdgeReferencePanelProps = {
   onAutoOverThreeFourFiveChange: (value: boolean) => void;
   onBestPairAnalyzerChange: (value: boolean) => void;
   onAutoSelectBestChange: (value: boolean) => void;
-  onAccountBalanceChange: (value: string) => void;
-  onOutcomeSyncedChange: (value: boolean) => void;
   canViewHistory: boolean;
   recentTrades: readonly EdgeTradeRow[];
   historyFading: boolean;
@@ -214,8 +201,6 @@ export default function EdgeReferencePanel({
   bestPairAnalyzer,
   autoSelectBest,
   scannerMessage = null,
-  accountBalance,
-  outcomeSynced,
   canTrade,
   onStart,
   onStop,
@@ -224,8 +209,6 @@ export default function EdgeReferencePanel({
   onAutoOverThreeFourFiveChange,
   onBestPairAnalyzerChange,
   onAutoSelectBestChange,
-  onAccountBalanceChange,
-  onOutcomeSyncedChange,
   canViewHistory,
   recentTrades,
   historyFading,
@@ -368,17 +351,6 @@ export default function EdgeReferencePanel({
         <p>Each preset is re-sized to your balance when applied. It sets the stake, ladder and stops — not the odds of a trade.</p>
       </section>
 
-      <section className={`edge-ref-card edge-ref-outcome ${outcomeSynced ? "active" : ""}`}>
-        <div className="edge-ref-advanced-head"><div><span className="edge-ref-field-label">Expected outcome</span><h2>Balance target</h2></div><span className={`edge-ref-sync-badge ${outcomeSynced ? "synced" : ""}`}>{outcomeSynced ? "SYNCED" : "NOT SYNCED"}</span></div>
-        <div className="edge-ref-outcome-grid">
-         <label><span>ACCOUNT BALANCE {outcomeSynced && "· LIVE SYNC"}</span><input type="number" min="0" step=".01" value={accountBalance} onChange={(event) => onAccountBalanceChange(event.target.value)} placeholder="0.00" disabled={running || outcomeSynced} /></label>
-        </div>
-        <div className="edge-ref-outcome-actions">
-          <button type="button" className={`edge-ref-sync-button ${outcomeSynced ? "selected" : ""}`} onClick={() => onOutcomeSyncedChange(!outcomeSynced)} disabled={running || !accountBalance || Number(accountBalance) <= 0}>{outcomeSynced ? "Unsync balance" : "Sync balance"}</button>
-           <span>{outcomeSynced ? "The connected Deriv balance is copied here automatically and checked before every entry." : "Enter the current account balance before starting an EDGE session."}</span>
-        </div>
-      </section>
-
       <label className="edge-ref-input-card"><span>Duration</span><div><input type="number" min="1" max="5" value={duration} onChange={(event) => onDurationChange(Math.min(5, Math.max(1, Number(event.target.value) || 1)))} disabled={running} /><b>ticks</b></div></label>
       <label className="edge-ref-input-card"><span>Initial stake</span><div><input type="number" min=".35" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.35, Number(event.target.value) || .35))} disabled={running} /><b>{currency}</b></div></label>
 
@@ -401,11 +373,7 @@ export default function EdgeReferencePanel({
 
       <div className="edge-ref-run-row"><button className={`edge-ref-run ${running ? "running" : ""}`} onClick={() => void (running ? onStop() : onStart())} disabled={!isConnected || (!running && !canTrade)}>{running ? <><Pause size={16} fill="currentColor" /> Stop</> : <><Play size={15} fill="currentColor" /> Run</>}</button><button type="button" className="edge-ref-session-reset" onClick={onReset} aria-label="Reset session P/L, trades, and stake to base" title="Reset session"><span aria-hidden="true" /></button></div>
 
-      {canViewHistory && <DerivHistory title="EDGE History" strategy="EDGE Strategy" rows={recentTrades} fading={historyFading} clearArmed={clearTradesArmed} onClear={() => void onClearHistory()} />}
-      {canViewHistory && <section className="edge-ref-history"><div className="edge-ref-history-heading"><h2>Recent Trades</h2><button onClick={() => void onClearHistory()} disabled={historyFading || !recentTrades.length}><Trash2 size={15} /></button></div>{!recentTrades.length ? <div className="edge-ref-empty">No trades yet. Configure and press Run.</div> : recentTrades.map((trade) => {
-        const settled = trade.status !== "open";
-        return <div className={`xt-trade ${historyFading ? "fading" : ""}`} key={trade.contract_id}><span><b>{trade.contract_type.replace("DIGIT", "")}</b><small>{trade.symbol} · {trade.account_type}{trade.barrier == null ? "" : ` · barrier ${trade.barrier}`}</small></span><span><small>BUY</small>{trade.buy_price.toFixed(2)}</span><span><small>STATUS</small>{trade.status}</span><strong className={settled && trade.profit < 0 ? "loss" : ""}>{settled ? `${trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}` : "—"}</strong></div>;
-      })}</section>}
+      {canViewHistory && <DerivHistory title="EDGE History" strategy="EDGE Strategy" rows={recentTrades} currency={currentAccount?.currency} fading={historyFading} clearArmed={clearTradesArmed} onClear={() => void onClearHistory()} />}
 
       <section className="edge-ref-disclaimer"><b>RISK DISCLAIMER</b><p>Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit or loss.</p></section>
     </section>

@@ -16,10 +16,10 @@ export default function Landing() {
       <header className="flex items-center justify-between px-6 py-8 md:px-12 md:py-10 max-w-7xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl rounded-tr-sm bg-[#1bb59f] flex items-center justify-center text-[#0d2a32] text-xl font-black tracking-tighter">
-            J
+            S
           </div>
           <span className="font-bold tracking-widest text-sm text-[#f3fbf9]">
-            JDY <span className="text-[#35d6b6]">AI</span>
+            Shadow <span className="text-[#35d6b6]">Ai Trading</span>
           </span>
         </div>
         
@@ -42,7 +42,7 @@ export default function Landing() {
         </h1>
 
         <p className="text-[#8ba1a2] text-lg md:text-xl max-w-2xl mx-auto leading-relaxed mb-12">
-          JDY AI is a multi-user trading terminal designed for speed. 
+          Shadow Ai Trading is a multi-user trading terminal designed for speed.
           Each user connects their own Personal Access Token to execute trades, monitor live telemetry, and analyze history in an isolated, high-density environment.
         </p>
 

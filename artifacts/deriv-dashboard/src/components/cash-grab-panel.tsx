@@ -8,7 +8,7 @@ import {
   Square,
   Wifi,
 } from "lucide-react";
-import DerivHistory from "./deriv-history";
+import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 import "./cash-grab-panel.css";
 
 export type CashGrabContractFamily = "even-odd" | "rise-fall" | "differs" | "accumulator";
@@ -27,20 +27,7 @@ export interface CashGrabDigitObservation {
   marketPercentage: number;
 }
 
-export interface CashGrabTrade {
-  contract_id: string;
-  contract_type: string;
-  symbol: string;
-  account_type: string;
-  buy_price: number;
-  profit: number;
-  status: string;
-  current_value?: number | null;
-  payout?: number | null;
-  barrier?: number | null;
-  buy_time?: number | null;
-  sell_time?: number | null;
-}
+export type CashGrabTrade = DerivHistoryRow & { account_type: string };
 
 export interface CashGrabStartConfig {
   contractFamily: CashGrabContractFamily;

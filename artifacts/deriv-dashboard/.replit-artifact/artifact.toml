@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "JDY AI"
+title = "Shadow Ai Trading"
 description = "An admin-controlled multi-user AI trading dashboard for securely connecting individual Deriv accounts, monitoring live telemetry, and executing protected options trades."
 version = "1.0.0"
 id = "artifacts/deriv-dashboard"
