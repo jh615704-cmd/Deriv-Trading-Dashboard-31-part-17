@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Activity, ArrowDownRight, ArrowUpRight, Check, ChevronDown, CircleAlert, CircleCheck,
-  Clock3, Copy, FlaskConical, RefreshCw, ShieldCheck, Signal, Sparkles, Trash2, WalletCards, Wifi, LockKeyhole
+  Clock3, Copy, FlaskConical, RefreshCw, Signal, Trash2, WalletCards, Wifi, LockKeyhole
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   getGetDerivAccountsQueryKey, getGetDerivHistoryQueryKey, getGetDerivStatusQueryKey,
   useBuyDerivContract, useClearDerivHistory, useGetDerivAccounts, useGetDerivHistory,
@@ -14,6 +15,7 @@ import { PatOnboarding } from '@/components/pat-onboarding';
 
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const time = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const historyTime = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 function tradeOutcome(status: string, profit: number) {
   const normalizedStatus = status.toLowerCase();
@@ -73,8 +75,7 @@ export default function AppPage() {
   const isReal = selectedAccount?.type === 'real';
   const serverSelected = status?.account?.id === selectedAccount?.id;
   const liveBalance = status?.account?.id === selectedAccount?.id ? status?.account?.balance : selectedAccount?.balance;
-  const selectedAccountWithLiveBalance = selectedAccount ? { ...selectedAccount, balance: liveBalance ?? selectedAccount.balance } : undefined;
-  
+
   const effectiveSymbol = symbol || status?.symbol || '';
   const isInitialLoading = tokenStatusQuery.isLoading || (hasToken && (accountsQuery.isLoading || statusQuery.isLoading));
   const hasError = accountsQuery.isError || statusQuery.isError;
@@ -195,7 +196,7 @@ export default function AppPage() {
     if (!clearHistoryArmed) {
       setClearHistoryArmed(true);
       setTestFailed(false);
-      setTestMessage('Press the clear button again within two seconds to clear recent rows.');
+       setTestMessage('Press again within two seconds to clear the recent rows for this account.');
       window.setTimeout(() => setClearHistoryArmed(false), 2000);
       return;
     }
@@ -242,9 +243,34 @@ export default function AppPage() {
       isReal={isReal} 
       onRefresh={() => { accountsQuery.refetch(); statusQuery.refetch(); }}
       headerContent={
-        <button type="button" className="icon-button" title="Refresh data" aria-label="Refresh account data" data-testid="button-refresh-data" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}>
-          <RefreshCw size={16} />
-        </button>
+        <>
+          {selectedAccount && <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className={`header-balance-trigger ${isReal ? 'real' : ''}`} aria-label={`Selected ${selectedAccount.type} account balance ${selectedAccount.currency} ${money.format(liveBalance ?? selectedAccount.balance)}. Choose account`} data-testid="button-account-balance">
+                <WalletCards size={16} />
+                <span><small>{selectedAccount.type === 'real' ? 'LIVE BALANCE' : 'DEMO BALANCE'}</small><b>{selectedAccount.currency} {money.format(liveBalance ?? selectedAccount.balance)}</b></span>
+                <ChevronDown size={14} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="account-menu-content w-80">
+              <DropdownMenuLabel>Choose an account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {accounts.map((account) => {
+                const selected = account.id === selectedAccount.id;
+                const balance = selected ? liveBalance ?? account.balance : account.balance;
+                return <DropdownMenuItem key={account.id} className="account-menu-option" disabled={selectAccount.isPending} onSelect={() => handleSelectAccount(account.id)} data-testid={`menu-account-${account.id}`}>
+                  <span className={`account-menu-kind ${account.type}`}>{account.type === 'real' ? 'REAL' : 'DEMO'}</span>
+                  <span className="account-menu-identity"><b>{account.type === 'real' ? 'Real account' : 'Demo account'}</b><small>{account.id}</small></span>
+                  <span className="account-menu-balance"><b>{account.currency} {money.format(balance)}</b><small>{account.status}</small></span>
+                  {selected && <Check size={15} className="account-menu-check" />}
+                </DropdownMenuItem>;
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>}
+          <button type="button" className="icon-button" title="Refresh data" aria-label="Refresh account data" data-testid="button-refresh-data" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}>
+            <RefreshCw size={16} />
+          </button>
+        </>
       }
     >
       <section className="intro-row">
@@ -293,31 +319,7 @@ export default function AppPage() {
         </div>
       </section>
 
-      <div className="section-heading"><div><span className="section-index">01</span><h2>Account surface</h2></div><span className="section-note">Compare access without crossing environments</span></div>
-      <section className="account-layout">
-        <div className="account-list-panel panel">
-          <div className="panel-header"><div><span className="panel-overline">AVAILABLE ACCOUNTS</span><h3>{accounts.length ? `${accounts.length} account${accounts.length === 1 ? '' : 's'} in scope` : 'No accounts in scope'}</h3></div><ShieldCheck size={19} className="panel-icon" /></div>
-          {accounts.length ? <div className="account-list">
-            {accounts.map((account) => {
-              const selected = account.id === selectedAccount?.id;
-              return <button type="button" className={`account-row ${selected ? 'account-row-selected' : ''}`} key={account.id} data-testid={`button-account-${account.id}`} onClick={() => handleSelectAccount(account.id)}>
-                <span className={`account-type-mark ${account.type}`}>{account.type === 'demo' ? 'D' : 'R'}</span>
-                <span className="account-main"><span className="account-id">{account.id}</span><span className="account-meta"><span className={`status-label ${account.status.toLowerCase() === 'active' ? 'positive' : ''}`}><span />{account.status}</span><span>{account.currency}</span></span></span>
-                <span className="account-balance"><small>AVAILABLE</small>{money.format(account.id === selectedAccount?.id ? (liveBalance ?? account.balance) : account.balance)}</span>
-                <ChevronDown size={15} className={`account-chevron ${selected ? 'selected-chevron' : ''}`} />
-              </button>;
-            })}
-          </div> : <div className="empty-state"><WalletCards size={22} /><strong>No account payload yet</strong><span>Run a connection test to populate the comparison surface.</span><button type="button" className="text-button" onClick={handleTestConnection} data-testid="button-test-from-empty">Test connection</button></div>}
-          <div className="panel-footnote"><LockKeyhole size={14} />Account identifiers are displayed for routing only.</div>
-        </div>
-
-        <div className={`balance-panel panel ${selectedAccount?.type === 'real' ? 'balance-panel-real' : ''}`}>
-          <div className="balance-topline"><span className="panel-overline">SELECTED ACCOUNT</span><span className={`account-mode-badge ${selectedAccount?.type ?? ''}`}>{selectedAccount?.type ?? 'unassigned'}</span></div>
-          {selectedAccountWithLiveBalance ? <><div className="balance-account">{selectedAccountWithLiveBalance.id}</div><div className="balance-amount"><span>{selectedAccountWithLiveBalance.currency}</span>{money.format(selectedAccountWithLiveBalance.balance)}</div><div className="balance-divider" /><div className="balance-details"><span><small>STATUS</small><b>{selectedAccountWithLiveBalance.status}</b></span><span><small>ACCOUNT CLASS</small><b>{selectedAccountWithLiveBalance.type === 'demo' ? 'Deriv demo funds' : 'Live Deriv funds'}</b></span></div><div className="balance-callout"><Sparkles size={16} /><span>{selectedAccountWithLiveBalance.type === 'demo' ? 'This is a Deriv demo account. It is not real money.' : 'Live Deriv account connected. Every buy requires confirmation.'}</span></div></> : <div className="empty-balance"><CircleAlert size={21} /><span>Select an account to inspect its balance.</span></div>}
-        </div>
-      </section>
-
-      <div className="section-heading proposal-heading"><div><span className="section-index">02</span><h2>Trade desk</h2></div><span className="section-note">Choose a stake and contract, then Buy requests and executes immediately</span></div>
+      <div className="section-heading proposal-heading"><div><span className="section-index">01</span><h2>Trade desk</h2></div><span className="section-note">Choose a stake and contract, then Buy requests and executes immediately</span></div>
       <section className="quote-layout">
         <div className="quote-panel panel">
           <div className="panel-header"><div><span className="panel-overline">LIVE QUOTE</span><h3>{quote?.symbol ?? status?.symbol ?? 'No symbol selected'}</h3></div><div className="quote-live"><span className="pulse-dot" />{quote ? 'LIVE' : 'QUIET'}</div></div>
@@ -348,8 +350,8 @@ export default function AppPage() {
       </section>
 
       <section className="history-panel panel">
-        <div className="response-heading"><div><span className="panel-overline">DERIV ACCOUNT ACTIVITY</span><h3>Trading history</h3></div><div className="history-actions"><span className="response-state"><span />{history.length} recorded</span><button type="button" className={`clear-history-button ${clearHistoryArmed ? 'clear-history-armed' : ''}`} onClick={handleClearHistory} disabled={clearHistory.isPending} title={clearHistoryArmed ? 'Press again to clear recent trades' : 'Press twice to clear recent dashboard rows'} aria-label={clearHistoryArmed ? 'Press again to clear recent trades' : 'Clear recent trades'} data-testid="button-clear-history"><Trash2 size={14} />{clearHistoryArmed ? 'Press again' : 'Clear'}</button></div></div>
-         {history.length ? <div className="history-table-wrap"><table className="history-table"><thead><tr><th>ACCOUNT</th><th>CONTRACT</th><th>SYMBOL</th><th>STAKE</th><th>VALUE NOW</th><th>PROFIT / LOSS</th><th>STATUS</th><th>TIME</th></tr></thead><tbody>{history.map((trade) => <tr key={`${trade.account_id}-${trade.contract_id}`}><td><span className={`history-account ${trade.account_type}`}>{trade.account_type === 'real' ? 'LIVE' : 'DEMO'}</span><small>{trade.account_id}</small></td><td>{trade.contract_type}</td><td>{trade.symbol}</td><td>{money.format(trade.buy_price)}</td><td>{money.format(trade.current_value)}</td><td className={trade.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{trade.profit >= 0 ? '+' : ''}{money.format(trade.profit)}</td><td><span className="history-status">{tradeOutcome(trade.status, trade.profit)}</span></td><td>{trade.buy_time ? time.format(new Date(trade.buy_time * 1000)) : '—'}</td></tr>)}</tbody></table></div> : <div className="response-empty history-empty"><div className="empty-marker"><span /></div><div><strong>No Deriv trades recorded yet</strong><p>Buy a demo or live proposal and the actual Deriv contract will appear here.</p></div></div>}
+         <div className="response-heading"><div><span className="panel-overline">DERIV ACCOUNT ACTIVITY</span><h3>Trading history</h3></div><div className="history-actions"><span className="response-state"><span />{history.length} recorded</span><button type="button" className={`clear-history-button ${clearHistoryArmed ? 'clear-history-armed' : ''}`} onClick={handleClearHistory} disabled={clearHistory.isPending} title={clearHistoryArmed ? 'Press again to clear this account history' : 'Press twice to clear recent rows for this account'} aria-label={clearHistoryArmed ? 'Press again to clear this account history' : 'Clear this account history'} data-testid="button-clear-history"><Trash2 size={14} />{clearHistoryArmed ? 'Press again' : 'Clear'}</button></div></div>
+          {history.length ? <div className="history-table-wrap"><table className="history-table"><thead><tr><th>ACCOUNT</th><th>CONTRACT / ID</th><th>MARKET</th><th>BARRIER</th><th>STAKE</th><th>VALUE NOW</th><th>PAYOUT</th><th>PROFIT / LOSS</th><th>STATUS</th><th>OPENED</th><th>SETTLED</th></tr></thead><tbody>{history.map((trade) => <tr key={`${trade.account_id}-${trade.contract_id}`}><td><span className={`history-account ${trade.account_type}`}>{trade.account_type === 'real' ? 'LIVE' : 'DEMO'}</span><small>{trade.account_id}</small></td><td><b>{trade.contract_type}</b><small className="history-contract-id">#{trade.contract_id}</small></td><td>{trade.symbol}</td><td>{trade.barrier ?? '—'}</td><td>{trade.currency} {money.format(trade.buy_price)}</td><td>{trade.currency} {money.format(trade.current_value)}</td><td>{trade.currency} {money.format(trade.payout)}</td><td className={trade.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{trade.profit >= 0 ? '+' : ''}{trade.currency} {money.format(trade.profit)}</td><td><span className="history-status">{tradeOutcome(trade.status, trade.profit)}</span><small>{trade.status}</small></td><td>{trade.buy_time != null ? historyTime.format(new Date(trade.buy_time * 1000)) : '—'}</td><td>{trade.sell_time != null ? historyTime.format(new Date(trade.sell_time * 1000)) : '—'}</td></tr>)}</tbody></table></div> : <div className="response-empty history-empty"><div className="empty-marker"><span /></div><div><strong>No Deriv trades for this account yet</strong><p>Completed and open contracts for the selected account will appear here.</p></div></div>}
       </section>
 
     </AppShell>

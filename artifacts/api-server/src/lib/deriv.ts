@@ -66,6 +66,7 @@ export type DerivHistoryItem = {
   contract_id: string;
   account_id: string;
   account_type: "demo" | "real";
+  currency: string;
   contract_type: string;
   barrier: number | null;
   symbol: string;
@@ -326,8 +327,11 @@ function rejectSellWaiters(message: string) {
 
 function hasActiveContract() {
   const runtime = getState();
+  const activeAccountId = runtime.account?.id ?? runtime.selectedAccountId;
   return runtime.pendingBuyInputs.size > 0
-    || runtime.history.some((item: DerivHistoryItem) => item.status === "open")
+    || runtime.history.some((item: DerivHistoryItem) =>
+      item.account_id === activeAccountId && item.status === "open",
+    )
     || Boolean(runtime.lastContract && !runtime.lastContract.is_sold && runtime.lastContract.status === "open");
 }
 
@@ -380,16 +384,28 @@ function extractAccounts(body: DerivResponse): DerivAccount[] {
   return candidates.map(normalizeAccount).filter((account): account is DerivAccount => Boolean(account));
 }
 
+function historyKey(item: Pick<DerivHistoryItem, "account_id" | "contract_id">) {
+  return JSON.stringify([item.account_id, item.contract_id]);
+}
+
 function upsertHistory(item: DerivHistoryItem) {
-  if (getState().hiddenHistoryIds.has(item.contract_id)) return;
-  const existing = getState().history.findIndex((entry: DerivHistoryItem) => entry.contract_id === item.contract_id);
+  if (getState().hiddenHistoryIds.has(historyKey(item))) return;
+  const existing = getState().history.findIndex((entry: DerivHistoryItem) =>
+    entry.account_id === item.account_id && entry.contract_id === item.contract_id,
+  );
   if (existing >= 0) {
     getState().history[existing] = { ...getState().history[existing], ...item };
   } else {
     getState().history.push(item);
   }
   getState().history.sort((left: DerivHistoryItem, right: DerivHistoryItem) => (right.buy_time ?? 0) - (left.buy_time ?? 0));
-  getState().history = getState().history.slice(0, 100);
+  const accountCounts = new Map<string, number>();
+  getState().history = getState().history.filter((entry: DerivHistoryItem) => {
+    const count = accountCounts.get(entry.account_id) ?? 0;
+    if (count >= 100) return false;
+    accountCounts.set(entry.account_id, count + 1);
+    return true;
+  });
 }
 
 function digitStreaksFor(history: number[]) {
@@ -504,6 +520,7 @@ function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistory
     contract_id: contractId,
     account_id: getState().account.id,
     account_type: getState().account.type,
+    currency: getState().account.currency,
     contract_type: String((record.contract_type ?? getState().lastProposalContractType) || "unknown"),
     barrier: record.barrier == null
       ? (getState().contractInputs.get(contractId)?.barrier ?? null)
@@ -759,6 +776,7 @@ async function connectInternal() {
   const accounts = await loadAccountsFromDeriv();
   if (!isRuntimeCurrent()) return false;
   const account = preferredAccount(accounts);
+  getState().selectedAccountId = account.id;
   const url = await getOtpUrl(account.id);
   if (!isRuntimeCurrent()) return false;
 
@@ -1128,9 +1146,6 @@ export async function selectAccount(accountId: string) {
   const accounts = getState().accounts.length ? getState().accounts : await loadAccountsFromDeriv();
   const account = accounts.find((item: DerivAccount) => item.id === accountId);
   if (!account) throw new Error("That account is not available");
-  if (account.type === "real" && !liveTradingEnabled) {
-    throw new Error("Live trading is disabled on this server");
-  }
   if (account.id !== getState().selectedAccountId) {
     assertNoActiveContract();
   }
@@ -1148,9 +1163,7 @@ export async function selectAccount(accountId: string) {
   getState().lastProposalSymbol = defaultSymbol;
   getState().lastProposalInput = null;
   getState().lastProposalRefreshAt = 0;
-  getState().history = [];
   getState().contractInputs.clear();
-  getState().hiddenHistoryIds.clear();
   getState().digitEvenCount = 0;
   getState().digitOddCount = 0;
   getState().digitHistory = [];
@@ -1467,13 +1480,17 @@ export async function dualBuyContracts(input: {
 }
 
 export function getHistory() {
-  return getState().history;
+  const accountId = getState().account?.id ?? getState().selectedAccountId;
+  if (!accountId) return [];
+  return getState().history.filter((item: DerivHistoryItem) => item.account_id === accountId);
 }
 
 export function clearHistory() {
-  for (const item of getState().history) getState().hiddenHistoryIds.add(item.contract_id);
-  getState().history = [];
-  return { ok: true, message: "Recent dashboard trade rows cleared. Deriv records were not deleted." };
+  const visibleHistory = getHistory();
+  for (const item of visibleHistory) getState().hiddenHistoryIds.add(historyKey(item));
+  const accountId = getState().account?.id ?? getState().selectedAccountId;
+  getState().history = getState().history.filter((item: DerivHistoryItem) => item.account_id !== accountId);
+  return { ok: true, message: "Recent dashboard trade rows for this account were cleared. Deriv records were not deleted." };
 }
 
 export function startDeriv() {

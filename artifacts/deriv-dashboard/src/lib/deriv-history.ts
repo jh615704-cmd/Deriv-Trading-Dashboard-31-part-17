@@ -4,6 +4,7 @@ export type DerivHistoryRow = {
   contract_type: string;
   symbol: string;
   account_type: string;
+  currency?: string;
   barrier: number | null;
   buy_price: number;
   current_value: number;
@@ -22,6 +23,7 @@ export type DerivHistoryDetail = {
 export type DerivHistoryRowView = {
   symbol: string;
   account: string;
+  accountId: string;
   contract: string;
   barrier: string | null;
   outcome: string;
@@ -62,6 +64,7 @@ export function createDerivHistoryRowView(
   row: DerivHistoryRow,
   currency?: string,
 ): DerivHistoryRowView {
+  const rowCurrency = row.currency ?? currency;
   const status = row.status.toLowerCase();
   const isOpen = status === "open";
   const barrier = row.barrier == null
@@ -71,18 +74,19 @@ export function createDerivHistoryRowView(
   return {
     symbol: row.symbol,
     account: row.account_type.toUpperCase(),
+    accountId: row.account_id,
     contract: row.contract_type.replace("DIGIT", ""),
     barrier,
     outcome: isOpen ? "OPEN" : row.profit > 0 ? "WON" : row.profit < 0 ? "LOST" : status.toUpperCase(),
     outcomeClass: isOpen ? "open" : row.profit < 0 ? "loss" : "win",
-    profit: `${row.profit >= 0 ? "+" : ""}${money(row.profit, currency)}`,
+    profit: `${row.profit >= 0 ? "+" : ""}${money(row.profit, rowCurrency)}`,
     profitClass: row.profit < 0 ? "negative" : "positive",
     details: [
       { label: "OPENED", value: timeLabel(row.buy_time) },
       { label: "SETTLED", value: timeLabel(row.sell_time) },
-      { label: "STAKE", value: money(row.buy_price, currency) },
-      { label: "CURRENT VALUE", value: money(row.current_value, currency) },
-      { label: "FULL PAYOUT", value: money(row.payout, currency) },
+      { label: "STAKE", value: money(row.buy_price, rowCurrency) },
+      { label: "CURRENT VALUE", value: money(row.current_value, rowCurrency) },
+      { label: "FULL PAYOUT", value: money(row.payout, rowCurrency) },
       { label: "STATUS", value: row.status },
     ],
   };

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import {
   GetDerivAccountsResponse,
+  GetDerivHistoryResponse,
   GetDerivStatusResponse,
   RequestDerivProposalBody,
   RequestDerivProposalResponse,
@@ -118,7 +119,7 @@ router.get("/deriv/status", (_req, res) => {
 router.get("/deriv/history", (_req, res) => {
   res.set("Cache-Control", "no-store");
   withCredential(res.locals.userId, async () => getHistory(), false)
-    .then((history) => res.json(history))
+    .then((history) => res.json(GetDerivHistoryResponse.parse(history)))
      .catch((error) => {
        const missingCredential = isCredentialError(error);
        return res.status(missingCredential ? 401 : 502).json({

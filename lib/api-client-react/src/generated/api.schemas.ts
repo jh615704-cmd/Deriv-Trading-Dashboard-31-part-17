@@ -586,6 +586,7 @@ export interface DerivHistoryItem {
   contract_id: string;
   account_id: string;
   account_type: DerivHistoryItemAccountType;
+  currency: string;
   contract_type: string;
   /**
      * @minimum 0

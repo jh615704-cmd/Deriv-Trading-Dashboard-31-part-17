@@ -1088,6 +1088,7 @@ export const GetDerivHistoryResponseItem = zod.object({
   "contract_id": zod.string(),
   "account_id": zod.string(),
   "account_type": zod.enum(['demo', 'real']),
+  "currency": zod.string(),
   "contract_type": zod.string(),
   "barrier": zod.number().int().min(getDerivHistoryResponseBarrierMin).max(getDerivHistoryResponseBarrierMax).nullable(),
   "symbol": zod.string(),

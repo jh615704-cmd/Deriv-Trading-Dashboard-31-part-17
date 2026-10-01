@@ -124,16 +124,25 @@ function mockDerivRest() {
     const url = String(input);
     if (url.endsWith("/trading/v1/options/accounts")) {
       return Response.json({
-        data: [{
-          account_id: "DOT123",
-          account_type: "demo",
-          currency: "USD",
-          balance: 100,
-          status: "active",
-        }],
+        data: [
+          {
+            account_id: "DOT123",
+            account_type: "demo",
+            currency: "USD",
+            balance: 100,
+            status: "active",
+          },
+          {
+            account_id: "CR123",
+            account_type: "real",
+            currency: "EUR",
+            balance: 250,
+            status: "active",
+          },
+        ],
       });
     }
-    if (url.endsWith("/trading/v1/options/accounts/DOT123/otp")) {
+    if (url.endsWith("/trading/v1/options/accounts/DOT123/otp") || url.endsWith("/trading/v1/options/accounts/CR123/otp")) {
       return Response.json({ data: { url: "wss://fake.deriv.test/options" } });
     }
     throw new Error(`Unexpected REST request: ${url}`);
@@ -285,6 +294,7 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
         contract_id: "contract-proposal-1",
         account_id: "DOT123",
         account_type: "demo",
+        currency: "USD",
         contract_type: "DIGITDIFF",
         barrier: 5,
         symbol: "R_75",
@@ -356,6 +366,62 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
     assert.equal(result.buy.payout, fullPayout);
     await inUser("full-payout-user", async () => {
       assert.equal(deriv.getHistory()[0]?.payout, fullPayout);
+    });
+  });
+
+  test("keeps complete trade history isolated and retained per account", async () => {
+    const demoRow = {
+      contract_id: "shared-contract-id",
+      contract_type: "DIGITDIFF",
+      underlying_symbol: "R_75",
+      buy_price: 2,
+      payout: 4,
+      profit: 2,
+      status: "won",
+      purchase_time: 1_700_000_001,
+      sell_time: 1_700_000_002,
+      barrier: 5,
+    };
+    const realRow = {
+      ...demoRow,
+      contract_type: "DIGITEVEN",
+      buy_price: 3,
+      payout: 5,
+      profit: -3,
+      status: "lost",
+    };
+
+    await withSelectedAccount("account-history-user", async () => {
+      emitMessage(latestSocket(), {
+        msg_type: "profit_table",
+        profit_table: { transactions: [demoRow] },
+      });
+      const demoHistory = deriv.getHistory();
+      assert.equal(demoHistory.length, 1);
+      assert.equal(demoHistory[0].account_id, "DOT123");
+      assert.equal(demoHistory[0].account_type, "demo");
+      assert.equal(demoHistory[0].currency, "USD");
+      assert.equal(demoHistory[0].contract_id, "shared-contract-id");
+      assert.equal(demoHistory[0].sell_time, 1_700_000_002);
+
+      await deriv.selectAccount("CR123");
+      assert.deepEqual(deriv.getHistory(), []);
+      emitMessage(latestSocket(), {
+        msg_type: "profit_table",
+        profit_table: { transactions: [realRow] },
+      });
+      const realHistory = deriv.getHistory();
+      assert.equal(realHistory.length, 1);
+      assert.equal(realHistory[0].account_id, "CR123");
+      assert.equal(realHistory[0].account_type, "real");
+      assert.equal(realHistory[0].currency, "EUR");
+      assert.equal(realHistory[0].contract_type, "DIGITEVEN");
+      assert.equal(realHistory[0].profit, -3);
+
+      deriv.clearHistory();
+      assert.deepEqual(deriv.getHistory(), []);
+      await deriv.selectAccount("DOT123");
+      assert.deepEqual(deriv.getHistory(), demoHistory);
     });
   });
 

@@ -4,6 +4,10 @@ import { Activity, Trash2 } from "lucide-react";
 import { createDerivHistoryRowView, type DerivHistoryRow } from "../lib/deriv-history";
 export type { DerivHistoryRow } from "../lib/deriv-history";
 
+function money(amount: number, currency?: string) {
+  return `${currency ? `${currency} ` : ""}${amount.toFixed(2)}`;
+}
+
 type Props = {
   title: string;
   strategy: string;
@@ -50,9 +54,9 @@ export default function DerivHistory({ title, strategy, rows, currency, clearArm
       <div className="deriv-history-list">
         {!visible.length ? <div className="deriv-history-empty">{rows.length ? "No contracts match this filter." : "Deriv contracts will appear here when this feature trades."}</div> : visible.map((row) => {
           const view = createDerivHistoryRowView(row, currency);
-          return <article className="deriv-history-row" key={row.contract_id} data-testid={`deriv-history-${row.contract_id}`}>
+          return <article className="deriv-history-row" key={`${row.account_id}-${row.contract_id}`} data-testid={`deriv-history-${row.account_id}-${row.contract_id}`}>
             <div className="deriv-history-rowtop"><span className="deriv-history-feature">{strategy}</span><b className={`deriv-history-profit ${view.profitClass}`}>{view.profit}</b></div>
-            <div className="deriv-history-market"><b>{view.symbol}</b><span className="deriv-history-account">{view.account}</span><span className={`deriv-history-outcome ${view.outcomeClass}`}>{view.outcome}</span><strong>{view.contract}{view.barrier ? ` · ${view.barrier}` : ""}</strong></div>
+            <div className="deriv-history-market"><b>{view.symbol}</b><span className="deriv-history-account">{view.account}</span><small className="deriv-history-account-id">{view.accountId}</small><span className={`deriv-history-outcome ${view.outcomeClass}`}>{view.outcome}</span><strong>{view.contract}{view.barrier ? ` · ${view.barrier}` : ""}</strong></div>
             <div className="deriv-history-details">
               {view.details.map((detail) => <span key={detail.label}><small>{detail.label}</small><b>{detail.value}</b></span>)}
             </div>
