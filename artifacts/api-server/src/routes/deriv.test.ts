@@ -18,6 +18,7 @@ type QueryCondition = { value: string };
 const credentials = new Map<string, Credential>();
 const userPats = new Map<string, string>();
 const observedPats: string[] = [];
+const historyRows: unknown[] = [];
 const sessionId = "admin-access-session";
 
 const db = {
@@ -101,7 +102,7 @@ mock.module("../lib/deriv", {
     },
     getHistory: async () => {
       observePat();
-      return [];
+      return historyRows;
     },
     clearHistory: async () => {
       observePat();
@@ -238,5 +239,50 @@ test("admin Deriv routes require the session PAT and forget it on disconnect", a
     assert.deepEqual(await readJson(afterDisconnectResponse), { error: "Connect a Deriv token first" });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("history route accepts decimal Rise/Fall price barriers outside the digit range", async () => {
+  const enteredPat = "history-route-test-pat";
+  observedPats.length = 0;
+  credentials.clear();
+  userPats.delete(sessionId);
+  historyRows.splice(0, historyRows.length, {
+    contract_id: "rise-contract-1",
+    account_id: "DOT123",
+    account_type: "demo",
+    currency: "USD",
+    contract_type: "CALL",
+    barrier: 12_345.678,
+    symbol: "R_75",
+    buy_price: 1,
+    current_value: 1.25,
+    payout: 1.95,
+    profit: 0.25,
+    status: "open",
+  });
+  credentials.set(sessionId, {
+    clerkUserId: sessionId,
+    encryptedPat: encryptPat(enteredPat),
+    expiresAt: null,
+    lastVerifiedAt: new Date(),
+  });
+
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/deriv/history`);
+    assert.equal(response.status, 200);
+    const history = await response.json() as Array<{ barrier: number | null }>;
+    assert.equal(history[0]?.barrier, 12_345.678);
+    assert.deepEqual(observedPats, [enteredPat]);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    historyRows.length = 0;
+    credentials.clear();
+    userPats.delete(sessionId);
   }
 });

@@ -1402,7 +1402,14 @@ export default function XTraderPage() {
     const beforeIds = new Set(beforeRows.map((trade) => trade.contract_id));
     let latestRows = beforeRows;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      latestRows = await getDerivHistory();
+      try {
+        latestRows = await getDerivHistory();
+      } catch {
+        // A confirmed buy must not be reported as failed just because its
+        // history row has not arrived or the history endpoint is unavailable.
+        latestRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? latestRows;
+        break;
+      }
       latestRows
         .filter((trade) => types.includes(trade.contract_type) && !beforeIds.has(trade.contract_id))
         .forEach((trade) => target.add(trade.contract_id));
@@ -1478,6 +1485,7 @@ export default function XTraderPage() {
         confirm_live_trade: true,
       },
     });
+    result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
     await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
     await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
     setSessionTrades((value) => value + 1);
@@ -1522,6 +1530,7 @@ export default function XTraderPage() {
         confirm_live_trade: true,
       },
     });
+    result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
     await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
     await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
     setSessionTrades((value) => value + 2);
@@ -2112,9 +2121,10 @@ export default function XTraderPage() {
     const contractDuration = contractType === "ACCU"
       ? CASH_GRAB_ACCUMULATOR_REFERENCE_TICKS
       : config.duration;
+    let batchConfirmed = false;
     cashGrabActionLockRef.current = true;
     try {
-      await bulkBuyMutation.mutateAsync({
+      const result = await bulkBuyMutation.mutateAsync({
         data: {
           amount,
           duration: contractDuration,
@@ -2127,6 +2137,8 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+       batchConfirmed = true;
+       result.buys.forEach((buy) => cashGrabClaimedHistoryIdsRef.current.add(buy.contract_id));
        cashGrabRemainingTradesRef.current -= 1;
        setCashGrabTradeCount((value) => value + batchCount);
        let afterRows = await claimFeatureRows(cashGrabClaimedHistoryIdsRef.current, latestRows, [...cashGrabContractTypes]) as typeof rows;
@@ -2148,7 +2160,16 @@ export default function XTraderPage() {
        if (cashGrabRemainingTradesRef.current <= 0) stopCashGrab();
       refreshTradeResults();
     } catch (error) {
-      setConnectionMessage({ kind: "error", text: `Cash Grab skipped this batch: ${errorMessage(error)}` });
+      if (batchConfirmed) {
+        setConnectionMessage({
+          kind: "error",
+          text: `Cash Grab batch was confirmed by Deriv, but its settlement history could not be refreshed: ${errorMessage(error)}. Cash Grab is paused to prevent overlapping trades.`,
+        });
+        cashGrabRunningRef.current = false;
+        setCashGrabRunning(false);
+      } else {
+        setConnectionMessage({ kind: "error", text: `Cash Grab skipped this batch: ${errorMessage(error)}` });
+      }
     } finally {
       cashGrabActionLockRef.current = false;
     }
@@ -2536,14 +2557,10 @@ export default function XTraderPage() {
       setTradeXMessage("The selected Trade X batch is higher than the available account balance.");
       return false;
     }
-    const latestRows = await getDerivHistory();
-    if (latestRows.some((trade) => trade.contract_type === "DIGITDIFF" && trade.status === "open")) {
-      setTradeXMessage("The previous Digit Differs contract is still settling. Trade X will not overlap contracts.");
-      return false;
-    }
+    const latestRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? [];
     tradeXActionLockRef.current = true;
     try {
-      await bulkBuyMutation.mutateAsync({
+      const result = await bulkBuyMutation.mutateAsync({
         data: {
           amount: config.stake,
           duration: durationOverride,
@@ -2555,6 +2572,7 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+      result.buys.forEach((buy) => tradeXClaimedHistoryIdsRef.current.add(buy.contract_id));
        await claimFeatureRows(tradeXClaimedHistoryIdsRef.current, latestRows, ["DIGITDIFF"]);
       setTradeXTradesSent((value) => value + count);
       setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
@@ -2938,7 +2956,7 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a Bulk Trader contract." });
       return;
     }
-    const beforeRows = await getDerivHistory();
+    const beforeRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? [];
     const send = (type: BulkTraderContractType) => bulkBuyMutation.mutateAsync({
       data: {
         amount: bulkTraderStake,
@@ -2953,7 +2971,8 @@ export default function XTraderPage() {
     });
     bulkActionLockRef.current = true;
     try {
-      await send(contractType);
+      const result = await send(contractType);
+      result.buys.forEach((buy) => bulkClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(bulkClaimedHistoryIdsRef.current, beforeRows, [contractType]);
       refreshTradeResults();
     } catch (error) {
@@ -2998,12 +3017,7 @@ export default function XTraderPage() {
         setConnectionMessage({ kind: "error", text: "The next stake is higher than the available balance." });
         return;
       }
-      const latestRows = await getDerivHistory();
-      if (latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) {
-        setConnectionMessage({ kind: "info", text: "The previous EDGE contract is still settling. Wait before sending another trade." });
-        return;
-      }
-      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+      const latestRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? [];
       armMartingaleWatch(latestRows, amount, 1);
       const result = await bulkBuyMutation.mutateAsync({
         data: {
@@ -3017,6 +3031,7 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+      result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
       await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
       setDirection(contractType);
@@ -3061,12 +3076,7 @@ export default function XTraderPage() {
         setConnectionMessage({ kind: "error", text: "The dual stake is higher than the available balance." });
         return;
       }
-      const latestRows = await getDerivHistory();
-      if (latestRows.some((trade) => (trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER") && trade.status === "open")) {
-        setConnectionMessage({ kind: "info", text: "The previous EDGE contract is still settling. Wait before sending another dual trade." });
-        return;
-      }
-      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+      const latestRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? [];
       armMartingaleWatch(latestRows, amount, 2);
       const result = await dualBuyMutation.mutateAsync({
         data: {
@@ -3078,6 +3088,7 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
+      result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
       await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
       setSessionTrades((value) => value + 2);

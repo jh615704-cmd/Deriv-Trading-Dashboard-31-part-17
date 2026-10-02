@@ -1079,18 +1079,13 @@ export const DualBuyDerivContractsResponse = zod.object({
 /**
  * @summary Get Deriv trade history observed for real and demo accounts
  */
-export const getDerivHistoryResponseBarrierMin = 0;
-export const getDerivHistoryResponseBarrierMax = 9;
-
-
-
 export const GetDerivHistoryResponseItem = zod.object({
   "contract_id": zod.string(),
   "account_id": zod.string(),
   "account_type": zod.enum(['demo', 'real']),
   "currency": zod.string(),
   "contract_type": zod.string(),
-  "barrier": zod.number().int().min(getDerivHistoryResponseBarrierMin).max(getDerivHistoryResponseBarrierMax).nullable(),
+  "barrier": zod.number().nullable(),
   "symbol": zod.string(),
   "buy_price": zod.number(),
   "current_value": zod.number().describe('Current contract value from Deriv, or buy price plus floating profit when no live bid is available.'),

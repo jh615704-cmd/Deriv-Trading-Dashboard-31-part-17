@@ -1372,9 +1372,7 @@ components:
         contract_type:
           type: string
         barrier:
-          type: [integer, "null"]
-          minimum: 0
-          maximum: 9
+          type: [number, "null"]
         symbol:
           type: string
         buy_price:

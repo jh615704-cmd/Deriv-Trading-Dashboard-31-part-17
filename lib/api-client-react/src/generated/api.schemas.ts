@@ -588,11 +588,7 @@ export interface DerivHistoryItem {
   account_type: DerivHistoryItemAccountType;
   currency: string;
   contract_type: string;
-  /**
-     * @minimum 0
-     * @maximum 9
-     * @nullable
-     */
+  /** @nullable */
   barrier: number | null;
   symbol: string;
   buy_price: number;
