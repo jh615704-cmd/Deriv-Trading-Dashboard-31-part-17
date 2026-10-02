@@ -51,42 +51,6 @@ export function AccessGate({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [accessSession.data, heartbeat]);
 
-  useEffect(() => {
-    if (!accessSession.data) return;
-
-    let exitHandled = false;
-    const revokeOnExit = () => {
-      if (exitHandled) return;
-      exitHandled = true;
-
-      // pagehide is fired for refresh, tab close, navigation away, and
-      // browser back/forward cache transitions. sendBeacon is designed to
-      // finish this small POST while the document is being unloaded.
-      const logoutUrl = new URL("/api/access/logout", window.location.origin).toString();
-      const payload = new Blob([], { type: "application/json" });
-      navigator.sendBeacon(logoutUrl, payload);
-      queryClient.clear();
-    };
-
-    const handlePageShow = (event: PageTransitionEvent) => {
-      if (!event.persisted) return;
-      // A bfcache restore can bring back the rendered workspace after the
-      // unload beacon has revoked its session. Reload so the gate performs a
-      // fresh server check instead of briefly showing stale content.
-      queryClient.clear();
-      window.location.reload();
-    };
-
-    window.addEventListener("pagehide", revokeOnExit);
-    window.addEventListener("beforeunload", revokeOnExit);
-    window.addEventListener("pageshow", handlePageShow);
-    return () => {
-      window.removeEventListener("pagehide", revokeOnExit);
-      window.removeEventListener("beforeunload", revokeOnExit);
-      window.removeEventListener("pageshow", handlePageShow);
-    };
-  }, [accessSession.data, queryClient]);
-
   useEffect(() => () => {
     if (unlockTimerRef.current !== null) {
       window.clearTimeout(unlockTimerRef.current);
@@ -111,7 +75,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (accessSession.data) {
+  if (accessSession.data && !accessSession.isError) {
     return (
       <>
         {children}

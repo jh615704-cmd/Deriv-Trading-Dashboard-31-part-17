@@ -5,6 +5,7 @@ import {
   getGetDerivAccountsQueryKey,
   getGetDerivStatusQueryKey,
   getGetDerivTokenStatusQueryKey,
+  getGetAccessSessionQueryKey,
   useGetDerivAccounts,
   useGetDerivStatus,
   useGetDerivTokenStatus,
@@ -30,6 +31,7 @@ interface DerivAccountSwitcherProps {
   className?: string;
   disabled?: boolean;
   enabled?: boolean;
+  variant?: "default" | "cockpit";
   onAccountSelected?: (accountId: string) => void;
   onAccountSelectError?: (message: string) => void;
 }
@@ -38,6 +40,7 @@ export function DerivAccountSwitcher({
   className,
   disabled = false,
   enabled = true,
+  variant = "default",
   onAccountSelected,
   onAccountSelectError,
 }: DerivAccountSwitcherProps) {
@@ -108,7 +111,14 @@ export function DerivAccountSwitcher({
         },
         onError: (error) => {
           setPendingAccountId(null);
-          const message = error instanceof Error ? error.message : "Account selection failed.";
+          const rawMessage = error instanceof Error ? error.message : "Account selection failed.";
+          const accessRequired = /an access key is required|access session expired/i.test(rawMessage);
+          const message = accessRequired
+            ? "Workspace access needs to be renewed. Unlock the workspace again to switch accounts."
+            : rawMessage;
+          if (accessRequired) {
+            void queryClient.invalidateQueries({ queryKey: getGetAccessSessionQueryKey() });
+          }
           if (onAccountSelectError) {
             onAccountSelectError(message);
           } else {
@@ -128,7 +138,7 @@ export function DerivAccountSwitcher({
   const formattedBalance = balance == null ? "—" : money.format(balance);
 
   return (
-    <div className={`deriv-account-switcher ${className ?? ""}`}>
+    <div className={`deriv-account-switcher ${variant === "cockpit" ? "deriv-account-switcher-cockpit" : ""} ${className ?? ""}`}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -147,7 +157,10 @@ export function DerivAccountSwitcher({
             <ChevronDown size={14} aria-hidden="true" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="deriv-account-menu">
+        <DropdownMenuContent
+          align="end"
+          className={`deriv-account-menu ${variant === "cockpit" ? "deriv-account-menu-cockpit" : ""}`}
+        >
           <DropdownMenuLabel className="deriv-account-menu-title">TRADING ACCOUNT</DropdownMenuLabel>
           <DropdownMenuSeparator className="deriv-account-menu-separator" />
           {accountOptions.map((account) => {

@@ -1952,3 +1952,67 @@ body { overflow-x: hidden; }
   .deriv-account-switcher-xt { width: min(100%, 280px); }
   .deriv-account-switcher-xt .deriv-account-trigger { width: 100%; justify-content: space-between; }
 }
+
+/* Keep the access session stable across refreshes and align the cockpit header. */
+.xt-header { align-items:flex-start; }
+.xt-brand { align-items:flex-start; }
+.xt-brand-copy { display:grid; align-content:start; gap:5px; }
+.xt-brand-heading { display:grid; gap:1px; }
+.xt-admin-link {
+  display:inline-flex;
+  width:max-content;
+  align-items:center;
+  gap:5px;
+  color:#5cd9f3;
+  font:800 8px var(--app-font-mono);
+  letter-spacing:.1em;
+  text-decoration:none;
+}
+.xt-admin-link:hover { color:#b5f0ff; }
+.xt-header-right {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:4px;
+}
+.xt-connection { margin-left:0; padding:5px 9px; }
+.deriv-account-switcher-cockpit .deriv-account-trigger {
+  border-color:#27628b;
+  color:#eaf6ff;
+  background:linear-gradient(145deg,#0b3458,#072342);
+}
+.deriv-account-switcher-cockpit .deriv-account-trigger:hover:not(:disabled) {
+  border-color:#3486b3;
+  background:linear-gradient(145deg,#10456e,#0a2b49);
+}
+.deriv-account-switcher-cockpit .deriv-account-trigger > svg { color:#79b9d6; }
+.deriv-account-switcher-cockpit .deriv-account-amount { color:#f2f8ff; }
+.deriv-account-menu-cockpit {
+  border-color:#24516f;
+  color:#e5f2ff;
+  background:#071b32;
+}
+.deriv-account-menu-cockpit .deriv-account-menu-title { color:#87abc8; }
+.deriv-account-menu-cockpit .deriv-account-menu-separator { background:#21405d; }
+.deriv-account-menu-cockpit .deriv-account-option { color:#e5f2ff !important; }
+.deriv-account-menu-cockpit .deriv-account-option:not(.selected):hover,
+.deriv-account-menu-cockpit .deriv-account-option:not(.selected)[data-highlighted] {
+  background:#0b3151 !important;
+}
+.deriv-account-menu-cockpit .deriv-account-option.selected {
+  border-color:#26729a;
+  background:#0d3c60 !important;
+}
+.deriv-account-menu-cockpit .deriv-account-option-id { color:#e2f0ff; }
+.deriv-account-menu-cockpit .deriv-account-option-currency { color:#8fb4ce; }
+.deriv-account-menu-cockpit .deriv-account-option-balance { color:#f0f8ff; }
+.deriv-account-menu-cockpit .deriv-account-option-check { color:#5cd9f3; }
+@media(max-width:900px) {
+  .xt-header { align-items:flex-start; flex-direction:column; gap:10px; }
+  .xt-header-right { width:100%; align-items:flex-end; }
+}
+@media(max-width:700px) {
+  .xt-header-right { display:flex; gap:4px; }
+  .xt-connection { display:flex; }
+}

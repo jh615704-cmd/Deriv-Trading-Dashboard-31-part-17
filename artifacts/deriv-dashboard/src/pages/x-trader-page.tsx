@@ -3172,9 +3172,23 @@ export default function XTraderPage() {
   return (
     <main className="xt-app">
       <header className="xt-header">
-        <div className="xt-brand"><span>S</span><div><strong>Shadow Ai Trading</strong><small>AI Trading</small></div>{accessSession.data?.is_admin === true && <Link href="/admin/users" className="xt-admin-link"><ShieldCheck size={14} /> ADMIN PANEL</Link>}</div>
+        <div className="xt-brand">
+          <span>S</span>
+          <div className="xt-brand-copy">
+            <div className="xt-brand-heading">
+              <strong>Shadow Ai Trading</strong>
+              <small>AI Trading</small>
+            </div>
+            {accessSession.data?.is_admin === true && (
+              <Link href="/admin/users" className="xt-admin-link">
+                <ShieldCheck size={14} /> ADMIN PANEL
+              </Link>
+            )}
+          </div>
+        </div>
         <div className="xt-header-right">
           <DerivAccountSwitcher
+            variant="cockpit"
             className="deriv-account-switcher-xt"
             enabled={canUseDeriv}
             disabled={anyFeatureRunning || bulkBuyMutation.isPending || digitFlipBuyMutation.isPending || moneyBankBuyMutation.isPending}
