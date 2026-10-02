@@ -6,7 +6,6 @@ import {
   Loader2,
   Play,
   ShieldAlert,
-  ShieldCheck,
   Square,
   TrendingDown,
   TrendingUp,
@@ -18,6 +17,7 @@ export type CashGrabContractFamily = "rise-fall";
 export type CashGrabDirection = "CALL" | "PUT";
 export type CashGrabDuration = 1 | 2 | 3 | 4 | 5;
 export type CashGrabAiStatus = "off" | "ready" | "watching" | "quiet" | "blocked";
+export type CashGrabStakeMode = "flat" | "multiply";
 
 export interface CashGrabSymbolOption {
   value: string;
@@ -38,15 +38,11 @@ export interface CashGrabStartConfig {
   direction: CashGrabDirection;
   symbol: string;
   stake: number;
-  tradeLimit: number;
   duration: CashGrabDuration;
-  syncBalance: boolean;
-  balancePercentage: number;
-  multiplier: number | null;
+  stakeMode: CashGrabStakeMode;
+  multiplier: number;
   autoSelectBest: boolean;
   autoSwitchSafestPair: boolean;
-  jdyAi2: boolean;
-  jdyAi3: boolean;
 }
 
 export interface CashGrabPanelProps {
@@ -58,18 +54,10 @@ export interface CashGrabPanelProps {
   marketSignals: readonly CashGrabMarketSignal[];
   quote?: number | null;
   stake: number;
-  tradeLimit: number;
   duration: CashGrabDuration;
-  syncBalance: boolean;
-  accountBalance?: number | null;
+  stakeMode: CashGrabStakeMode;
   currency?: string;
-  balancePercentage: number;
-  multiplier: number | null;
-  jdyAi2: boolean;
-  jdyAi2Status?: CashGrabAiStatus;
-  jdyAi3: boolean;
-  jdyAi3Available: boolean;
-  jdyAi3Status?: CashGrabAiStatus;
+  multiplier: number;
   autoSwitchSafestPair: boolean;
   autoSwitchSafestPairStatus?: CashGrabAiStatus;
   autoSwitchSafestPairRecommendation?: {
@@ -94,13 +82,9 @@ export interface CashGrabPanelProps {
   onAutoSelectBestChange: (enabled: boolean) => void;
   onAutoSwitchSafestPairChange: (enabled: boolean) => void;
   onStakeChange: (stake: number) => void;
-  onTradeLimitChange: (count: number) => void;
   onDurationChange: (duration: CashGrabDuration) => void;
-  onSyncBalanceChange: (enabled: boolean) => void;
-  onBalancePercentageChange: (percentage: number) => void;
-  onMultiplierChange: (multiplier: number | null) => void;
-  onJdyAi2Change: (enabled: boolean) => void;
-  onJdyAi3Change: (enabled: boolean) => void;
+  onStakeModeChange: (mode: CashGrabStakeMode) => void;
+  onMultiplierChange: (multiplier: number) => void;
   onLiveConfirmChange: (confirmed: boolean) => void;
   onMoneyStart: (config: CashGrabStartConfig) => void;
   onMoneyStop: () => void;
@@ -110,13 +94,9 @@ export interface CashGrabPanelProps {
 
 const minimumStake = 0.35;
 const durations: readonly CashGrabDuration[] = [1, 2, 3, 4, 5];
-const contractCounts = [1, 2, 3, 4, 5, 6];
 
 const formatMoney = (value: number, currency: string) =>
   `${currency === "USD" ? "$" : `${currency} `}${value.toFixed(2)}`;
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
 
 const statusLabel = (status: CashGrabAiStatus = "off") => ({
   off: "OFF",
