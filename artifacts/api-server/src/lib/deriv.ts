@@ -1185,7 +1185,6 @@ export async function selectSymbol(symbol: string) {
   getState().digitOddCount = getState().digitHistory.length - getState().digitEvenCount;
   getState().lastProposal = null;
   getState().lastProposalInput = null;
-  send({ ticks: symbol, subscribe: 1 });
   return getStatus();
 }
 

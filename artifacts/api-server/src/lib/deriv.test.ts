@@ -183,6 +183,24 @@ after(() => {
   deriv.stopDeriv();
 });
 
+describe("Deriv market subscriptions", { concurrency: false }, () => {
+  test("selecting an already-subscribed market does not send a duplicate subscription", async () => {
+    await withSelectedAccount("market-subscription-user", async () => {
+      const socket = latestSocket();
+      const countSubscriptionsFor = (symbol: string) =>
+        socket.sent.filter(
+          (message) => message.ticks === symbol && message.subscribe === 1,
+        ).length;
+
+      assert.equal(countSubscriptionsFor("R_50"), 1);
+      const status = await deriv.selectSymbol("R_50");
+
+      assert.equal(status.symbol, "R_50");
+      assert.equal(countSubscriptionsFor("R_50"), 1);
+    });
+  });
+});
+
 describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
   test("omits expiry fields and forwards decimal growth for Accumulator contracts", async () => {
     const result = await withSelectedAccount("accumulator-user", () => deriv.buyContract({
