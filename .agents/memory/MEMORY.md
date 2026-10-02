@@ -21,3 +21,4 @@
 - [Cash Grab auto-switch](cash-grab-auto-switch.md) — scan live evidence every 20 seconds, keep one contract open at a time, and retain immediate stop controls.
 - [Trading protection test isolation](trading-protection-test-isolation.md) — API trade tests must isolate persisted admin entry shields before asserting Deriv behavior.
 - [Real-account balance inspection](real-account-inspection.md) — account selection for inspection is separate from authorization to place live trades.
+- [Replit multi-artifact deployment](replit-multi-artifact-deployment.md) — publishing deploys this project's artifacts together; deployment target changes apply to the whole project.
