@@ -351,13 +351,13 @@ export default function XTraderPage() {
   const canUseMoneyBank = isAdmin || accessSession.data?.features.includes("money-bank") === true;
   const canUseJdyAi3 = isAdmin || accessSession.data?.features.includes("jdy-ai-3") === true;
   const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab || canUseMoneyBank;
-  const canViewHistory = isAdmin || accessSession.data?.features.includes("history") === true || canUseCashGrab;
+  const canViewHistory = canUseDeriv || accessSession.data?.features.includes("history") === true;
   const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
   const connectedToken = Boolean(tokenStatus.data?.has_token);
   const accounts = useGetDerivAccounts({ query: { enabled: connectedToken && canUseDeriv, retry: false, refetchInterval: 10_000, queryKey: getGetDerivAccountsQueryKey() } });
   const storedPatInvalid = errorMessage(accounts.error).includes("saved Deriv token is no longer readable");
   const status = useGetDerivStatus({ query: { enabled: connectedToken && canUseDeriv, retry: false, refetchInterval: 500, queryKey: getGetDerivStatusQueryKey() } });
-  const history = useGetDerivHistory({ query: { enabled: connectedToken && canViewHistory, retry: false, refetchInterval: 250, queryKey: getGetDerivHistoryQueryKey() } });
+  const history = useGetDerivHistory({ query: { enabled: connectedToken && canViewHistory, retry: false, refetchInterval: 1_000, queryKey: getGetDerivHistoryQueryKey() } });
   const tokenMutation = useTestDerivToken();
   const connectionMutation = useTestDerivConnection();
   const deleteTokenMutation = useDeleteDerivToken();
@@ -2570,10 +2570,6 @@ export default function XTraderPage() {
 
 
   const chooseDigitFlipSetup = async (requireThreshold = false) => {
-    const currentRows = await getDerivHistory();
-    if (currentRows.some((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && trade.status === "open")) {
-      return false;
-    }
     const config = digitFlipConfigRef.current;
     const signals = digitFlipMarketSignalsRef.current
       .filter((signal) => signal.sampleCount > 0)
@@ -2666,15 +2662,15 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: "DigitFlip is paused until the account balance is entered." });
       return false;
     }
-    const latestRows = await getDerivHistory();
+    // History is a display/settlement feed, not a prerequisite for a buy.
+    // Use the newest cached snapshot; the API serializes buys and rejects one
+    // while an earlier contract is still open.
+    const latestRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? [];
     applyDigitFlipAssaultSettlements(latestRows);
     const config = digitFlipConfigRef.current;
     const selectedRate = config.parity === "DIGITEVEN" ? digitFlipRatesRef.current.even : digitFlipRatesRef.current.odd;
     if (digitFlipMagicRef.current && selectedRate < DIGIT_FLIP_SIGNAL_FLOOR) {
       setConnectionMessage({ kind: "info", text: `Standby is waiting for an ${DIGIT_FLIP_SIGNAL_FLOOR}% observed parity signal. Current ${selectedRate.toFixed(1)}%.` });
-      return false;
-    }
-    if (latestRows.some((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && trade.status === "open")) {
       return false;
     }
     const latestFlip = latestRows.find((trade) => (trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD") && trade.status !== "open");
@@ -2699,7 +2695,7 @@ export default function XTraderPage() {
     digitFlipActionLockRef.current = true;
     setDigitFlipCurrentStake(amount);
     try {
-      await digitFlipBuyMutation.mutateAsync({
+      const result = await digitFlipBuyMutation.mutateAsync({
         data: {
           amount,
           duration: config.duration,
@@ -2709,7 +2705,11 @@ export default function XTraderPage() {
           confirm_live_trade: true,
         },
       });
-      await claimFeatureRows(digitFlipClaimedHistoryIdsRef.current, latestRows, [config.parity]);
+      // The buy acknowledgement is authoritative. Claim its contract id now,
+      // and let history polling populate the full row when Deriv publishes it.
+      if (result.buy?.contract_id) {
+        digitFlipClaimedHistoryIdsRef.current.add(result.buy.contract_id);
+      }
       setDigitFlipTradeCount((value) => value + 1);
       refreshTradeResults();
       return true;

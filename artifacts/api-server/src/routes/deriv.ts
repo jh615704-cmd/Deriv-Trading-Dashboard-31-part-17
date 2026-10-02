@@ -116,12 +116,13 @@ router.get("/deriv/status", (_req, res) => {
     });
 });
 
-router.get("/deriv/history", (_req, res) => {
+router.get("/deriv/history", (req, res) => {
   res.set("Cache-Control", "no-store");
   withCredential(res.locals.userId, async () => getHistory(), false)
     .then((history) => res.json(GetDerivHistoryResponse.parse(history)))
      .catch((error) => {
        const missingCredential = isCredentialError(error);
+       if (!missingCredential) req.log.error({ err: error }, "Unable to load Deriv history");
        return res.status(missingCredential ? 401 : 502).json({
        error: missingCredential ? error.message : "Unable to load Deriv history",
        });
