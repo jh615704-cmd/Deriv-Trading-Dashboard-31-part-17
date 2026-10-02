@@ -1,42 +1,44 @@
+import { useState } from "react";
 import {
   Activity,
+  BookOpen,
   ChevronDown,
-  CircleCheck,
-  Info,
+  Loader2,
   Play,
+  ShieldAlert,
   ShieldCheck,
   Square,
-  Wifi,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 import "./cash-grab-panel.css";
 
-export type CashGrabContractFamily = "even-odd" | "rise-fall" | "differs" | "accumulator";
+export type CashGrabContractFamily = "rise-fall";
+export type CashGrabDirection = "CALL" | "PUT";
 export type CashGrabDuration = 1 | 2 | 3 | 4 | 5;
 export type CashGrabAiStatus = "off" | "ready" | "watching" | "quiet" | "blocked";
-export type CashGrabDirection = "DIGITEVEN" | "DIGITODD" | "CALL" | "PUT";
 
 export interface CashGrabSymbolOption {
   value: string;
   label: string;
 }
 
-export interface CashGrabDigitObservation {
-  digit: number;
-  overallPercentage: number;
-  marketPercentage: number;
+export interface CashGrabMarketSignal {
+  symbol: string;
+  risePercentage: number;
+  fallPercentage: number;
+  sampleCount: number;
 }
 
 export type CashGrabTrade = DerivHistoryRow & { account_type: string };
 
 export interface CashGrabStartConfig {
-  contractFamily: CashGrabContractFamily;
+  contractFamily: "rise-fall";
   direction: CashGrabDirection;
   symbol: string;
-  selectedDigit: number;
   stake: number;
-  growthRate: number;
-  bulkCount: number;
+  tradeLimit: number;
   duration: CashGrabDuration;
   syncBalance: boolean;
   balancePercentage: number;
@@ -48,18 +50,15 @@ export interface CashGrabStartConfig {
 }
 
 export interface CashGrabPanelProps {
-  contractFamily: CashGrabContractFamily;
   direction: CashGrabDirection;
   symbol: string;
   bestSymbol?: string | null;
   autoSelectBest: boolean;
   symbols: readonly CashGrabSymbolOption[];
-  selectedDigit: number;
-  lastDigit?: number | null;
-  digitObservations: readonly CashGrabDigitObservation[];
+  marketSignals: readonly CashGrabMarketSignal[];
+  quote?: number | null;
   stake: number;
-  growthRate: number;
-  bulkCount: number;
+  tradeLimit: number;
   duration: CashGrabDuration;
   syncBalance: boolean;
   accountBalance?: number | null;
@@ -90,15 +89,12 @@ export interface CashGrabPanelProps {
   tradeCount: number;
   clearArmed: boolean;
   historyFading: boolean;
-  onContractFamilyChange: (family: CashGrabContractFamily) => void;
   onDirectionChange: (direction: CashGrabDirection) => void;
   onSymbolChange: (symbol: string) => void;
   onAutoSelectBestChange: (enabled: boolean) => void;
   onAutoSwitchSafestPairChange: (enabled: boolean) => void;
-  onSelectedDigitChange: (digit: number) => void;
   onStakeChange: (stake: number) => void;
-  onGrowthRateChange: (rate: number) => void;
-  onBulkCountChange: (count: number) => void;
+  onTradeLimitChange: (count: number) => void;
   onDurationChange: (duration: CashGrabDuration) => void;
   onSyncBalanceChange: (enabled: boolean) => void;
   onBalancePercentageChange: (percentage: number) => void;
@@ -109,38 +105,37 @@ export interface CashGrabPanelProps {
   onMoneyStart: (config: CashGrabStartConfig) => void;
   onMoneyStop: () => void;
   onClearHistory: () => void;
+  onOpenGuide: () => void;
 }
 
-const contractFamilies: readonly { value: CashGrabContractFamily; label: string; note: string }[] = [
-  { value: "even-odd", label: "Even / Odd", note: "digit parity" },
-  { value: "rise-fall", label: "Rise / Fall", note: "quote direction" },
-  { value: "differs", label: "Differs", note: "digit barrier" },
-  { value: "accumulator", label: "Accumulator", note: "steady growth" },
-];
-
+const minimumStake = 0.35;
 const durations: readonly CashGrabDuration[] = [1, 2, 3, 4, 5];
-const counts = [1, 2, 3, 4, 5, 6];
-const accumulatorGrowthRates = [1, 2, 3, 4, 5];
-
-const clamp = (value: number, minimum: number, maximum: number) =>
-  Math.min(maximum, Math.max(minimum, value));
+const contractCounts = [1, 2, 3, 4, 5, 6];
 
 const formatMoney = (value: number, currency: string) =>
   `${currency === "USD" ? "$" : `${currency} `}${value.toFixed(2)}`;
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const statusLabel = (status: CashGrabAiStatus = "off") => ({
+  off: "OFF",
+  ready: "READY",
+  watching: "SCANNING",
+  quiet: "WAITING",
+  blocked: "PAUSED",
+})[status];
+
 export default function CashGrabPanel({
-  contractFamily,
   direction,
   symbol,
   bestSymbol = null,
   autoSelectBest,
   symbols,
-  selectedDigit,
-  lastDigit = null,
-  digitObservations,
+  marketSignals,
+  quote = null,
   stake,
-  growthRate,
-  bulkCount,
+  tradeLimit,
   duration,
   syncBalance,
   accountBalance = null,
@@ -148,9 +143,13 @@ export default function CashGrabPanel({
   balancePercentage,
   multiplier,
   jdyAi2,
+  jdyAi2Status = "off",
   jdyAi3,
   jdyAi3Available,
+  jdyAi3Status = "off",
   autoSwitchSafestPair,
+  autoSwitchSafestPairStatus = "off",
+  autoSwitchSafestPairRecommendation = null,
   running,
   stopping = false,
   isConnected,
@@ -162,15 +161,15 @@ export default function CashGrabPanel({
   tradeCount,
   clearArmed,
   historyFading,
-  onContractFamilyChange,
   onDirectionChange,
   onSymbolChange,
   onAutoSelectBestChange,
-  onSelectedDigitChange,
+  onAutoSwitchSafestPairChange,
   onStakeChange,
-  onGrowthRateChange,
-  onBulkCountChange,
+  onTradeLimitChange,
   onDurationChange,
+  onSyncBalanceChange,
+  onBalancePercentageChange,
   onMultiplierChange,
   onJdyAi2Change,
   onJdyAi3Change,
@@ -178,28 +177,37 @@ export default function CashGrabPanel({
   onMoneyStart,
   onMoneyStop,
   onClearHistory,
+  onOpenGuide,
 }: CashGrabPanelProps) {
-  const currentDigit = lastDigit == null ? null : clamp(Math.trunc(lastDigit), 0, 9);
-  const selectedObservation = digitObservations.find((item) => item.digit === selectedDigit);
-  const selectedMarketPercentage = selectedObservation?.marketPercentage ?? 0;
-  const selectedOverallPercentage = selectedObservation?.overallPercentage ?? 0;
-  const selectedSymbolLabel = symbols.find((item) => item.value === symbol)?.label ?? symbol;
-  const visibleBalancePercentage = Math.max(0.5, balancePercentage);
-  const minimumStake = contractFamily === "accumulator" ? 1 : 0.35;
-  const syncedStake = accountBalance == null ? null : accountBalance * (visibleBalancePercentage / 100);
-  const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
+  const [marketMenuOpen, setMarketMenuOpen] = useState(false);
   const interactionDisabled = running || isPlacingTrade;
+  const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
+  const visibleBalancePercentage = Math.max(0.5, balancePercentage);
+  const syncedStake = accountBalance == null
+    ? null
+    : Math.max(minimumStake, accountBalance * visibleBalancePercentage / 100);
+  const selectedSymbol = symbols.find((item) => item.value === symbol);
+  const selectedSignal = marketSignals.find((item) => item.symbol === symbol);
+  const liveRate = selectedSignal
+    ? direction === "CALL" ? selectedSignal.risePercentage : selectedSignal.fallPercentage
+    : 0;
+  const riseRate = selectedSignal?.risePercentage ?? 0;
+  const fallRate = selectedSignal?.fallPercentage ?? 0;
+  const rateTotal = riseRate + fallRate;
+  const riseWidth = rateTotal > 0 ? riseRate / rateTotal * 100 : 50;
+  const bestMarketLabel = symbols.find((item) => item.value === bestSymbol)?.label ?? bestSymbol;
+  const startStake = syncBalance && syncedStake != null
+    ? syncedStake
+    : Math.max(minimumStake, stake);
 
   const submitStart = () => {
     if (!canStart) return;
     onMoneyStart({
-      contractFamily,
+      contractFamily: "rise-fall",
       direction,
       symbol,
-      selectedDigit: clamp(Math.trunc(selectedDigit), 0, 9),
-      stake: Math.max(minimumStake, stake),
-      growthRate: clamp(growthRate, 1, 5),
-      bulkCount: Math.max(1, Math.trunc(bulkCount)),
+      stake: startStake,
+      tradeLimit: clamp(Math.trunc(tradeLimit), 1, 6),
       duration,
       syncBalance,
       balancePercentage: visibleBalancePercentage,
@@ -207,234 +215,321 @@ export default function CashGrabPanel({
       autoSelectBest,
       autoSwitchSafestPair,
       jdyAi2,
-      jdyAi3,
+      jdyAi3: jdyAi3Available && jdyAi3,
     });
   };
 
+  const chooseSymbol = (nextSymbol: string) => {
+    onAutoSelectBestChange(false);
+    onSymbolChange(nextSymbol);
+    setMarketMenuOpen(false);
+  };
+
   return (
-    <section className="cash-grab-panel" aria-label="Cash Grab trading panel" data-testid="cash-grab-panel">
-      <header className="cash-grab-header">
-        <div className="cash-grab-brand">
-          <div className="cash-grab-mark" aria-hidden="true"><Activity size={18} /></div>
-          <div>
-            <div className="cash-grab-title-line">
-              <h2>Cash Grab</h2>
-              <span>controlled digit entry</span>
-            </div>
-            <p>AI MONEY PRINTING MACHINE</p>
+    <section className="df-panel cash-grab-df-panel" aria-label="Cash Grab Rise/Fall trading panel" data-testid="cash-grab-panel">
+      <header className="df-card df-scanner">
+        <div className="df-card-heading">
+          <div className="df-title">
+            <span className="df-spark"><Activity size={15} /></span>
+            <b>Cash Grab · Rise/Fall</b>
+            <span className="df-premium">CALL / PUT ONLY</span>
           </div>
+          <span className="df-live"><i />{running ? "RUNNING" : isConnected ? "CONNECTED" : "OFFLINE"}</span>
         </div>
-        <div className="cash-grab-header-status">
-          <span className={`cash-grab-state ${running ? "active" : ""}`}><i />{running ? "RUNNING" : "READY"}</span>
-          <span className={`cash-grab-connection ${isConnected ? "connected" : ""}`}><Wifi size={13} />{isConnected ? "CONNECTED" : "OFFLINE"}</span>
+        <div className="df-rule" />
+        <div className="df-best-signal">
+          <div className={`df-best-parity ${direction === "CALL" ? "rise" : "fall"}`}>
+            {direction === "CALL" ? "RISE" : "FALL"}
+            <span>{direction === "CALL" ? "↗" : "↘"}</span>
+          </div>
+          <div className="df-best-copy">
+            <span>Selected direction · {selectedSymbol?.value ?? symbol}</span>
+            <p>
+              Observed rate <strong>{liveRate.toFixed(1)}%</strong>
+              <em>·</em>
+              {selectedSignal?.sampleCount ?? 0} sampled moves
+              {bestSymbol ? <><em>·</em>best pair <strong>{bestSymbol}</strong></> : null}
+            </p>
+          </div>
         </div>
       </header>
 
-      <form className="cash-grab-form" onSubmit={(event) => { event.preventDefault(); submitStart(); }}>
-        <div className="cash-grab-form-heading">
-          <div>
-            <span className="cash-grab-overline">ONE FAMILY · ONE MARKET · CONTROLLED BATCH</span>
-            <h3>Set the contract before sending</h3>
+      <div className={`df-card df-toggle-card df-pair-card ${autoSwitchSafestPair ? "active" : ""}`}>
+        <div className="df-toggle-copy">
+          <span className="df-section-label">AUTO-SWITCH SAFEGUARD</span>
+          <p>Scan live Rise/Fall samples and switch markets only when the balance and sample checks pass.</p>
+          {autoSwitchSafestPairRecommendation && (
+            <p className="df-running-note">
+              <i />
+              {autoSwitchSafestPairRecommendation.symbol} · {autoSwitchSafestPairRecommendation.observedWinRate.toFixed(1)}% observed · {autoSwitchSafestPairRecommendation.multiplier}× · {formatMoney(autoSwitchSafestPairRecommendation.nextStake, currency)}
+            </p>
+          )}
+        </div>
+        <label className="df-toggle-control">
+          <span className="df-toggle-state">{statusLabel(autoSwitchSafestPairStatus)}</span>
+          <span className="df-toggle">
+            <input
+              type="checkbox"
+              checked={autoSwitchSafestPair}
+              onChange={(event) => onAutoSwitchSafestPairChange(event.target.checked)}
+              disabled={!isConnected || stopping}
+              aria-label="Auto-switch Cash Grab to guarded Rise/Fall markets"
+            />
+            <i />
+          </span>
+        </label>
+      </div>
+
+      <section className={`df-card df-market-card ${marketMenuOpen ? "open" : ""}`}>
+        <button
+          type="button"
+          className="df-market-trigger"
+          onClick={() => setMarketMenuOpen((open) => !open)}
+          disabled={!isConnected || interactionDisabled}
+          aria-expanded={marketMenuOpen}
+          aria-label="Select Cash Grab market"
+        >
+          <span className="df-market-icon">⌁</span>
+          <span className="df-market-copy">
+            <small>ACTIVE MARKET · {autoSelectBest ? "AUTO BEST" : "MANUAL"}</small>
+            <b>{selectedSymbol?.label ?? symbol} · {symbol}</b>
+          </span>
+          <ChevronDown className="df-market-chevron" size={16} />
+        </button>
+        <p className="df-market-note">
+          {autoSelectBest
+            ? `Using the strongest observed ${direction === "CALL" ? "Rise" : "Fall"} rate${bestMarketLabel ? ` · ${bestMarketLabel}` : ""}.`
+            : "Choose a supported Volatility or Jump market for this Rise/Fall entry."}
+        </p>
+        {marketMenuOpen && (
+          <div className="df-market-menu" role="listbox" aria-label="Cash Grab markets">
+            <button
+              type="button"
+              className={`df-market-option df-market-smart ${autoSelectBest ? "selected" : ""}`}
+              onClick={() => { onAutoSelectBestChange(true); setMarketMenuOpen(false); }}
+              disabled={!bestSymbol || autoSwitchSafestPair}
+              aria-disabled={!bestSymbol || autoSwitchSafestPair}
+            >
+              <span><small>{autoSwitchSafestPair ? "AUTO-SWITCH ACTIVE" : "AUTO BEST"}</small><b>{bestMarketLabel ?? "Waiting for market samples"}</b></span>
+              <strong>{autoSwitchSafestPair ? "ON" : bestSymbol ?? "—"}</strong>
+            </button>
+            {symbols.map((item) => {
+              const signal = marketSignals.find((entry) => entry.symbol === item.value);
+              const rate = direction === "CALL" ? signal?.risePercentage ?? 0 : signal?.fallPercentage ?? 0;
+              return (
+                <button
+                  type="button"
+                  key={item.value}
+                  className={`df-market-option ${!autoSelectBest && symbol === item.value ? "selected" : ""}`}
+                  onClick={() => chooseSymbol(item.value)}
+                  role="option"
+                  aria-selected={!autoSelectBest && symbol === item.value}
+                >
+                  <span><b>{item.label}</b><em>{item.value} · {signal?.sampleCount ?? 0} moves</em></span>
+                  <strong>{rate.toFixed(1)}%</strong>
+                </button>
+              );
+            })}
           </div>
-          <span className={`cash-grab-account-pill ${isReal ? "real" : ""}`}>{isReal ? "REAL ACCOUNT" : "PRACTICE ACCOUNT"}</span>
+        )}
+      </section>
+
+      <section className="df-card df-quote-card" aria-live="polite">
+        <div className="df-quote-value">
+          {quote == null ? "—" : quote.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+          <small>{currency}</small>
+        </div>
+        <div className="df-quote-run">
+          {isConnected ? `${selectedSymbol?.label ?? symbol} · live quote` : "Connect Deriv to receive a live quote"}
+        </div>
+      </section>
+
+      <div className="df-card df-parity-toggle" role="group" aria-label="Choose Rise or Fall">
+        <button
+          type="button"
+          className={`rise ${direction === "CALL" ? "selected" : ""}`}
+          onClick={() => onDirectionChange("CALL")}
+          disabled={interactionDisabled}
+          aria-pressed={direction === "CALL"}
+          data-testid="button-cash-grab-rise"
+        >
+          <TrendingUp size={16} /> Rise
+        </button>
+        <button
+          type="button"
+          className={`fall ${direction === "PUT" ? "selected" : ""}`}
+          onClick={() => onDirectionChange("PUT")}
+          disabled={interactionDisabled}
+          aria-pressed={direction === "PUT"}
+          data-testid="button-cash-grab-fall"
+        >
+          <TrendingDown size={16} /> Fall
+        </button>
+      </div>
+
+      <section className="df-card df-parity-card">
+        <span className="df-section-label">LIVE DIRECTION SAMPLE · {selectedSymbol?.value ?? symbol}</span>
+        <div className="df-parity-track" aria-label={`Rise ${riseRate.toFixed(1)} percent, Fall ${fallRate.toFixed(1)} percent`}>
+          <i className="rise" style={{ width: `${riseWidth}%` }} />
+          <i className="fall" style={{ width: `${100 - riseWidth}%` }} />
+        </div>
+        <div className="df-parity-labels">
+          <span>RISE <b>{riseRate.toFixed(1)}%</b></span>
+          <span>FALL <b>{fallRate.toFixed(1)}%</b></span>
+        </div>
+        <p className="df-market-note">{selectedSignal?.sampleCount ?? 0} observed moves. Rates describe the sample only; they do not predict expiry.</p>
+      </section>
+
+      <form className="df-card df-advanced-card" onSubmit={(event) => { event.preventDefault(); submitStart(); }}>
+        <div className="df-advanced-head">
+          <div><span className="df-section-label">RISE/FALL CONTRACT</span><h3>Trade setup</h3></div>
+          <button type="button" className="df-refresh" onClick={onOpenGuide}><BookOpen size={13} /> Guide</button>
+        </div>
+        <div className="df-setup-grid">
+          <label>
+            <span>STAKE · MIN {minimumStake.toFixed(2)}</span>
+            <input
+              type="number"
+              min={minimumStake}
+              step="0.01"
+              value={stake}
+              onChange={(event) => onStakeChange(Math.max(minimumStake, Number(event.target.value) || minimumStake))}
+              disabled={interactionDisabled || syncBalance}
+              aria-label={`Cash Grab stake in ${currency}`}
+              data-testid="input-cash-grab-stake"
+            />
+          </label>
+          <label>
+            <span>CONTRACT LIMIT · 1–6</span>
+            <select
+              value={tradeLimit}
+              onChange={(event) => onTradeLimitChange(clamp(Number(event.target.value), 1, 6))}
+              disabled={interactionDisabled}
+              aria-label="Cash Grab contract limit for this run"
+              data-testid="input-cash-grab-count"
+            >
+              {contractCounts.map((count) => <option key={count} value={count}>{count} {count === 1 ? "contract" : "contracts"}</option>)}
+            </select>
+            <small className="cash-grab-input-note">One Rise/Fall contract at a time; limit applies to manual runs.</small>
+          </label>
+          <label>
+            <span>DURATION · TICKS</span>
+            <select
+              value={duration}
+              onChange={(event) => onDurationChange(Number(event.target.value) as CashGrabDuration)}
+              disabled={interactionDisabled}
+              aria-label="Cash Grab duration in ticks"
+            >
+              {durations.map((ticks) => <option key={ticks} value={ticks}>{ticks} {ticks === 1 ? "tick" : "ticks"}</option>)}
+            </select>
+          </label>
         </div>
 
-        <div className="cash-grab-layout">
-          <div className="cash-grab-configuration">
-            <section className="cash-grab-card cash-grab-market-card">
-              <div className="cash-grab-card-heading">
-                <div><span className="cash-grab-overline">01 · MARKET</span><h4>Choose the live symbol</h4></div>
-                <span className="cash-grab-live-readout"><i />{currentDigit == null ? "waiting" : `last digit ${currentDigit}`}</span>
-              </div>
-              <label className="cash-grab-select-label">
-                <span className="cash-grab-field-label">SYMBOL</span>
-                <span className="cash-grab-select-wrap">
-                   <select
-                     value={autoSelectBest ? "__auto__" : symbol}
-                     onChange={(event) => event.target.value === "__auto__"
-                       ? onAutoSelectBestChange(true)
-                       : (onAutoSelectBestChange(false), onSymbolChange(event.target.value))}
-                    disabled={!isConnected || interactionDisabled}
-                    aria-label="Select Cash Grab market symbol"
-                    data-testid="select-cash-grab-symbol"
-                  >
-                     <option value="__auto__">{`Auto best · ${bestSymbol ?? "scanning all Volatility and Jump pairs"}`}</option>
-                     {!symbols.length && <option value={symbol}>{symbol || "No symbols available"}</option>}
-                    {symbols.map((item) => <option value={item.value} key={item.value}>{item.label} · {item.value}</option>)}
-                  </select>
-                  <ChevronDown size={15} aria-hidden="true" />
-                </span>
-              </label>
-              <div className="cash-grab-market-foot">
-                <span>{selectedSymbolLabel}</span>
-                <span className={isConnected ? "live" : ""}><i />{isConnected ? "streaming market digits" : "connect Deriv to stream"}</span>
-              </div>
-            </section>
-
-            <section className="cash-grab-card cash-grab-family-card">
-              <div className="cash-grab-card-heading">
-                <div><span className="cash-grab-overline">02 · CONTRACT FAMILY</span><h4>Keep the entry explicit</h4></div>
-                <ShieldCheck size={17} aria-hidden="true" />
-              </div>
-              <div className="cash-grab-family-grid" role="group" aria-label="Select contract family">
-                {contractFamilies.map((family) => (
-                  <button
-                    type="button"
-                    key={family.value}
-                    className={contractFamily === family.value ? "selected" : ""}
-                    onClick={() => onContractFamilyChange(family.value)}
-                    disabled={interactionDisabled}
-                    aria-pressed={contractFamily === family.value}
-                    data-testid={`button-cash-grab-family-${family.value}`}
-                  >
-                    <b>{family.label}</b><small>{family.note}</small>
-                  </button>
-                ))}
-              </div>
-              <p className="cash-grab-note"><Info size={14} /> Select one Deriv contract family. Cash Grab does not infer a family or promise an outcome.</p>
-               {(contractFamily === "even-odd" || contractFamily === "rise-fall") && (
-                 <div className="cash-grab-direction-block">
-                   <span className="cash-grab-field-label">{contractFamily === "even-odd" ? "PARITY" : "DIRECTION"}</span>
-                   <div className="cash-grab-direction-grid" role="group" aria-label={contractFamily === "even-odd" ? "Select Even or Odd" : "Select Rise or Fall"}>
-                     {(contractFamily === "even-odd"
-                       ? [{ value: "DIGITEVEN" as const, label: "Even" }, { value: "DIGITODD" as const, label: "Odd" }]
-                       : [{ value: "CALL" as const, label: "Rise" }, { value: "PUT" as const, label: "Fall" }]
-                     ).map((option) => (
-                       <button type="button" key={option.value} className={direction === option.value ? "selected" : ""} onClick={() => onDirectionChange(option.value)} disabled={interactionDisabled} aria-pressed={direction === option.value}>{option.label}</button>
-                     ))}
-                   </div>
-                 </div>
-               )}
-            </section>
-
-            <section className="cash-grab-card cash-grab-digit-card">
-              <div className="cash-grab-card-heading">
-                <div><span className="cash-grab-overline">03 · LIVE DIGIT</span><h4>Choose the digit to watch</h4></div>
-                <span className="cash-grab-digit-summary"><b>{selectedDigit}</b><small>selected</small></span>
-              </div>
-              <div className="cash-grab-digit-grid" role="group" aria-label="Select a digit from zero to nine">
-                {Array.from({ length: 10 }, (_, digit) => {
-                  const observation = digitObservations.find((item) => item.digit === digit);
-                  const overall = observation?.overallPercentage ?? 0;
-                  const market = observation?.marketPercentage ?? 0;
-                  const isCurrent = currentDigit === digit;
-                  const isSelected = selectedDigit === digit;
-                  return (
-                    <button
-                      type="button"
-                      key={digit}
-                      className={`cash-grab-digit ${isSelected ? "selected" : ""} ${isCurrent ? "current" : ""}`}
-                      onClick={() => onSelectedDigitChange(digit)}
-                      disabled={interactionDisabled}
-                      aria-pressed={isSelected}
-                      aria-label={`Digit ${digit}; ${overall.toFixed(1)} percent overall and ${market.toFixed(1)} percent for ${selectedSymbolLabel}${isCurrent ? ", current market digit" : ""}`}
-                      data-testid={`button-cash-grab-digit-${digit}`}
-                    >
-                       <span className="cash-grab-marker" aria-hidden={!isCurrent}>{isCurrent ? "LIVE" : ""}</span>
-                      <b>{digit}</b>
-                      <small><span>O</span>{overall.toFixed(1)}%</small>
-                      <small><span>M</span>{market.toFixed(1)}%</small>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="cash-grab-digit-legend">
-                <span><i className="overall" />overall observation</span>
-                <span><i className="market" />selected market</span>
-                <span className="cash-grab-live-legend"><i />current live digit</span>
-              </div>
-              <div className="cash-grab-observation">
-                <span><small>SELECTED DIGIT</small><b>{selectedDigit}</b></span>
-                <span><small>OVERALL</small><b>{selectedOverallPercentage.toFixed(1)}%</b></span>
-                <span><small>{selectedSymbolLabel.toUpperCase()} MARKET</small><b>{selectedMarketPercentage.toFixed(1)}%</b></span>
-              </div>
-              <p className="cash-grab-note"><Info size={14} /> Percentages describe observed samples only. They are not predictions or guaranteed results.</p>
-            </section>
-          </div>
-
-          <aside className="cash-grab-execution">
-            <section className="cash-grab-card cash-grab-execution-card">
-              <div className="cash-grab-card-heading">
-                <div><span className="cash-grab-overline">04 · EXECUTION</span><h4>Send a controlled batch</h4></div>
-                <span className={`cash-grab-place-state ${isPlacingTrade ? "placing" : ""}`}><i />{isPlacingTrade ? "PLACING" : "QUOTED"}</span>
-              </div>
-              <div className="cash-grab-field-grid">
-                <label>
-                   <span className="cash-grab-field-label">STAKE · MIN {minimumStake.toFixed(2)}</span>
-                   <span className="cash-grab-money-input"><b>{currency}</b><input type="number" min={minimumStake} step="0.01" value={stake} onChange={(event) => onStakeChange(Math.max(minimumStake, Number(event.target.value) || minimumStake))} disabled={interactionDisabled || syncBalance} aria-label={`Stake in ${currency}`} data-testid="input-cash-grab-stake" /></span>
-                  <small>Per contract</small>
-                </label>
-                 <label>
-                   <span className="cash-grab-field-label">LOSS MULTIPLIER</span>
-                   <span className="cash-grab-money-input"><b>×</b><input type="number" min="0.5" step="0.1" value={multiplier ?? ""} placeholder="Optional" onChange={(event) => onMultiplierChange(event.target.value === "" ? null : Math.max(0.5, Number(event.target.value) || 0.5))} disabled={interactionDisabled} aria-label="Multiplier after a loss" data-testid="input-cash-grab-multiplier" /></span>
-                   <small>Blank keeps the stake flat · minimum 0.5 · no maximum</small>
-                 </label>
-                 {contractFamily === "accumulator" && (
-                   <label>
-                     <span className="cash-grab-field-label">GROWTH RATE</span>
-                     <span className="cash-grab-rate-grid" role="group" aria-label="Accumulator growth rate">
-                       {accumulatorGrowthRates.map((rate) => (
-                         <button type="button" key={rate} className={growthRate === rate ? "selected" : ""} onClick={() => onGrowthRateChange(rate)} disabled={interactionDisabled} aria-pressed={growthRate === rate}>{rate}%</button>
-                       ))}
-                     </span>
-                     <small>Accumulator growth sent to Deriv per tick</small>
-                   </label>
-                 )}
-                <label>
-                  <span className="cash-grab-field-label">BULK COUNT · MIN 1</span>
-                  <input className="cash-grab-number-input" type="number" min="1" max="6" step="1" value={bulkCount} onChange={(event) => onBulkCountChange(Math.min(6, Math.max(1, Math.trunc(Number(event.target.value) || 1))))} disabled={interactionDisabled} aria-label="Number of contracts to send" data-testid="input-cash-grab-count" />
-                   <small>Contracts run one at a time</small>
-                </label>
-              </div>
-               {contractFamily === "accumulator" ? (
-                 <div className="cash-grab-choice-block cash-grab-accumulator-duration-note">
-                   <span className="cash-grab-field-label">DURATION</span>
-                   <p><ShieldCheck size={13} /> Accumulator uses its selected growth rate. Deriv does not offer the regular tick-duration setting for this contract.</p>
-                 </div>
-               ) : (
-                 <div className="cash-grab-choice-block">
-                   <span className="cash-grab-field-label">DURATION · TICKS</span>
-                   <div className="cash-grab-duration-grid" role="group" aria-label="Contract duration in ticks">
-                     {durations.map((option) => (
-                       <button type="button" key={option} className={duration === option ? "selected" : ""} onClick={() => onDurationChange(option)} disabled={interactionDisabled} aria-pressed={duration === option} data-testid={`button-cash-grab-duration-${option}`}>
-                         <b>{option}</b><small>{option === 1 ? "tick" : "ticks"}</small>
-                       </button>
-                     ))}
-                   </div>
-                 </div>
-               )}
-              <div className="cash-grab-choice-block">
-                <span className="cash-grab-field-label">CONTRACTS TO SEND</span>
-                <div className="cash-grab-count-grid" role="group" aria-label="Bulk contract count">
-                  {counts.map((option) => <button type="button" key={option} className={bulkCount === option ? "selected" : ""} onClick={() => onBulkCountChange(option)} disabled={interactionDisabled} aria-pressed={bulkCount === option} data-testid={`button-cash-grab-count-${option}`}>{option}</button>)}
-                </div>
-              </div>
-               <p className="cash-grab-execution-summary"><span>{contractFamilies.find((item) => item.value === contractFamily)?.label}</span><b>{selectedSymbolLabel} · digit {selectedDigit}</b><em>{contractFamily === "accumulator" ? `${bulkCount} contract${bulkCount === 1 ? "" : "s"} · ${growthRate}% growth` : `${bulkCount} contract${bulkCount === 1 ? "" : "s"} · ${duration} ${duration === 1 ? "tick" : "ticks"}`}</em></p>
-            </section>
-
-          </aside>
-        </div>
-
-        <div className="cash-grab-submit-row">
-          {isReal && (
-            <label className="cash-grab-live-confirm">
-              <input type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} disabled={running || isPlacingTrade} aria-label="Confirm real money trading" />
-              <span><b><CircleCheck size={14} /> Confirm live funds</b><small>Real-money contracts use the selected Deriv account.</small></span>
+        <div className="cash-grab-balance-row">
+          <label className="df-toggle-control">
+            <span className="df-toggle-state">{syncBalance ? "SYNCED" : "FIXED"}</span>
+            <span className="df-toggle">
+              <input
+                type="checkbox"
+                checked={syncBalance}
+                onChange={(event) => onSyncBalanceChange(event.target.checked)}
+                disabled={interactionDisabled}
+                aria-label="Sync Cash Grab stake to account balance"
+              />
+              <i />
+            </span>
+            <span>SYNC BALANCE</span>
+          </label>
+          {syncBalance ? (
+            <label className="cash-grab-percent-field">
+              <span>Balance %</span>
+              <input
+                type="number"
+                min="0.5"
+                max="100"
+                step="0.5"
+                value={visibleBalancePercentage}
+                onChange={(event) => onBalancePercentageChange(clamp(Number(event.target.value) || 0.5, 0.5, 100))}
+                disabled={interactionDisabled}
+                aria-label="Percentage of balance for Cash Grab stake"
+              />
+              <b>{syncedStake == null ? "Balance unavailable" : `${formatMoney(syncedStake, currency)} per contract`}</b>
+            </label>
+          ) : (
+            <label className="cash-grab-multiplier-field">
+              <span>Loss multiplier · optional</span>
+              <input
+                type="number"
+                min="0.5"
+                step="0.1"
+                value={multiplier ?? ""}
+                placeholder="Flat stake"
+                onChange={(event) => onMultiplierChange(event.target.value === "" ? null : Math.max(0.5, Number(event.target.value) || 0.5))}
+                disabled={interactionDisabled}
+                aria-label="Cash Grab stake multiplier after a loss"
+                data-testid="input-cash-grab-multiplier"
+              />
             </label>
           )}
-          <div className="cash-grab-submit-status">
-            <span className={isConnected ? "ok" : "warn"}><i />{isConnected ? "Deriv connection ready" : "Waiting for Deriv connection"}</span>
-            {isReal && !liveConfirmed && <small>Confirm live funds before sending.</small>}
-          </div>
-          {running || stopping ? (
-             <button type="button" className="cash-grab-primary stop" onClick={onMoneyStop} disabled={stopping} data-testid="button-cash-grab-stop"><Square size={14} fill="currentColor" /> {stopping ? "STOPPING…" : "MONEY STOP"}</button>
-          ) : (
-            <button type="submit" className="cash-grab-primary" disabled={!canStart || (isReal && !liveConfirmed)} data-testid="button-cash-grab-start">{isPlacingTrade ? <span className="cash-grab-button-loading" /> : <Play size={14} fill="currentColor" />} {isPlacingTrade ? "PLACING…" : "MONEY START"}</button>
+        </div>
+
+        <div className="df-session-strip">
+          <span><small>ACCOUNT BALANCE</small><b>{accountBalance == null ? "—" : formatMoney(accountBalance, currency)}</b></span>
+          <span><small>SESSION P/L</small><b className={sessionPnl < 0 ? "loss" : ""}>{formatMoney(sessionPnl, currency)}</b></span>
+          <span><small>CONTRACTS SENT</small><b>{tradeCount}</b></span>
+        </div>
+
+        <div className="cash-grab-guard-grid">
+          <label className={`df-toggle-card cash-grab-guard ${jdyAi2 ? "active" : ""}`}>
+            <span className="df-toggle-copy"><span className="df-section-label"><ShieldCheck size={12} /> SHADOWS 2 · {statusLabel(jdyAi2Status)}</span><p>Hold entries that fail the current sample and direction check.</p></span>
+            <span className="df-toggle"><input type="checkbox" checked={jdyAi2} onChange={(event) => onJdyAi2Change(event.target.checked)} disabled={!isConnected || interactionDisabled} aria-label="Enable Shadows 2 safety gate" /><i /></span>
+          </label>
+          {jdyAi3Available && (
+            <label className={`df-toggle-card cash-grab-guard ${jdyAi3 ? "active" : ""}`}>
+              <span className="df-toggle-copy"><span className="df-section-label"><ShieldAlert size={12} /> SHADOWS 3 · {statusLabel(jdyAi3Status)}</span><p>Use the additional pre-entry gate for this Rise/Fall setup.</p></span>
+              <span className="df-toggle"><input type="checkbox" checked={jdyAi3} onChange={(event) => onJdyAi3Change(event.target.checked)} disabled={!isConnected || interactionDisabled} aria-label="Enable Shadows 3 safety gate" /><i /></span>
+            </label>
           )}
         </div>
+
+        {isReal && (
+          <label className="cash-grab-live-confirm">
+            <input type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} disabled={running || isPlacingTrade} aria-label="Confirm real money trading" />
+            <span><b><ShieldAlert size={14} /> Confirm live funds</b><small>Trades use the selected real Deriv account.</small></span>
+          </label>
+        )}
+
+        <div className="df-action-row">
+          {running || stopping ? (
+            <button type="button" className="df-stop" onClick={onMoneyStop} disabled={stopping} data-testid="button-cash-grab-stop">
+              {stopping ? <Loader2 size={14} className="cash-grab-spin" /> : <Square size={13} fill="currentColor" />}
+              {stopping ? "STOPPING…" : "STOP CASH GRAB"}
+            </button>
+          ) : (
+            <button type="submit" className="df-run" disabled={!canStart || (isReal && !liveConfirmed)} data-testid="button-cash-grab-start">
+              {isPlacingTrade ? <Loader2 size={14} className="cash-grab-spin" /> : <Play size={14} fill="currentColor" />}
+              {isPlacingTrade ? "PLACING…" : "RUN CASH GRAB"}
+            </button>
+          )}
+          <button type="button" className="df-guide" onClick={onOpenGuide}><BookOpen size={13} /> Guide</button>
+        </div>
+        {!isConnected && <p className="cash-grab-status-note">Connect Deriv to place a Rise/Fall contract.</p>}
+        {isReal && !liveConfirmed && <p className="cash-grab-status-note">Confirm live funds before starting.</p>}
       </form>
 
-      <DerivHistory title="Cash Grab History" strategy="Cash Grab Strategy" rows={recentTrades} currency={currency} sessionPnl={sessionPnl} sessionTradeCount={tradeCount} clearArmed={clearArmed} fading={historyFading} onClear={onClearHistory} />
+      <div className="cash-grab-history df-card">
+        <DerivHistory
+          title="Cash Grab History"
+          strategy="Cash Grab Rise/Fall"
+          rows={recentTrades}
+          currency={currency}
+          sessionPnl={sessionPnl}
+          sessionTradeCount={tradeCount}
+          clearArmed={clearArmed}
+          fading={historyFading}
+          onClear={onClearHistory}
+        />
+      </div>
     </section>
   );
 }

@@ -2100,3 +2100,103 @@ body { overflow-x: hidden; }
   .xt-app button, .xt-app select, .xt-app input { -webkit-tap-highlight-color:transparent; }
   .deriv-account-switcher-cockpit .deriv-account-trigger { min-height:42px; }
 }
+
+/* Responsive navigation and ordered cockpit controls. */
+.xt-header {
+  grid-template-columns:minmax(0, 1fr) minmax(250px, min(560px, 52vw));
+  align-items:center;
+}
+.xt-header-leading { display:flex; align-items:center; gap:clamp(8px, 1vw, 14px); min-width:0; }
+.xt-menu-anchor { position:relative; flex:0 0 auto; }
+.xt-menu-button {
+  display:grid;
+  place-items:center;
+  width:40px;
+  height:40px;
+  border:1px solid #285478;
+  border-radius:11px;
+  color:#b8e2ff;
+  background:linear-gradient(145deg,#0d3152,#08223d);
+  cursor:pointer;
+}
+.xt-menu-button:hover { border-color:#48a0d4; background:#10385b; }
+.xt-menu-button:focus-visible,
+.xt-navigation-menu a:focus-visible { outline:2px solid #63bcff; outline-offset:2px; }
+.xt-navigation-menu {
+  position:absolute;
+  top:calc(100% + 9px);
+  left:0;
+  z-index:60;
+  display:grid;
+  min-width:220px;
+  gap:3px;
+  padding:7px;
+  border:1px solid #285478;
+  border-radius:12px;
+  background:#071b31;
+  box-shadow:0 16px 40px rgba(0,0,0,.4);
+}
+.xt-navigation-menu a {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-height:38px;
+  padding:0 10px;
+  border-radius:7px;
+  color:#d4e9fb;
+  font-size:11px;
+  text-decoration:none;
+}
+.xt-navigation-menu a:hover { color:#fff; background:#123b60; }
+.xt-navigation-menu a svg { color:#72bff0; }
+.xt-brand { align-items:center; }
+.xt-brand-copy { display:grid; }
+.xt-header-right {
+  grid-template-columns:minmax(170px, 1fr) auto auto;
+  align-items:center;
+  width:100%;
+  max-width:560px;
+  gap:8px;
+}
+.xt-header-right .deriv-account-switcher-xt { grid-column:auto; max-width:none; }
+.xt-header-right .xt-admin-link {
+  min-height:34px;
+  justify-self:end;
+  align-items:center;
+  gap:5px;
+  margin:0;
+  padding:0 9px;
+  border:1px solid #285478;
+  border-radius:8px;
+  color:#b4dfff;
+  background:#0b2946;
+  font-size:9px;
+  letter-spacing:.02em;
+  text-transform:none;
+}
+.xt-header-right .xt-admin-link:hover { border-color:#4b9dd1; color:#fff; background:#10385d; }
+.xt-header-right .xt-connection { justify-self:end; }
+
+@media(max-width:900px) {
+  .xt-header { grid-template-columns:minmax(0, 1fr) minmax(240px, min(510px, 54vw)); align-items:center; }
+  .xt-header-right { max-width:510px; }
+}
+@media(max-width:640px) {
+  .xt-header { grid-template-columns:minmax(0,1fr); align-items:center; row-gap:9px; }
+  .xt-header-leading { gap:8px; }
+  .xt-menu-button { width:36px; height:36px; border-radius:9px; }
+  .xt-header-right {
+    grid-template-columns:minmax(0,1fr) auto auto;
+    max-width:none;
+    justify-items:stretch;
+    gap:6px;
+  }
+  .xt-header-right .xt-admin-link { justify-self:stretch; padding:0 7px; font-size:8px; }
+  .xt-header-right .xt-connection { justify-self:end; }
+}
+@media(max-width:420px) {
+  .xt-header-right { grid-template-columns:minmax(0,1fr) auto; }
+  .xt-header-right .deriv-account-switcher-xt { grid-column:1; }
+  .xt-header-right .xt-admin-link { grid-column:2; }
+  .xt-header-right .xt-connection { grid-column:1 / -1; }
+}
