@@ -77,6 +77,7 @@ import CashGrabPanel, {
 } from "../components/cash-grab-panel";
 import DerivHistory from "../components/deriv-history";
 import { getAccountBalance } from "../lib/account-balance";
+import { readCachedHistorySnapshot } from "../lib/history-snapshot";
 
 const markets = [
   ["R_10", "Volatility 10 Index"], ["R_25", "Volatility 25 Index"],
@@ -620,6 +621,18 @@ export default function XTraderPage() {
     (MONEY_BANK_AUTO_SYMBOLS as readonly string[]).includes(market),
   );
   const rows = history.data ?? [];
+  const readHistorySnapshot = async () => {
+    // History is a display and settlement feed. The API's buy guard is the
+    // authority for whether another contract can be opened.
+    return readCachedHistorySnapshot(
+      async () => {
+        const latestRows = await getDerivHistory();
+        queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+        return latestRows;
+      },
+      queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? rows,
+    );
+  };
   const edgeAllRows = rows.filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER");
   const tradeXAllRows = rows.filter((trade) => trade.contract_type === "DIGITDIFF");
   const digitFlipAllRows = rows.filter((trade) => trade.contract_type === "DIGITEVEN" || trade.contract_type === "DIGITODD");
@@ -1421,21 +1434,25 @@ export default function XTraderPage() {
   };
 
   const waitForEdgeSettlement = async (contractIds: readonly string[]) => {
-    if (!contractIds.length) return;
+    if (!contractIds.length) return true;
     const expectedIds = new Set(contractIds);
-    let latestRows = await getDerivHistory();
+    let historySnapshot = await readHistorySnapshot();
+    if (!historySnapshot.fresh) return false;
+    let latestRows = historySnapshot.rows;
     let sawContract = false;
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const matching = latestRows.filter((trade) => expectedIds.has(trade.contract_id));
       if (matching.length) sawContract = true;
       if (sawContract && matching.every((trade) => trade.status !== "open")) {
         queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-        return;
+        return true;
       }
       // Allow the history stream time to publish the buy acknowledgement. The
       // next EDGE entry must never race that update, even for a one-tick trade.
       await sleep(500);
-      latestRows = await getDerivHistory();
+      historySnapshot = await readHistorySnapshot();
+      if (!historySnapshot.fresh) return false;
+      latestRows = historySnapshot.rows;
     }
     throw new Error("EDGE stopped because the previous trade did not settle in time.");
   };
@@ -1449,20 +1466,22 @@ export default function XTraderPage() {
     const entryDigit = config.barrier;
     // Do not decide the next stake from an older settled result while the
     // immediately preceding contract is still open.
-    let latestRows = await getDerivHistory();
-    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
+    let historySnapshot = await readHistorySnapshot();
+    let latestRows = historySnapshot.rows;
+    for (let attempt = 0; historySnapshot.fresh && latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
       await sleep(500);
-      latestRows = await getDerivHistory();
+      historySnapshot = await readHistorySnapshot();
+      latestRows = historySnapshot.rows;
     }
-    if (latestRows.some((trade) => trade.status === "open")) {
+    if (historySnapshot.fresh && latestRows.some((trade) => trade.status === "open")) {
       throw new Error("The previous contract is still settling. EDGE stopped without sending another trade.");
     }
-    for (const trade of latestRows.filter((item) => (item.contract_type === "DIGITOVER" || item.contract_type === "DIGITUNDER") && item.status !== "open")) {
+    for (const trade of (historySnapshot.fresh ? latestRows : []).filter((item) => (item.contract_type === "DIGITOVER" || item.contract_type === "DIGITUNDER") && item.status !== "open")) {
       if (edgeProcessedSettlementIdsRef.current.has(trade.contract_id)) continue;
       edgeProcessedSettlementIdsRef.current.add(trade.contract_id);
       edgeLossStreakRef.current = trade.profit < 0 ? edgeLossStreakRef.current + 1 : 0;
     }
-    queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
+    if (historySnapshot.fresh) queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
     if (!runningRef.current) return;
     const amount = config.strategy === "martingale" ? nextStakeRef.current : config.stake;
     const declaredAccountBalance = currentAccountBalance ?? 0;
@@ -1487,8 +1506,17 @@ export default function XTraderPage() {
     });
     result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
     await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
-    await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
     setSessionTrades((value) => value + 1);
+    if (!await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id))) {
+      runningRef.current = false;
+      setRunning(false);
+      setConnectionMessage({
+        kind: "info",
+        text: "Deriv accepted the EDGE trade. Trade history is temporarily unavailable, so automatic entries are paused; Deriv still checks settlement before another trade.",
+      });
+      refreshTradeResults();
+      return;
+    }
     refreshTradeResults();
     } finally {
       edgeActionLockRef.current = false;
@@ -1502,12 +1530,14 @@ export default function XTraderPage() {
     edgeActionLockRef.current = true;
     try {
     const config = configRef.current;
-    let latestRows = await getDerivHistory();
-    for (let attempt = 0; latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
+    let historySnapshot = await readHistorySnapshot();
+    let latestRows = historySnapshot.rows;
+    for (let attempt = 0; historySnapshot.fresh && latestRows.some((trade) => trade.status === "open") && attempt < 20; attempt += 1) {
       await sleep(500);
-      latestRows = await getDerivHistory();
+      historySnapshot = await readHistorySnapshot();
+      latestRows = historySnapshot.rows;
     }
-    if (latestRows.some((trade) => trade.status === "open")) {
+    if (historySnapshot.fresh && latestRows.some((trade) => trade.status === "open")) {
       throw new Error("The previous contract is still settling. EDGE stopped without sending another dual trade.");
     }
     if (!runningRef.current) return;
@@ -1532,8 +1562,17 @@ export default function XTraderPage() {
     });
     result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
     await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
-    await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
     setSessionTrades((value) => value + 2);
+    if (!await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id))) {
+      runningRef.current = false;
+      setRunning(false);
+      setConnectionMessage({
+        kind: "info",
+        text: "Deriv accepted the EDGE dual trade. Trade history is temporarily unavailable, so automatic entries are paused; Deriv still checks settlement before another trade.",
+      });
+      refreshTradeResults();
+      return;
+    }
     refreshTradeResults();
     } finally {
       edgeActionLockRef.current = false;
@@ -1582,9 +1621,18 @@ export default function XTraderPage() {
         // the source of truth for how long the contract runs.
         if (runningRef.current) await sleep(250);
       } catch (error) {
+        const message = errorMessage(error);
+        if (message.includes("still settling")) {
+          setConnectionMessage({
+            kind: "info",
+            text: "Deriv is still settling the previous contract. EDGE will retry after the server confirms it is safe to continue.",
+          });
+          await sleep(500);
+          continue;
+        }
         runningRef.current = false;
         setRunning(false);
-        setConnectionMessage({ kind: "error", text: errorMessage(error) });
+        setConnectionMessage({ kind: "error", text: message });
       }
     }
   };
@@ -1622,9 +1670,10 @@ export default function XTraderPage() {
     const config = moneyBankConfigRef.current;
     if (!config || !moneyBankRunningRef.current || moneyBankActionLockRef.current) return;
 
-    let latestRows = await getDerivHistory();
+    let historySnapshot = await readHistorySnapshot();
+    let latestRows = historySnapshot.rows;
     const openContractId = moneyBankOpenContractIdRef.current;
-    for (let attempt = 0; attempt < 240; attempt += 1) {
+    for (let attempt = 0; historySnapshot.fresh && attempt < 240; attempt += 1) {
       const stillOpen = openContractId
         ? latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")
         : latestRows.some((trade) =>
@@ -1634,27 +1683,31 @@ export default function XTraderPage() {
         );
       if (!stillOpen) break;
       await sleep(500);
-      latestRows = await getDerivHistory();
+      historySnapshot = await readHistorySnapshot();
+      latestRows = historySnapshot.rows;
     }
-    const unsettledPrevious = openContractId
+    const unsettledPrevious = historySnapshot.fresh && (openContractId
       ? latestRows.some((trade) => trade.contract_id === openContractId && trade.status === "open")
       : latestRows.some((trade) =>
         trade.contract_type === "ACCU"
         && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
         && trade.status === "open",
-      );
+      ));
     if (unsettledPrevious) {
       throw new Error("Money Bank stopped while the previous contract was still settling.");
     }
 
-    const settledAccumulator = (openContractId
-      ? latestRows.filter((trade) => trade.contract_id === openContractId)
-      : latestRows
-        .filter((trade) => trade.contract_type === "ACCU")
-        .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
-        .filter((trade) => trade.status !== "open")
-    ).find((trade) => !moneyBankProcessedSettlementIdsRef.current.has(trade.contract_id));
-    moneyBankOpenContractIdRef.current = null;
+    const settledAccumulatorRows = historySnapshot.fresh
+      ? openContractId
+        ? latestRows.filter((trade) => trade.contract_id === openContractId)
+        : latestRows
+          .filter((trade) => trade.contract_type === "ACCU")
+          .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
+          .filter((trade) => trade.status !== "open")
+      : [];
+    const settledAccumulator = settledAccumulatorRows.find((trade) =>
+      !moneyBankProcessedSettlementIdsRef.current.has(trade.contract_id),
+    );
     if (settledAccumulator) {
       moneyBankProcessedSettlementIdsRef.current.add(settledAccumulator.contract_id);
       const nextSessionPnl = moneyBankSessionPnlRef.current + settledAccumulator.profit;
@@ -1791,8 +1844,17 @@ export default function XTraderPage() {
         if (!moneyBankRunningRef.current) return;
         await sleep(250);
       } catch (error) {
+        const message = errorMessage(error);
+        if (message.includes("still settling")) {
+          setConnectionMessage({
+            kind: "info",
+            text: "Deriv is still settling the previous Accumulator. Money Bank will retry when the server confirms it is safe to continue.",
+          });
+          await sleep(750);
+          continue;
+        }
         stopMoneyBank();
-        setConnectionMessage({ kind: "error", text: errorMessage(error) });
+        setConnectionMessage({ kind: "error", text: message });
       }
     }
   };
@@ -1816,7 +1878,8 @@ export default function XTraderPage() {
     }
 
     try {
-      const latestRows = await getDerivHistory();
+      const historySnapshot = await readHistorySnapshot();
+      const latestRows = historySnapshot.rows;
       const accumulatorIds = latestRows
         .filter((trade) => trade.contract_type === "ACCU")
         .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
@@ -1828,11 +1891,11 @@ export default function XTraderPage() {
          && !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id)
          && trade.status === "open"
        );
-       if (existingOpenAccumulator) {
+       if (historySnapshot.fresh && existingOpenAccumulator) {
          setConnectionMessage({ kind: "info", text: "Money Bank is waiting for the existing Accumulator contract to settle before starting a new session." });
          return;
        }
-       moneyBankOpenContractIdRef.current = null;
+       moneyBankOpenContractIdRef.current = existingOpenAccumulator?.contract_id ?? null;
       moneyBankLevelRef.current = 0;
       moneyBankConfigRef.current = config;
       moneyBankSafestSymbolRef.current = moneyBankSafestSymbol;
@@ -1871,19 +1934,13 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "error", text: `The declared account balance is above the connected ${currentAccount?.currency ?? "USD"} balance.` });
       return;
     }
-    try {
-      const latestRows = await getDerivHistory();
-      const latestEdgeIds = latestRows
-        .filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER")
-        .map((trade) => trade.contract_id);
-      edgeSessionKnownIdsRef.current = new Set(latestEdgeIds);
-      edgeProcessedSettlementIdsRef.current = new Set(latestEdgeIds);
-      edgeLossStreakRef.current = 0;
-      queryClient.setQueryData(getGetDerivHistoryQueryKey(), latestRows);
-    } catch (error) {
-      setConnectionMessage({ kind: "error", text: errorMessage(error) });
-      return;
-    }
+    const historySnapshot = await readHistorySnapshot();
+    const latestEdgeIds = historySnapshot.rows
+      .filter((trade) => trade.contract_type === "DIGITOVER" || trade.contract_type === "DIGITUNDER")
+      .map((trade) => trade.contract_id);
+    edgeSessionKnownIdsRef.current = new Set(latestEdgeIds);
+    edgeProcessedSettlementIdsRef.current = new Set(latestEdgeIds);
+    edgeLossStreakRef.current = 0;
     setSessionPnl(0);
     setSessionTrades(0);
       nextStakeRef.current = stake;
@@ -2046,9 +2103,10 @@ export default function XTraderPage() {
       stopCashGrab();
       return;
     }
-    let latestRows = await getDerivHistory();
-    applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
-    for (let attempt = 0; attempt < 60; attempt += 1) {
+    let historySnapshot = await readHistorySnapshot();
+    let latestRows = historySnapshot.rows;
+    if (historySnapshot.fresh) applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
+    for (let attempt = 0; historySnapshot.fresh && attempt < 60; attempt += 1) {
       const activeCashGrab = latestRows.some((trade) =>
         cashGrabContractTypes.includes(trade.contract_type as typeof cashGrabContractTypes[number])
         && cashGrabSessionKnownIdsRef.current
@@ -2057,8 +2115,10 @@ export default function XTraderPage() {
       );
       if (!activeCashGrab) break;
       await sleep(500);
-      latestRows = await getDerivHistory();
-       applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
+      historySnapshot = await readHistorySnapshot();
+      latestRows = historySnapshot.rows;
+      if (!historySnapshot.fresh) break;
+      applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
     }
     if (!cashGrabRunningRef.current) return;
 
@@ -3033,9 +3093,16 @@ export default function XTraderPage() {
       });
       result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
-      await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
       setDirection(contractType);
       setSessionTrades((value) => value + 1);
+      if (!await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id))) {
+        setConnectionMessage({
+          kind: "info",
+          text: "Deriv accepted the EDGE trade. Trade history is temporarily unavailable; Deriv still checks settlement before another trade.",
+        });
+        refreshTradeResults();
+        return;
+      }
       await queryClient.invalidateQueries();
     } catch (error) {
       martingaleWatchRef.current = null;
@@ -3090,8 +3157,15 @@ export default function XTraderPage() {
       });
       result.buys.forEach((buy) => edgeClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(edgeClaimedHistoryIdsRef.current, latestRows, ["DIGITOVER", "DIGITUNDER"]);
-      await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id));
       setSessionTrades((value) => value + 2);
+      if (!await waitForEdgeSettlement(result.buys.map((buy) => buy.contract_id))) {
+        setConnectionMessage({
+          kind: "info",
+          text: "Deriv accepted the EDGE dual trade. Trade history is temporarily unavailable; Deriv still checks settlement before another trade.",
+        });
+        refreshTradeResults();
+        return;
+      }
       await queryClient.invalidateQueries();
     } catch (error) {
       martingaleWatchRef.current = null;

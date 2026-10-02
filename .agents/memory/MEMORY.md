@@ -5,7 +5,7 @@
 - [Primary admin access](primary-admin-access.md) — only the designated admin-key fingerprint can administer; sessions are intentionally non-persistent.
 - [Access response schemas](access-response-schema.md) — shared AccessSession fields must be returned by every access-key response path.
 - [Access-key recovery](access-key-recovery.md) — admin recovery uses encrypted copies; legacy hashed-only keys must be replaced.
-- [Deriv read concurrency](deriv-read-concurrency.md) — keep reads outside the mutation lock; DigitFlip buys must not depend on history transport.
+- [Deriv read concurrency](deriv-read-concurrency.md) — history outages cannot gate valid buys; server-side settlement checks remain authoritative.
 - [Runtime scaling boundary](runtime-scaling-boundary.md) — 900k active Deriv sessions requires horizontal runtime capacity, not a single Node process.
 - [Digit zero response schema](deriv-digit-zero-schema.md) — Deriv streak payloads include digit 0; keep OpenAPI and generated Zod minimums at zero.
 - [Trade contract selection](trade-contract-selection.md) — Digit Differs uses the selected barrier only at expiry; keep manual, ranked, and open-settlement states explicit.

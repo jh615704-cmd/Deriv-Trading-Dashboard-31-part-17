@@ -9,8 +9,8 @@ Live status, account, and history reads should stay outside the per-user mutatio
 
 **How to apply:** When adding a Deriv route, classify it as a read or mutation. Use the non-serialized credential path for safe reads and keep state-changing operations on the stable per-user lock.
 
-DigitFlip buys must not depend on a successful history request. Use the latest cached rows for strategy context, track confirmed buys from Deriv's acknowledgement, and refresh history asynchronously; the server's serialized active-contract check remains authoritative.
+DigitFlip and other trade entry paths must not depend on a successful history request. Use cached rows for strategy context and submit buys through the normal API path when history is stale or unavailable; the server's serialized active-contract check remains authoritative.
 
 **Why:** A history outage should not suppress a valid buy or make an acknowledged buy appear to have failed, while stale client history must not authorize overlapping contracts.
 
-**How to apply:** Keep history out of the DigitFlip buy prerequisite and post-buy success path. Preserve server-side open-contract, account-balance, and live-trading safeguards.
+**How to apply:** Treat history freshness separately from buy success. Preserve server-side open-contract, account-balance, and live-trading safeguards; post-buy automation may pause if it cannot confirm settlement.
