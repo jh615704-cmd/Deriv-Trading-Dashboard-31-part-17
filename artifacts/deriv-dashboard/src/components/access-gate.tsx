@@ -152,10 +152,6 @@ export function AccessGate({ children }: { children: ReactNode }) {
             {login.isPending ? <><Loader2 className="spin" size={16} /> Checking key…</> : "Unlock workspace"}
           </button>
         </form>
-        <div className="access-gate-footer">
-          <span>Private access · This browser only</span>
-          <span>Contact: @JDY_HATED</span>
-        </div>
       </div>
     </div>
   );
