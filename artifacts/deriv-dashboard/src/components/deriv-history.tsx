@@ -20,11 +20,11 @@ type Props = {
   onClear?: () => void;
   sessionPnl?: number;
   sessionTradeCount?: number;
-  hideSummary?: boolean;
+  summaryMode?: "full" | "pnl-only" | "hidden";
   actions?: ReactNode;
 };
 
-export default function DerivHistory({ title, strategy, rows, currency, clearArmed = false, fading = false, onClear, sessionPnl, sessionTradeCount, hideSummary = false, actions }: Props) {
+export default function DerivHistory({ title, strategy, rows, currency, clearArmed = false, fading = false, onClear, sessionPnl, sessionTradeCount, summaryMode = "full", actions }: Props) {
   const [filter, setFilter] = useState<"all" | "win" | "loss">("all");
   const settled = rows.filter((row) => row.status.toLowerCase() !== "open");
   const wins = settled.filter((row) => row.profit > 0).length;
@@ -46,10 +46,12 @@ export default function DerivHistory({ title, strategy, rows, currency, clearArm
           {onClear && <button type="button" onClick={onClear} disabled={!rows.length || fading} aria-label={clearArmed ? `Tap again to clear ${title}` : `Clear ${title}`}><Trash2 size={14} />{clearArmed ? "Tap again" : "Clear"}</button>}
         </div>
       </header>
-      {!hideSummary && <div className="deriv-history-summary">
+      {summaryMode !== "hidden" && <div className={`deriv-history-summary ${summaryMode === "pnl-only" ? "pnl-only" : ""}`}>
         <div className="deriv-history-net"><small>{sessionPnl == null ? "VISIBLE HISTORY P/L" : "SESSION P/L"}</small><b className={pnl < 0 ? "negative" : "positive"}>{pnl >= 0 ? "+" : ""}{money(pnl, currency)}</b></div>
-        <div><small>SETTLED WIN RATE</small><b>{rate == null ? "—" : `${rate.toFixed(1)}%`}</b></div>
-        <div><small>{sessionTradeCount == null ? "ALL / WIN / LOSS" : "SESSION TRADES"}</small><b>{sessionTradeCount ?? `${rows.length} / ${wins} / ${losses}`}</b></div>
+        {summaryMode === "full" && <>
+          <div><small>SETTLED WIN RATE</small><b>{rate == null ? "—" : `${rate.toFixed(1)}%`}</b></div>
+          <div><small>{sessionTradeCount == null ? "ALL / WIN / LOSS" : "SESSION TRADES"}</small><b>{sessionTradeCount ?? `${rows.length} / ${wins} / ${losses}`}</b></div>
+        </>}
       </div>}
       <nav className="deriv-history-filters" aria-label={`Filter ${title} history`}>
         {(["all", "win", "loss"] as const).map((value) => <button type="button" key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)} aria-pressed={filter === value}>{value === "all" ? `All (${rows.length})` : value === "win" ? `Wins (${wins})` : `Losses (${losses})`}</button>)}

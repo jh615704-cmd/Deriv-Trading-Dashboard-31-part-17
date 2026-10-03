@@ -597,6 +597,7 @@ body, .app-frame { background: #071b35; color: #e8f3ff; }
 .deriv-history-actions button:hover:not(:disabled) { border-color:#df6c79; color:#ffbbc1; }
 .deriv-history-actions button:disabled { opacity:.45; cursor:not-allowed; }
 .deriv-history-summary { display:grid; grid-template-columns:1.25fr 1fr 1fr; gap:1px; background:#1d3a58; border-bottom:1px solid #1d3a58; }
+.deriv-history-summary.pnl-only { grid-template-columns:minmax(0,1fr); }
 .deriv-history-summary > div { min-height:55px; display:grid; align-content:center; gap:5px; padding:8px 13px; background:#081d37; }
 .deriv-history-summary small, .deriv-history-details small { color:#7594b2; font:700 7px var(--app-font-mono); letter-spacing:.09em; }
 .deriv-history-summary b { color:#ddecff; font:800 12px var(--app-font-mono); }

@@ -422,7 +422,7 @@ export default function CashGrabPanel({
           strategy="Cash Grab Rise/Fall"
           rows={recentTrades}
           currency={currency}
-          hideSummary
+          summaryMode="pnl-only"
           clearArmed={clearArmed}
           fading={historyFading}
           onClear={onClearHistory}
