@@ -974,7 +974,7 @@ export const BuyDerivContractResponse = zod.object({
  */
 export const bulkBuyDerivContractsBodyAmountExclusiveMin = 0;
 
-export const bulkBuyDerivContractsBodyDurationMax = 5;
+export const bulkBuyDerivContractsBodyDurationMax = 10;
 
 export const bulkBuyDerivContractsBodyBarrierMin = 0;
 export const bulkBuyDerivContractsBodyBarrierMax = 9;
@@ -988,7 +988,7 @@ export const bulkBuyDerivContractsBodyCountMax = 6;
 
 export const BulkBuyDerivContractsBody = zod.object({
   "amount": zod.number().gt(bulkBuyDerivContractsBodyAmountExclusiveMin),
-  "duration": zod.number().int().min(1).max(bulkBuyDerivContractsBodyDurationMax),
+  "duration": zod.number().int().min(1).max(bulkBuyDerivContractsBodyDurationMax).describe('Tick duration; CALL and PUT allow 1–10, other contract types are limited to 1–5.'),
   "duration_unit": zod.enum(['t']),
   "contract_type": zod.enum(['DIGITEVEN', 'DIGITODD', 'DIGITOVER', 'DIGITUNDER', 'DIGITDIFF', 'CALL', 'PUT', 'ACCU']),
   "barrier": zod.number().int().min(bulkBuyDerivContractsBodyBarrierMin).max(bulkBuyDerivContractsBodyBarrierMax).optional(),

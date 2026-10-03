@@ -44,6 +44,19 @@ test("Cash Grab Fall maps to a Deriv PUT payload", () => {
   );
 });
 
+test("Cash Grab accepts a 10-tick Rise/Fall duration", () => {
+  const payload = buildCashGrabBulkBuyPayload({
+    amount: 0.35,
+    duration: 10,
+    direction: "CALL",
+    symbol: "R_75",
+    count: 1,
+  });
+
+  assert.equal(payload.duration, 10);
+  assert.equal(payload.contract_type, "CALL");
+});
+
 test("Cash Grab rejects non-Rise/Fall contract types at runtime", () => {
   const invalidInput = {
     amount: 0.35,

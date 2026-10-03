@@ -501,8 +501,9 @@ export interface DerivBulkBuyInput {
   /** @exclusiveMinimum 0 */
   amount: number;
   /**
+     * Tick duration; CALL and PUT allow 1–10, other contract types are limited to 1–5.
      * @minimum 1
-     * @maximum 5
+     * @maximum 10
      */
   duration: number;
   duration_unit: DerivBulkBuyInputDurationUnit;

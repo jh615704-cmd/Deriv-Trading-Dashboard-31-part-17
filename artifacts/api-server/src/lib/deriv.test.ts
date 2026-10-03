@@ -290,6 +290,38 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
     assert.deepEqual(buyRequest.parameters.limit_order, { take_profit: 0.22 });
   });
 
+  test("allows 10-tick Rise/Fall bulk contracts and rejects longer digit contracts", async () => {
+    const result = await withSelectedAccount("rise-fall-ten-tick-user", () => deriv.bulkBuyContracts({
+      amount: 1,
+      duration: 10,
+      duration_unit: "t",
+      contract_type: "CALL",
+      symbol: "R_75",
+      count: 1,
+      confirm_live_trade: true,
+    }));
+
+    assert.equal(result.count, 1);
+    const proposalRequest = latestSocket().sent.find((message) => message.proposal);
+    const buyRequest = latestSocket().sent.find((message) => message.buy === "1");
+    assert.equal(proposalRequest?.duration, 10);
+    assert.equal(buyRequest?.parameters.duration, 10);
+
+    await assert.rejects(
+      () => withSelectedAccount("digit-ten-tick-user", () => deriv.bulkBuyContracts({
+        amount: 1,
+        duration: 10,
+        duration_unit: "t",
+        contract_type: "DIGITDIFF",
+        barrier: 5,
+        symbol: "R_75",
+        count: 1,
+        confirm_live_trade: true,
+      })),
+      /Tick durations above 5 are only supported for Rise\/Fall contracts/,
+    );
+  });
+
   test("correlates proposal and buy acknowledgements and tracks open history before settlement", async () => {
     const result = await withSelectedAccount("correlation-user", () => deriv.buyContract({
       amount: 1,

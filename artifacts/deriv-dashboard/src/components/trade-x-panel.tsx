@@ -10,6 +10,7 @@ import {
   Target,
   TimerReset,
 } from "lucide-react";
+import AiScannerAction from "./ai-scanner-action";
 import "./trade-x-panel.css";
 
 export type TradeXMarketType = "volatility" | "jumps";
@@ -59,6 +60,7 @@ export interface TradeXPanelProps {
   onManualSelectModeChange: (enabled: boolean) => void;
   onTradeSelect: (digit: number) => void;
   onPlaceTrade: () => void;
+  onAiScan: () => Promise<string>;
   onRefreshAnalysis: () => void;
 }
 
@@ -107,6 +109,7 @@ export default function TradeXPanel({
   onManualSelectModeChange,
   onTradeSelect,
   onPlaceTrade,
+  onAiScan,
   onRefreshAnalysis,
 }: TradeXPanelProps) {
   const activeSymbols = symbols.filter((option) => option.marketType === marketType);
@@ -413,6 +416,7 @@ export default function TradeXPanel({
               <ChevronRight size={17} />
             </button>
           </div>
+          <AiScannerAction onScan={onAiScan} disabled={disabled || isPlacingTrade || !enabled} />
         </section>
 
       </div>

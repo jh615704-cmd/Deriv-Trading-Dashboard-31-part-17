@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Zap,
 } from "lucide-react";
+import AiScannerAction from "./ai-scanner-action";
 import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 import "./digit-flip-panel.css";
 
@@ -64,6 +65,7 @@ export type DigitFlipPanelProps = {
   onTakeProfitChange: (value: number) => void;
   onStopLossChange: (value: number) => void;
   onRunStop: () => void;
+  onAiScan: () => Promise<string>;
   onReset: () => void;
   onClearTrades: () => void;
   onRefreshSample: () => void;
@@ -184,6 +186,7 @@ export default function DigitFlipPanel({
   onTakeProfitChange,
   onStopLossChange,
   onRunStop,
+  onAiScan,
   onReset,
   onClearTrades,
   onRefreshSample,
@@ -428,6 +431,7 @@ export default function DigitFlipPanel({
           <label><span>TAKE PROFIT</span><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => onTakeProfitChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
           <label><span>STOP LOSS</span><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => onStopLossChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
         </div>
+        <AiScannerAction onScan={onAiScan} disabled={disabled || isPlacingTrade || running} />
         <div className="df-session-strip">
           <span><small>STAKE</small><b>{currentStake.toFixed(2)}</b></span>
           <span><small>SESSION P/L</small><b className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</b></span>

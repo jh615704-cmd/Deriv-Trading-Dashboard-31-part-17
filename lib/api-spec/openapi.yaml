@@ -1223,7 +1223,8 @@ components:
         duration:
           type: integer
           minimum: 1
-          maximum: 5
+          maximum: 10
+          description: Tick duration; CALL and PUT allow 1–10, other contract types are limited to 1–5.
         duration_unit:
           type: string
           enum: [t]

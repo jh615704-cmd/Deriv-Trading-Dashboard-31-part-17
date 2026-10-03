@@ -1278,6 +1278,9 @@ export async function bulkBuyContracts(input: {
   if (!Number.isInteger(input.count) || input.count < 1 || input.count > maxBulkCount) {
     throw new Error(`Bulk count must be between 1 and ${maxBulkCount}`);
   }
+  if (input.duration > 5 && input.contract_type !== "CALL" && input.contract_type !== "PUT") {
+    throw new Error("Tick durations above 5 are only supported for Rise/Fall contracts.");
+  }
   if (!getState().account) throw new Error("Select an account before buying contracts");
   if (getState().account.type === "real" && !liveTradingEnabled) {
     throw new Error("Live trading is disabled on this server");

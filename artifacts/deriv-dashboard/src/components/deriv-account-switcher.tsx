@@ -25,6 +25,7 @@ import { getAccountBalance } from "@/lib/account-balance";
 const money = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
+  useGrouping: false,
 });
 
 interface DerivAccountSwitcherProps {

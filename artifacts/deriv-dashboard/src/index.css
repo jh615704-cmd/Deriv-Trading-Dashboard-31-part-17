@@ -2200,3 +2200,47 @@ body { overflow-x: hidden; }
   .xt-header-right .xt-admin-link { grid-column:2; }
   .xt-header-right .xt-connection { grid-column:1 / -1; }
 }
+
+.ai-scanner-control {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 12px;
+}
+.ai-scanner-button {
+  min-height: 40px;
+  width: 100%;
+  padding: 0 14px;
+  border: 1px solid #2f80bd;
+  border-radius: 9px;
+  color: #d9efff;
+  background: linear-gradient(135deg, #12416a, #102a48);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.ai-scanner-button:hover:not(:disabled) {
+  border-color: #69bdff;
+  background: linear-gradient(135deg, #185484, #14375b);
+  transform: translateY(-1px);
+}
+.ai-scanner-button:focus-visible {
+  outline: 2px solid #75c7ff;
+  outline-offset: 2px;
+}
+.ai-scanner-button:disabled {
+  opacity: .56;
+  cursor: not-allowed;
+}
+.ai-scanner-message {
+  margin: 0;
+  color: #a7c5df;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

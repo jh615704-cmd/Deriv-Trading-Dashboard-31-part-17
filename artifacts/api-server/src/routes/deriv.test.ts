@@ -120,9 +120,12 @@ mock.module("../lib/deriv", {
       observePat();
       return { ok: true, contract_id: "contract-1", sold_for: 1 };
     },
-    bulkBuyContracts: async () => {
+    bulkBuyContracts: async (input: { duration: number; contract_type: string }) => {
       observePat();
-      return { ok: true, message: "contracts bought", count: 1, results: [] };
+      if (input.duration > 5 && input.contract_type !== "CALL" && input.contract_type !== "PUT") {
+        throw new Error("Tick durations above 5 are only supported for Rise/Fall contracts.");
+      }
+      return { ok: true, message: "contracts bought", count: 1, proposals: [], buys: [] };
     },
     dualBuyContracts: async () => {
       observePat();
@@ -227,7 +230,39 @@ test("admin Deriv routes require the session PAT and forget it on disconnect", a
       }),
     });
     assert.equal(buyResponse.status, 202);
-    assert.deepEqual(observedPats, [enteredPat, enteredPat, enteredPat, enteredPat]);
+
+    const riseFallBulkResponse = await fetch(`${baseUrl}/deriv/bulk-buy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: 1,
+        duration: 10,
+        duration_unit: "t",
+        contract_type: "CALL",
+        symbol: "R_75",
+        count: 1,
+        confirm_live_trade: true,
+      }),
+    });
+    assert.equal(riseFallBulkResponse.status, 202);
+
+    const digitBulkResponse = await fetch(`${baseUrl}/deriv/bulk-buy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: 1,
+        duration: 10,
+        duration_unit: "t",
+        contract_type: "DIGITDIFF",
+        barrier: 5,
+        symbol: "R_75",
+        count: 1,
+        confirm_live_trade: true,
+      }),
+    });
+    assert.equal(digitBulkResponse.status, 400);
+    assert.match(String((await readJson(digitBulkResponse)).error), /duration/);
+    assert.deepEqual(observedPats, [enteredPat, enteredPat, enteredPat, enteredPat, enteredPat, enteredPat]);
 
     const disconnectResponse = await fetch(`${baseUrl}/token`, { method: "DELETE" });
     assert.equal(disconnectResponse.status, 200);

@@ -102,28 +102,19 @@
   line-height: 1.45;
 }
 
-.cash-grab-balance-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 14px;
+.cash-grab-multiplier-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 150px);
+  align-items: center;
+  gap: 5px 9px;
+  margin-top: 13px;
   padding: 11px;
   border: 1px solid rgba(110, 164, 222, .16);
   border-radius: 9px;
   background: rgba(6, 22, 39, .28);
-}
-.cash-grab-balance-row > .df-toggle-control { justify-content: flex-start; }
-.cash-grab-percent-field,
-.cash-grab-multiplier-field {
-  display: grid;
-  grid-template-columns: auto minmax(82px, 110px);
-  align-items: center;
-  gap: 5px 9px;
   color: #a9bad0;
   font-size: 9px;
 }
-.cash-grab-percent-field input,
 .cash-grab-multiplier-field input {
   width: 100%;
   height: 31px;
@@ -133,35 +124,27 @@
   color: #f0f7ff;
   background: #0c223b;
 }
-.cash-grab-percent-field b {
+.cash-grab-multiplier-field small {
   grid-column: 1 / -1;
-  color: #91caff;
-  font-size: 8px;
-  font-weight: 600;
-}
-.cash-grab-df-panel .cash-grab-input-note {
-  margin-top: -2px;
   color: #92a9c3;
   font-size: 8px;
-  font-weight: 500;
-  line-height: 1.35;
+  font-weight: 600;
+  line-height: 1.4;
 }
-.cash-grab-guard-grid {
+
+.cash-grab-df-panel .df-parity-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
-.cash-grab-df-panel .df-toggle-card.cash-grab-guard {
-  min-height: 78px;
-  align-items: flex-start;
-  padding: 10px;
-  background: rgba(7, 24, 42, .38);
+.cash-grab-df-panel .df-parity-toggle button {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
-.cash-grab-guard .df-toggle-copy { flex: 1; }
-.cash-grab-guard .df-section-label { display: flex; align-items: center; gap: 4px; color: #a9c6e4; }
-.cash-grab-guard .df-toggle { margin-top: 3px; }
-.cash-grab-guard .df-toggle-copy > p { font-size: 8px; }
 
 .cash-grab-live-confirm {
   display: flex;
@@ -212,8 +195,7 @@
   .cash-grab-df-panel .df-best-parity { min-width: 80px; min-height: 44px; font-size: 14px; }
   .cash-grab-df-panel .df-setup-grid { grid-template-columns: 1fr 1fr; }
   .cash-grab-df-panel .df-setup-grid label:last-child { grid-column: 1 / -1; }
-  .cash-grab-balance-row { flex-direction: column; }
-  .cash-grab-guard-grid { grid-template-columns: 1fr; }
+  .cash-grab-df-panel .df-setup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 390px) {
@@ -222,6 +204,6 @@
   .cash-grab-df-panel .df-best-signal { gap: 8px; }
   .cash-grab-df-panel .df-best-copy p { font-size: 9px; }
   .cash-grab-df-panel .df-setup-grid { gap: 7px; }
-  .cash-grab-df-panel .df-parity-toggle { padding: 5px; }
+  .cash-grab-df-panel .df-parity-toggle { padding: 5px; gap: 5px; }
   .cash-grab-df-panel .df-parity-toggle button { min-height: 44px; font-size: 13px; }
 }

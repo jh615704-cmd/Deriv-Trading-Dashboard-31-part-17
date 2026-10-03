@@ -38,6 +38,13 @@ import {
   type BestEdgeSignal,
   type MarketSignal,
 } from "../lib/trading-sequence";
+import {
+  AI_SCANNER_MIN_SAMPLE,
+  chooseBulkScannerCandidate,
+  chooseDigitFlipScannerCandidate,
+  chooseTradeXScannerCandidate,
+  type AiScannerMarketSignal,
+} from "../lib/ai-market-scanner";
 import TradeXPanel, {
   type TradeXDigitDistribution,
   type TradeXDuration,
@@ -73,6 +80,7 @@ import CashGrabPanel, {
   type CashGrabDuration,
   type CashGrabMarketSignal,
   type CashGrabStartConfig,
+  type CashGrabStakeMode,
   type CashGrabTrade,
 } from "../components/cash-grab-panel";
 import DerivHistory from "../components/deriv-history";
@@ -205,7 +213,7 @@ const moneyBankGuidePages = [
 ] as const;
 
 const cashGrabGuidePages = [
-  { title: "Welcome to Cash Grab Rise/Fall", body: "Cash Grab is a controlled Rise/Fall workspace. It shows the selected market, direction, stake, duration, and session results before and after a trade.", points: ["Start with a demo account.", "Recent market samples are not guarantees.", "Use the guide before risking live funds."] },
+  { title: "Welcome to Cash Grab Rise/Fall", body: "Cash Grab is a controlled Rise/Fall workspace. It shows the selected market, direction, stake, duration, and trade history.", points: ["Start with a demo account.", "Recent market samples are not guarantees.", "Use the guide before risking live funds."] },
   { title: "Connect Deriv", body: "Connect your Deriv account with a Personal Access Token that has the permissions needed to read markets and trade.", points: ["Keep your token private.", "Check the active account and currency.", "Demo funds are the safest place to learn."] },
   { title: "Choose an account", body: "The account selector shows the account Cash Grab will use and its latest available balance.", points: ["Confirm the account before every session.", "Account changes require a fresh live-funds confirmation.", "A server-side balance check still applies."] },
   { title: "Rise and Fall contracts", body: "Rise and Fall are directional contracts sent to Deriv as CALL and PUT. Cash Grab only offers these two contract types.", points: ["Rise uses CALL.", "Fall uses PUT.", "The contract result is decided by Deriv at expiry."] },
@@ -216,15 +224,14 @@ const cashGrabGuidePages = [
   { title: "Read the live quote", body: "The quote card displays the most recent quote for the active market. It can change before a request reaches Deriv.", points: ["A live quote is not a forecast.", "The newest displayed value may differ from the entry quote.", "Use a fresh connection before trading."] },
   { title: "Read Rise and Fall samples", body: "The direction bar summarizes observed Rise and Fall movement in the available market sample.", points: ["Small samples can change quickly.", "A larger percentage is still not a promise.", "A safety gate can hold an entry when evidence is too limited."] },
   { title: "Select a direction", body: "Choose Rise or Fall explicitly. Cash Grab keeps that direction for the next entry and does not silently flip it.", points: ["Confirm the selected direction.", "Changing direction while stopped does not send a trade.", "The trade request matches the visible selection."] },
-  { title: "Set the stake", body: "Stake is the amount used for each contract. Cash Grab enforces a minimum of 0.35 and checks the connected account balance.", points: ["Use a small demo stake while learning.", "Balance sync calculates stake from a chosen percentage.", "Leave a reserve instead of using the full balance."] },
-  { title: "Set duration and count", body: "Duration selects one to five ticks. The contract limit sets how many separate trades a manual run can send, one at a time.", points: ["Cash Grab waits for each contract to settle before the next entry.", "Each trade is checked against the current account balance.", "A short duration does not remove risk."] },
-  { title: "Loss multiplier", body: "The optional multiplier changes the next contract stake after a settled loss. A win returns the next stake to the configured base amount.", points: ["A multiplier can increase exposure quickly.", "It does not guarantee recovery.", "Leave it blank for a flat stake."] },
-  { title: "Auto-switch safety", body: "Auto-switch checks fresh market evidence on its scan schedule and only proceeds when its sample and balance limits pass.", points: ["It can change markets between entries.", "It can adjust the multiplier within its guarded range.", "It may wait rather than send when no setup qualifies."] },
-  { title: "Shadows 2 and Shadows 3", body: "These optional controls apply the available pre-entry decision gates. A gate can hold an entry without changing your selected direction.", points: ["A held entry is skipped.", "Gates do not change a Rise trade into Fall or vice versa.", "A gate is not a prediction guarantee."] },
-  { title: "Run Cash Grab", body: "Run snapshots the visible Rise/Fall settings, checks the connection, account, balance, and live confirmation, then sends one contract at a time.", points: ["Review market, direction, stake, trade limit, and duration.", "Each request uses CALL or PUT only and waits for settlement before the next.", "If a check fails, the trade is blocked with a message."] },
+  { title: "Set the stake", body: "Stake is the base amount used for each contract. Cash Grab enforces a minimum of 0.35 and checks the connected account balance before every entry.", points: ["Use a small demo stake while learning.", "Multiply mode can increase the next stake after a loss.", "Leave a reserve instead of using the full balance."] },
+  { title: "Set duration and stake mode", body: "Rise/Fall duration can be set from one to ten ticks. Choose Flat for the same stake each time, or Multiply to apply your entered multiplier after a loss.", points: ["Cash Grab waits for each contract to settle before the next entry.", "A win restores the base stake.", "A larger multiplier can increase exposure quickly."] },
+  { title: "Custom multiplier", body: "In Multiply mode, enter any positive multiplier for the next contract after a settled loss. A win returns the stake to the configured base amount.", points: ["The multiplier has no app-imposed maximum.", "The available account balance is checked before every entry.", "Multiplying does not guarantee recovery."] },
+  { title: "Auto-switch safety", body: "Auto-switch reviews fresh market samples on its scan schedule and changes markets only when the observed direction rate, sample, and balance checks pass.", points: ["It can change markets between entries.", "It does not alter your selected stake mode or multiplier.", "It may wait rather than send when no setup qualifies."] },
+  { title: "Run Cash Grab", body: "Start checks the connection, selected account, available balance, and live confirmation, then sends one Rise/Fall contract at a time until you stop it.", points: ["Review market, direction, stake, mode, and duration.", "Each request waits for the current contract to settle before the next.", "If a check or request fails, Cash Grab stops and reports the reason."] },
   { title: "Stop Cash Grab", body: "Stop prevents Cash Grab from starting another batch and requests closure for open contracts claimed by the active session.", points: ["Wait until the stopping state finishes.", "A contract can settle while a close request is being handled.", "Already settled contracts remain in history."] },
-  { title: "Session results and history", body: "Session P/L includes settled Cash Grab results. Open contracts are not final results, and history remains visible after stopping.", points: ["Check each returned contract and direction.", "Clearing dashboard rows does not delete Deriv records.", "A positive session does not predict the next result."] },
-  { title: "Final Rise/Fall checklist", body: "Before a session, confirm the selected account, market, Rise or Fall direction, stake, duration, run limit, balance mode, and automation gates.", points: ["Use demo funds while testing.", "Keep stop controls available.", "Treat all observed rates as historical context, not certainty."] },
+  { title: "Cash Grab history", body: "Cash Grab history shows the contracts sent by this feature. Open contracts are not final results, and the rows remain visible after stopping.", points: ["Check each returned contract and direction.", "Clearing dashboard rows does not delete Deriv records.", "Observed rates describe past samples only."] },
+  { title: "Final Rise/Fall checklist", body: "Before a session, confirm the selected account, market, Rise or Fall direction, stake, Flat or Multiply mode, multiplier, and one-to-ten-tick duration.", points: ["Use demo funds while testing.", "Keep the Stop control available.", "Treat all observed rates as historical context, not certainty."] },
 ] as const;
 
 const tradeXSymbols: readonly TradeXSymbolOption[] = markets.map(([value, label]) => ({
@@ -329,10 +336,7 @@ type MoneyBankScannerRecommendation = {
 type CashGrabAutoSwitchRecommendation = {
   symbol: string;
   observedWinRate: number;
-  observedLossRate: number;
   sampleCount: number;
-  multiplier: number;
-  nextStake: number;
   score: number;
 };
 
@@ -346,7 +350,6 @@ export default function XTraderPage() {
   const canUseBulkTrader = isAdmin || accessSession.data?.features.includes("bulk-trader") === true;
   const canUseCashGrab = isAdmin || accessSession.data?.features.includes("cash-grab") === true;
   const canUseMoneyBank = isAdmin || accessSession.data?.features.includes("money-bank") === true;
-  const canUseJdyAi3 = isAdmin || accessSession.data?.features.includes("jdy-ai-3") === true;
   const canUseDeriv = canUseEdge || canUseDigitFlip || canUseTradeX || canUseBulkTrader || canUseCashGrab || canUseMoneyBank;
   const canViewHistory = canUseDeriv || accessSession.data?.features.includes("history") === true;
   const tokenStatus = useGetDerivTokenStatus({ query: { enabled: canUseDeriv, retry: false, queryKey: getGetDerivTokenStatusQueryKey() } });
@@ -432,23 +435,15 @@ export default function XTraderPage() {
   const [cashGrabDirection, setCashGrabDirection] = useState<CashGrabDirection>("CALL");
   const [cashGrabSymbol, setCashGrabSymbol] = useState("R_75");
   const [cashGrabStake, setCashGrabStake] = useState(.35);
-  const [cashGrabTradeLimit, setCashGrabTradeLimit] = useState(1);
   const [cashGrabDuration, setCashGrabDuration] = useState<CashGrabDuration>(1);
-  const [cashGrabMultiplier, setCashGrabMultiplier] = useState<number | null>(null);
+  const [cashGrabStakeMode, setCashGrabStakeMode] = useState<CashGrabStakeMode>("flat");
+  const [cashGrabMultiplier, setCashGrabMultiplier] = useState(2);
   const [cashGrabAutoSelectBest, setCashGrabAutoSelectBest] = useState(false);
   const [cashGrabAutoSwitchSafestPair, setCashGrabAutoSwitchSafestPair] = useState(false);
   const [cashGrabAutoSwitchSafestPairStatus, setCashGrabAutoSwitchSafestPairStatus] = useState<CashGrabAiStatus>("off");
   const [cashGrabAutoSwitchRecommendation, setCashGrabAutoSwitchRecommendation] = useState<CashGrabAutoSwitchRecommendation | null>(null);
-  const [cashGrabSyncBalance, setCashGrabSyncBalance] = useState(false);
-  const [cashGrabBalancePercentage, setCashGrabBalancePercentage] = useState(10);
-  const [cashGrabJdyAi2, setCashGrabJdyAi2] = useState(false);
-  const [cashGrabJdyAi3, setCashGrabJdyAi3] = useState(false);
-  const [cashGrabJdyAi2Status, setCashGrabJdyAi2Status] = useState<CashGrabAiStatus>("off");
-  const [cashGrabJdyAi3Status, setCashGrabJdyAi3Status] = useState<CashGrabAiStatus>("off");
   const [cashGrabRunning, setCashGrabRunning] = useState(false);
   const [cashGrabStopping, setCashGrabStopping] = useState(false);
-  const [cashGrabSessionPnl, setCashGrabSessionPnl] = useState(0);
-  const [cashGrabTradeCount, setCashGrabTradeCount] = useState(0);
   const [cashGrabClearArmed, setCashGrabClearArmed] = useState(false);
   const [cashGrabHiddenHistoryIds, setCashGrabHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [digitFlipMarketType, setDigitFlipMarketType] = useState<DigitFlipMarketType>("auto");
@@ -485,6 +480,8 @@ export default function XTraderPage() {
   const [tradeXHistoryClearArmed, setTradeXHistoryClearArmed] = useState(false);
   const [tradeXHiddenHistoryIds, setTradeXHiddenHistoryIds] = useState<Set<string>>(new Set());
   const [liveConfirmed, setLiveConfirmed] = useState(false);
+  const liveConfirmedRef = useRef(liveConfirmed);
+  liveConfirmedRef.current = liveConfirmed;
   const [sessionPnl, setSessionPnl] = useState(0);
   const [sessionTrades, setSessionTrades] = useState(0);
   const [analysisDigits, setAnalysisDigits] = useState<number[]>([]);
@@ -524,6 +521,7 @@ export default function XTraderPage() {
   const edgeActionLockRef = useRef(false);
   const edgeSettlementLockRef = useRef(false);
   const bulkActionLockRef = useRef(false);
+  const aiScannerActionLockRef = useRef(false);
   const digitFlipRunningRef = useRef(false);
   const moneyBankRunningRef = useRef(false);
   const moneyBankSafestSymbolRef = useRef("1HZ90V");
@@ -536,13 +534,11 @@ export default function XTraderPage() {
   const cashGrabRunningRef = useRef(false);
   const cashGrabRunIdRef = useRef(0);
   const cashGrabActionLockRef = useRef(false);
-  const cashGrabRemainingTradesRef = useRef(0);
   const cashGrabOpenContractIdsRef = useRef(new Set<string>());
   const cashGrabCurrentStakeRef = useRef(.35);
   const cashGrabSessionKnownIdsRef = useRef<Set<string> | null>(null);
   const cashGrabProcessedSettlementIdsRef = useRef(new Set<string>());
   const cashGrabConfigRef = useRef<CashGrabStartConfig | null>(null);
-  const cashGrabSessionPnlRef = useRef(0);
   const cashGrabAutoSwitchBusyRef = useRef(false);
   const cashGrabAutoSwitchNextAtRef = useRef<number | null>(null);
   const cashGrabAutoSwitchRecommendationRef = useRef<CashGrabAutoSwitchRecommendation | null>(null);
@@ -609,6 +605,10 @@ export default function XTraderPage() {
 
   const currentAccount = status.data?.account;
   const currentAccountBalance = getAccountBalance(currentAccount);
+  const currentAccountRef = useRef(currentAccount);
+  currentAccountRef.current = currentAccount;
+  const currentAccountBalanceRef = useRef(currentAccountBalance);
+  currentAccountBalanceRef.current = currentAccountBalance;
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
   const volatilityMarkets = markets.filter(([market]) => !market.startsWith("JD"));
@@ -685,15 +685,11 @@ export default function XTraderPage() {
       .filter((trade) => !cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id))
       .filter((trade) => !moneyBankSessionKnownIdsRef.current?.has(trade.contract_id))
     : [];
-  const cashGrabSessionRows = cashGrabSessionKnownIdsRef.current
-    ? cashGrabAllRows.filter((trade) => cashGrabClaimedHistoryIdsRef.current.has(trade.contract_id) && !cashGrabSessionKnownIdsRef.current?.has(trade.contract_id))
-    : [];
   const moneyBankCompletedRows = moneyBankSessionRows.filter((trade) => trade.status !== "open");
   const moneyBankSignals = (status.data?.market_signals ?? []) as MoneyBankMarketSignal[];
   const moneyBankScannerRecommendationRef = useRef<MoneyBankScannerRecommendation | null>(null);
   const fastSessionPnl = realizedProfit(edgeSessionRows);
   const moneyBankHistorySessionPnl = realizedProfit(moneyBankSessionRows);
-  const cashGrabHistorySessionPnl = realizedProfit(cashGrabSessionRows);
   const streaks = status.data?.digit_streaks ?? [];
   const lastDigit = status.data?.last_digit;
   const digitFlipEvenPercentage = digitFlipSampleCount ? (digitFlipEvenCount / digitFlipSampleCount) * 100 : 50;
@@ -1036,33 +1032,22 @@ export default function XTraderPage() {
       contractFamily: "rise-fall",
       direction: cashGrabDirection,
       symbol: cashGrabSymbol,
-      stake: cashGrabSyncBalance && currentAccountBalance != null
-        ? Math.max(.35, currentAccountBalance * (cashGrabBalancePercentage / 100))
-        : Math.max(.35, cashGrabStake),
-      tradeLimit: Math.max(1, Math.trunc(cashGrabTradeLimit)),
+      stake: Math.max(.35, cashGrabStake),
       duration: cashGrabDuration,
-      syncBalance: cashGrabSyncBalance,
-      balancePercentage: Math.max(.5, cashGrabBalancePercentage),
-      multiplier: cashGrabMultiplier == null ? null : Math.max(.5, cashGrabMultiplier),
+      stakeMode: cashGrabStakeMode,
+      multiplier: Math.max(.01, cashGrabMultiplier),
       autoSelectBest: cashGrabAutoSelectBest,
       autoSwitchSafestPair: cashGrabAutoSwitchSafestPair,
-      jdyAi2: cashGrabJdyAi2,
-      jdyAi3: cashGrabJdyAi3,
     };
   }, [
-    cashGrabBalancePercentage,
     cashGrabAutoSelectBest,
     cashGrabAutoSwitchSafestPair,
-    cashGrabTradeLimit,
     cashGrabDirection,
     cashGrabDuration,
-    cashGrabJdyAi2,
-    cashGrabJdyAi3,
+    cashGrabStakeMode,
     cashGrabStake,
     cashGrabSymbol,
-    cashGrabSyncBalance,
     cashGrabMultiplier,
-    currentAccount,
   ]);
 
   useEffect(() => {
@@ -1945,15 +1930,6 @@ export default function XTraderPage() {
   const cashGrabContractTypes = ["CALL", "PUT"] as const;
   const cashGrabManagedContractTypes = ["DIGITEVEN", "DIGITODD", "CALL", "PUT", "DIGITDIFF", "ACCU"] as const;
 
-  const cashGrabSafetyCheck = (config: CashGrabStartConfig) => {
-    const selectedSignal = (status.data?.market_signals ?? []).find((signal) => signal.symbol === config.symbol);
-    const sampleCount = selectedSignal?.sample_count ?? 0;
-    const observedRate = config.direction === "PUT"
-      ? selectedSignal?.fall_percentage ?? 0
-      : selectedSignal?.rise_percentage ?? 0;
-    return sampleCount >= 5 && observedRate >= 45;
-  };
-
   const scanCashGrabAutoSwitch = async (
     candidateConfig?: CashGrabStartConfig,
   ): Promise<CashGrabAutoSwitchRecommendation | null> => {
@@ -1967,13 +1943,7 @@ export default function XTraderPage() {
       const signals = freshStatus.data?.market_signals ?? [];
       const balance = currentAccountBalance;
       const minimumStake = .35;
-      const baseStake = config.syncBalance
-        ? Math.max(minimumStake, balance * (config.balancePercentage / 100))
-        : Math.max(minimumStake, config.stake);
-      const currentStake = Math.max(minimumStake, cashGrabCurrentStakeRef.current || baseStake);
-      const lossToRecover = Math.max(0, -cashGrabSessionPnlRef.current);
-      const recoveryTarget = lossToRecover + (baseStake * 0.25);
-      const desiredMultiplier = Math.max(2, Math.min(9, 1 + (recoveryTarget / Math.max(baseStake, .35))));
+      const currentStake = Math.max(minimumStake, cashGrabCurrentStakeRef.current || config.stake);
       const candidates: CashGrabAutoSwitchRecommendation[] = [];
 
       for (const signal of signals) {
@@ -1981,29 +1951,19 @@ export default function XTraderPage() {
         const observedWinRate = config.direction === "PUT"
           ? signal.fall_percentage ?? 0
           : signal.rise_percentage ?? 0;
-        const observedLossRate = Math.max(0, 100 - observedWinRate);
-        for (let multiplier = 2; multiplier <= 9; multiplier += 1) {
-          const nextStake = Number((currentStake * multiplier).toFixed(2));
-          if (nextStake > balance || observedWinRate < 50) continue;
-          const sampleConfidence = Math.min(signal.sample_count, 200) / 20;
-          const recoveryFit = Math.max(0, 10 - Math.abs(multiplier - desiredMultiplier) * 2);
-          const score = observedWinRate * 2 - observedLossRate * 0.8 + sampleConfidence + recoveryFit;
-          candidates.push({
-            symbol: signal.symbol,
-            observedWinRate,
-            observedLossRate,
-            sampleCount: signal.sample_count,
-            multiplier,
-            nextStake,
-            score,
-          });
-        }
+        if (currentStake > balance || observedWinRate < 50) continue;
+        const sampleConfidence = Math.min(signal.sample_count, 200) / 20;
+        candidates.push({
+          symbol: signal.symbol,
+          observedWinRate,
+          sampleCount: signal.sample_count,
+          score: observedWinRate * 2 + sampleConfidence,
+        });
       }
 
       const recommendation = candidates.sort((left, right) =>
         right.score - left.score
         || right.observedWinRate - left.observedWinRate
-        || left.observedLossRate - right.observedLossRate
         || right.sampleCount - left.sampleCount,
       )[0] ?? null;
       cashGrabAutoSwitchRecommendationRef.current = recommendation;
@@ -2012,11 +1972,11 @@ export default function XTraderPage() {
         setCashGrabAutoSwitchSafestPairStatus("ready");
         setConnectionMessage({
           kind: "info",
-          text: `Auto-switch selected ${recommendation.symbol}: ${recommendation.observedWinRate.toFixed(1)}% observed win balance, ${recommendation.multiplier}x recovery, and ${recommendation.nextStake.toFixed(2)} next stake.`,
+          text: `Auto-switch selected ${recommendation.symbol} with ${recommendation.observedWinRate.toFixed(1)}% observed in ${recommendation.sampleCount} moves. Historical rates are not a forecast.`,
         });
       } else {
         setCashGrabAutoSwitchSafestPairStatus("quiet");
-        setConnectionMessage({ kind: "info", text: "Auto-switch is waiting for enough live samples and balance room for a guarded 2x–9x recovery setting." });
+        setConnectionMessage({ kind: "info", text: "Auto-switch is waiting for a supported market with enough sampled moves, at least a 50% observed direction rate, and room for the current stake." });
       }
       return recommendation;
     } catch (error) {
@@ -2041,9 +2001,6 @@ export default function XTraderPage() {
       cashGrabProcessedSettlementIdsRef.current.add(trade.contract_id);
       cashGrabOpenContractIdsRef.current.delete(trade.contract_id);
     });
-    const pnl = completed.reduce((sum, trade) => sum + trade.profit, 0);
-    cashGrabSessionPnlRef.current += pnl;
-    setCashGrabSessionPnl(cashGrabSessionPnlRef.current);
     return completed;
   };
 
@@ -2052,18 +2009,14 @@ export default function XTraderPage() {
     if (!completed.length || !config) return;
     const currentStake = cashGrabCurrentStakeRef.current;
     const netSettledProfit = completed.reduce((total, trade) => total + trade.profit, 0);
-    cashGrabCurrentStakeRef.current = netSettledProfit < 0 && config.multiplier != null
-      ? Number((currentStake * Math.max(.5, config.multiplier)).toFixed(2))
+    cashGrabCurrentStakeRef.current = netSettledProfit < 0 && config.stakeMode === "multiply"
+      ? Number((currentStake * Math.max(.01, config.multiplier)).toFixed(2))
       : Number(config.stake.toFixed(2));
   };
 
   const executeCashGrabTrade = async () => {
     let config = cashGrabConfigRef.current;
     if (!config || !cashGrabRunningRef.current || cashGrabActionLockRef.current) return;
-    if (cashGrabRemainingTradesRef.current <= 0) {
-      stopCashGrab();
-      return;
-    }
     let historySnapshot = await readHistorySnapshot();
     let latestRows = historySnapshot.rows;
     if (historySnapshot.fresh) applyCashGrabSettlements(reconcileCashGrabSession(latestRows));
@@ -2096,12 +2049,10 @@ export default function XTraderPage() {
       config = {
         ...config,
         symbol: recommendation.symbol,
-        multiplier: recommendation.multiplier,
         autoSelectBest: false,
       };
       cashGrabConfigRef.current = config;
       setCashGrabSymbol(recommendation.symbol);
-      setCashGrabMultiplier(recommendation.multiplier);
       await selectMarket(recommendation.symbol);
     }
     if (!cashGrabRunningRef.current) return;
@@ -2113,18 +2064,6 @@ export default function XTraderPage() {
       await selectMarket(cashGrabBestSymbol);
     }
     if (!cashGrabRunningRef.current) return;
-    const gateEnabled = config.jdyAi2 || config.jdyAi3;
-    setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
-    setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
-    if (gateEnabled && !cashGrabSafetyCheck(config)) {
-      setCashGrabJdyAi2Status(config.jdyAi2 ? "quiet" : "off");
-      setCashGrabJdyAi3Status(config.jdyAi3 ? "quiet" : "off");
-      setConnectionMessage({ kind: "info", text: "Cash Grab held this entry: the selected setup did not pass the current safety check. Your settings stayed unchanged." });
-      return;
-    }
-    setCashGrabJdyAi2Status(config.jdyAi2 ? "ready" : "off");
-    setCashGrabJdyAi3Status(config.jdyAi3 ? "ready" : "off");
-
     const amount = Number(cashGrabCurrentStakeRef.current.toFixed(2));
     if (currentAccountBalance == null || amount > currentAccountBalance) {
       setConnectionMessage({ kind: "error", text: "Cash Grab stopped because the selected stake exceeds the connected balance." });
@@ -2149,8 +2088,6 @@ export default function XTraderPage() {
         cashGrabClaimedHistoryIdsRef.current.add(buy.contract_id);
         cashGrabOpenContractIdsRef.current.add(buy.contract_id);
       });
-      cashGrabRemainingTradesRef.current -= 1;
-      setCashGrabTradeCount((value) => value + 1);
       let afterRows = await claimFeatureRows(cashGrabClaimedHistoryIdsRef.current, latestRows, [...cashGrabContractTypes]) as typeof rows;
       let completed = reconcileCashGrabSession(afterRows);
       applyCashGrabSettlements(completed);
@@ -2167,11 +2104,10 @@ export default function XTraderPage() {
         completed = reconcileCashGrabSession(afterRows);
         applyCashGrabSettlements(completed);
       }
-      if (cashGrabOpenContractIdsRef.current.size > 0 && cashGrabRemainingTradesRef.current > 0) {
+      if (cashGrabOpenContractIdsRef.current.size > 0) {
         setConnectionMessage({ kind: "info", text: "Cash Grab is still waiting for the current Rise/Fall contract to settle. No next contract will open until it is cleared." });
         return;
       }
-      if (cashGrabRemainingTradesRef.current <= 0) stopCashGrab();
       refreshTradeResults();
     } catch (error) {
       if (contractConfirmed) {
@@ -2179,11 +2115,12 @@ export default function XTraderPage() {
           kind: "error",
           text: `Cash Grab contract was confirmed by Deriv, but its settlement history could not be refreshed: ${errorMessage(error)}. Cash Grab is paused to prevent overlapping trades.`,
         });
-        cashGrabRunningRef.current = false;
-        setCashGrabRunning(false);
       } else {
         setConnectionMessage({ kind: "error", text: `Cash Grab could not place the contract: ${errorMessage(error)}` });
       }
+      // A failed request must not be retried automatically in the now-unlimited
+      // run. Stop and close any contract that was already acknowledged.
+      stopCashGrab();
     } finally {
       cashGrabActionLockRef.current = false;
     }
@@ -2297,12 +2234,9 @@ export default function XTraderPage() {
   const stopCashGrab = () => {
     cashGrabRunIdRef.current += 1;
     cashGrabRunningRef.current = false;
-    cashGrabRemainingTradesRef.current = 0;
     cashGrabAutoSwitchNextAtRef.current = null;
     setCashGrabStopping(true);
     setCashGrabRunning(false);
-    setCashGrabJdyAi2Status(cashGrabJdyAi2 ? "blocked" : "off");
-    setCashGrabJdyAi3Status(cashGrabJdyAi3 ? "blocked" : "off");
     setCashGrabAutoSwitchSafestPairStatus(
       cashGrabAutoSwitchSafestPair || cashGrabConfigRef.current?.autoSwitchSafestPair ? "blocked" : "off",
     );
@@ -2344,19 +2278,9 @@ export default function XTraderPage() {
     cashGrabSessionKnownIdsRef.current = new Set(existingIds);
     cashGrabProcessedSettlementIdsRef.current = new Set(existingIds);
     cashGrabConfigRef.current = config;
-    // Manual runs send one contract at a time up to the selected limit.
-    // Auto-switch continues one-at-a-time until the user stops it.
-    cashGrabRemainingTradesRef.current = config.autoSwitchSafestPair
-      ? Number.MAX_SAFE_INTEGER
-      : Math.max(1, Math.trunc(config.tradeLimit));
     cashGrabCurrentStakeRef.current = Number(config.stake.toFixed(2));
-    cashGrabSessionPnlRef.current = 0;
     cashGrabAutoSwitchNextAtRef.current = config.autoSwitchSafestPair ? 0 : null;
     setCashGrabStopping(false);
-    setCashGrabSessionPnl(0);
-    setCashGrabTradeCount(0);
-    setCashGrabJdyAi2Status(config.jdyAi2 ? "watching" : "off");
-    setCashGrabJdyAi3Status(config.jdyAi3 ? "watching" : "off");
     setCashGrabAutoSwitchSafestPairStatus(config.autoSwitchSafestPair ? "watching" : "off");
     cashGrabRunningRef.current = true;
     setCashGrabRunning(true);
@@ -2367,10 +2291,6 @@ export default function XTraderPage() {
   const deactivateCashGrab = () => {
     stopCashGrab();
     setCashGrabEnabled(false);
-    setCashGrabJdyAi2(false);
-    setCashGrabJdyAi3(false);
-    setCashGrabJdyAi2Status("off");
-    setCashGrabJdyAi3Status("off");
   };
 
   const toggleCashGrab = (enabled: boolean) => {
@@ -2533,8 +2453,10 @@ export default function XTraderPage() {
     try {
       await symbolMutation.mutateAsync({ data: { symbol: next } });
       refreshTradeResults();
+      return true;
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
+      return false;
     }
   };
 
@@ -2549,7 +2471,24 @@ export default function XTraderPage() {
     void selectMarket(bulkTraderBestSymbol);
   }, [bulkTraderAutoSelectBest, bulkTraderBestSymbol, bulkTraderSymbol, bulkBuyMutation.isPending]);
 
-  const executeTradeX = async (count = 1, durationOverride = tradeXConfigRef.current.duration, digitOverride?: number) => {
+  const withAiScannerLock = async (scan: () => Promise<string>) => {
+    if (aiScannerActionLockRef.current) throw new Error("An AI Scanner action is already running.");
+    aiScannerActionLockRef.current = true;
+    try {
+      return await scan();
+    } finally {
+      aiScannerActionLockRef.current = false;
+    }
+  };
+  const hasCurrentLiveConfirmation = () =>
+    currentAccountRef.current?.type !== "real" || liveConfirmedRef.current;
+
+  const executeTradeX = async (
+    count = 1,
+    durationOverride = tradeXConfigRef.current.duration,
+    digitOverride?: number,
+    symbolOverride?: string,
+  ) => {
     if (tradeXActionLockRef.current) {
       setTradeXMessage("Trade X is already sending. Wait for the current request to finish.");
       return false;
@@ -2590,7 +2529,7 @@ export default function XTraderPage() {
           duration_unit: "t",
           contract_type: "DIGITDIFF",
           barrier: entryDigit,
-          symbol: config.symbol,
+          symbol: symbolOverride ?? config.symbol,
           count,
           confirm_live_trade: true,
         },
@@ -2598,7 +2537,7 @@ export default function XTraderPage() {
       result.buys.forEach((buy) => tradeXClaimedHistoryIdsRef.current.add(buy.contract_id));
        await claimFeatureRows(tradeXClaimedHistoryIdsRef.current, latestRows, ["DIGITDIFF"]);
       setTradeXTradesSent((value) => value + count);
-      setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
+      setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on ${symbolOverride ?? config.symbol} Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
       refreshTradeResults();
       return true;
     } catch (error) {
@@ -2608,6 +2547,31 @@ export default function XTraderPage() {
       tradeXActionLockRef.current = false;
     }
   };
+
+  const runTradeXAiScanner = () => withAiScannerLock(async () => {
+    if (!tradeXEnabled || !isConnected) throw new Error("Enable Trade X and connect Deriv before scanning.");
+    if (running) throw new Error("Stop the active EDGE run before using the one-shot scanner.");
+    const freshStatus = await status.refetch();
+    const signals = (freshStatus.data?.market_signals ?? []) as AiScannerMarketSignal[];
+    const symbols = tradeXSymbols
+      .filter((item) => item.marketType === tradeXMarketType)
+      .map((item) => item.value);
+    const candidate = chooseTradeXScannerCandidate(signals, symbols);
+    if (!candidate) {
+      throw new Error(`No ${tradeXMarketType} market has at least ${AI_SCANNER_MIN_SAMPLE} observed moves.`);
+    }
+    setTradeXSymbol(candidate.symbol);
+    setTradeXSelectedDigit(candidate.digit);
+    setTradeXManualSelect(true);
+    if (!await selectMarket(candidate.symbol)) throw new Error("Deriv could not select the scanned market. No trade was sent.");
+    if (!hasCurrentLiveConfirmation()) throw new Error("Confirm live funds before sending the scanned Trade X trade.");
+    if (currentAccountBalanceRef.current == null || tradeXStake > currentAccountBalanceRef.current) {
+      throw new Error("The selected Trade X stake exceeds the current account balance.");
+    }
+    const sent = await executeTradeX(1, tradeXDuration, candidate.digit, candidate.symbol);
+    if (!sent) throw new Error("The setup was selected, but the existing Trade X checks blocked the order.");
+    return `Sent one ${candidate.symbol} Digit Differs ${candidate.digit} trade. The digit differed in ${candidate.observedRate.toFixed(1)}% of ${candidate.sampleCount} sampled moves; that history is not a prediction.`;
+  });
 
 
   const chooseDigitFlipSetup = async (requireThreshold = false) => {
@@ -2761,6 +2725,52 @@ export default function XTraderPage() {
       digitFlipActionLockRef.current = false;
     }
   };
+
+  const runDigitFlipAiScanner = () => withAiScannerLock(async () => {
+    if (!digitFlipEnabled || !isConnected) throw new Error("Enable DigitFlip and connect Deriv before scanning.");
+    if (digitFlipRunningRef.current || digitFlipActionLockRef.current) {
+      throw new Error("Stop the active DigitFlip run before using the one-shot scanner.");
+    }
+    if (!hasCurrentLiveConfirmation()) throw new Error("Confirm live funds before sending a DigitFlip trade.");
+    if (currentAccountBalance == null || currentAccountBalance <= 0) {
+      throw new Error("The selected account balance must be available before scanning.");
+    }
+    const freshStatus = await status.refetch();
+    const signals = (freshStatus.data?.market_signals ?? []) as AiScannerMarketSignal[];
+    const symbols = tradeXSymbols
+      .filter((item) => digitFlipMarketType === "auto" || item.marketType === digitFlipMarketType)
+      .map((item) => item.value);
+    const candidate = chooseDigitFlipScannerCandidate(signals, symbols);
+    if (!candidate) {
+      throw new Error(`No eligible market has at least ${AI_SCANNER_MIN_SAMPLE} observed moves.`);
+    }
+    const selectedSignal = signals.find((signal) => signal.symbol === candidate.symbol);
+    if (!selectedSignal) throw new Error("The selected market sample is no longer available.");
+    digitFlipRunningRef.current = false;
+    setDigitFlipRunning(false);
+    digitFlipRatesRef.current = {
+      even: selectedSignal.digit_even_percentage,
+      odd: selectedSignal.digit_odd_percentage,
+    };
+    digitFlipConfigRef.current = {
+      ...digitFlipConfigRef.current,
+      symbol: candidate.symbol,
+      parity: candidate.parity,
+    };
+    setDigitFlipSymbol(candidate.symbol);
+    setDigitFlipParity(candidate.parity);
+    if (!await selectMarket(candidate.symbol)) throw new Error("Deriv could not select the scanned market. No trade was sent.");
+    if (!hasCurrentLiveConfirmation()) throw new Error("Confirm live funds before sending the scanned DigitFlip trade.");
+    const currentDigitFlipStake = digitFlipStakeMode === "martingale"
+      ? digitFlipNextStakeRef.current
+      : digitFlipStake;
+    if (currentAccountBalanceRef.current == null || currentDigitFlipStake > currentAccountBalanceRef.current) {
+      throw new Error("The selected DigitFlip stake exceeds the current account balance.");
+    }
+    const sent = await executeDigitFlip();
+    if (!sent) throw new Error("The setup was selected, but the existing DigitFlip checks blocked the order.");
+    return `Sent one ${candidate.symbol} ${candidate.parity === "DIGITEVEN" ? "Even" : "Odd"} trade. That parity appeared in ${candidate.observedRate.toFixed(1)}% of ${candidate.sampleCount} sampled moves; that history is not a prediction.`;
+  });
 
   const waitForMarketTicks = async (count: number, isActive: () => boolean) => {
     const target = liveTickSequenceRef.current + Math.max(1, Math.trunc(count));
@@ -2962,22 +2972,26 @@ export default function XTraderPage() {
     void selectMarket(bulkTraderSymbol);
   };
 
-  const executeBulkTrade = async (contractType: BulkTraderContractType, barrierOverride?: number) => {
+  const executeBulkTrade = async (
+    contractType: BulkTraderContractType,
+    barrierOverride?: number,
+    symbolOverride?: string,
+  ): Promise<boolean> => {
     if (bulkActionLockRef.current || bulkBuyMutation.isPending) {
       setConnectionMessage({ kind: "info", text: "Bulk Trader is already sending. Wait for the current request to finish." });
-      return;
+      return false;
     }
     if (!isConnected) {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before sending a Bulk Trader contract." });
-      return;
+      return false;
     }
     if (currentAccountBalance == null) {
       setConnectionMessage({ kind: "error", text: "Bulk Trader is paused until the selected account balance is available." });
-      return;
+      return false;
     }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a Bulk Trader contract." });
-      return;
+      return false;
     }
     const beforeRows = queryClient.getQueryData<typeof rows>(getGetDerivHistoryQueryKey()) ?? [];
     const send = (type: BulkTraderContractType) => bulkBuyMutation.mutateAsync({
@@ -2987,7 +3001,7 @@ export default function XTraderPage() {
         duration_unit: "t",
         contract_type: type,
         ...(barrierOverride == null ? {} : { barrier: barrierOverride }),
-        symbol: bulkTraderSymbol,
+        symbol: symbolOverride ?? bulkTraderSymbol,
         count: bulkTraderCount,
         confirm_live_trade: true,
       },
@@ -2995,15 +3009,51 @@ export default function XTraderPage() {
     bulkActionLockRef.current = true;
     try {
       const result = await send(contractType);
+      if (!result.buys.length) throw new Error("Deriv did not acknowledge any contracts for this setup.");
       result.buys.forEach((buy) => bulkClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(bulkClaimedHistoryIdsRef.current, beforeRows, [contractType]);
       refreshTradeResults();
+      return true;
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
+      return false;
     } finally {
       bulkActionLockRef.current = false;
     }
   };
+
+  const runBulkTraderAiScanner = () => withAiScannerLock(async () => {
+    if (!bulkTraderEnabled || !isConnected) throw new Error("Enable Bulk Trader and connect Deriv before scanning.");
+    if (bulkActionLockRef.current || bulkBuyMutation.isPending) throw new Error("Bulk Trader is already sending a batch.");
+    if (!hasCurrentLiveConfirmation()) throw new Error("Confirm live funds before sending the scanned Bulk Trader batch.");
+    const freshStatus = await status.refetch();
+    const signals = (freshStatus.data?.market_signals ?? []) as AiScannerMarketSignal[];
+    const candidate = chooseBulkScannerCandidate(
+      signals,
+      tradeXSymbols.map((item) => item.value),
+      bulkTraderType,
+      bulkTraderPrediction,
+    );
+    if (!candidate) {
+      throw new Error(`No eligible setup has at least ${AI_SCANNER_MIN_SAMPLE} observed moves for the selected contract type and barrier.`);
+    }
+    const nextType = candidate.contractType === "DIGITDIFF" ? "differs" : "over-under";
+    setBulkTraderAutoSelectBest(false);
+    setBulkTraderSymbol(candidate.symbol);
+    setBulkTraderType(nextType);
+    setBulkTraderPrediction(candidate.barrier);
+    if (!await selectMarket(candidate.symbol)) throw new Error("Deriv could not select the scanned market. No contracts were sent.");
+    if (!hasCurrentLiveConfirmation()) throw new Error("Confirm live funds before sending the scanned Bulk Trader batch.");
+    if (
+      currentAccountBalanceRef.current == null
+      || bulkTraderStake * bulkTraderCount > currentAccountBalanceRef.current
+    ) {
+      throw new Error("The configured Bulk Trader batch exceeds the current account balance.");
+    }
+    const sent = await executeBulkTrade(candidate.contractType, candidate.barrier, candidate.symbol);
+    if (!sent) throw new Error("The setup was selected, but the existing Bulk Trader checks blocked the batch.");
+    return `Sent the configured batch of ${bulkTraderCount} ${candidate.symbol} ${candidate.contractType === "DIGITDIFF" ? "Digit Differs" : candidate.contractType === "DIGITOVER" ? "Over" : "Under"} ${candidate.barrier} contracts. The observed rate was ${candidate.observedRate.toFixed(1)}% across ${candidate.sampleCount} moves; that history is not a prediction.`;
+  });
 
   const selectDuration = (next: number) => {
     setDuration(next);
@@ -3235,8 +3285,6 @@ export default function XTraderPage() {
             {navigationOpen && (
               <nav id="xt-navigation-menu" className="xt-navigation-menu" aria-label="Main navigation">
                 <Link href="/app" onClick={() => setNavigationOpen(false)}><Gauge size={15} />Trading dashboard</Link>
-                <a href="#account-connection" onClick={() => setNavigationOpen(false)}><Link2 size={15} />Deriv connection</a>
-                <a href="#cash-grab-feature" onClick={() => setNavigationOpen(false)}><Activity size={15} />Cash Grab</a>
                 {accessSession.data?.is_admin === true && (
                   <Link href="/admin/users" onClick={() => setNavigationOpen(false)}><ShieldCheck size={15} />Admin panel</Link>
                 )}
@@ -3436,6 +3484,7 @@ export default function XTraderPage() {
           onTradeCountChange={setBulkTraderCount}
           onLiveConfirmChange={setLiveConfirmed}
           onTrade={(contractType, selectedBarrier) => void executeBulkTrade(contractType, selectedBarrier)}
+          onAiScan={runBulkTraderAiScanner}
           onRefreshAnalysis={refreshAnalysis}
           onClearHistory={() => void clearBulkTraderHistory()}
         />
@@ -3492,6 +3541,7 @@ export default function XTraderPage() {
           onTakeProfitChange={setDigitFlipTakeProfit}
           onStopLossChange={setDigitFlipStopLoss}
           onRunStop={toggleDigitFlipRun}
+          onAiScan={runDigitFlipAiScanner}
           onReset={resetDigitFlip}
           onClearTrades={clearDigitFlipHistory}
            onRefreshSample={refreshDigitFlipSample}
@@ -3731,7 +3781,7 @@ export default function XTraderPage() {
             lastDigit={lastDigit}
             isPlacingTrade={bulkBuyMutation.isPending}
             isRefreshingAnalysis={analysisTickCount === 0 && !isConnected}
-            disabled={running}
+            disabled={running || !isConnected}
             onMarketTypeChange={setTradeXMarketType}
             onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
             onTradeTypeChange={() => undefined}
@@ -3748,6 +3798,7 @@ export default function XTraderPage() {
                void executeTradeX(1, tradeXDuration, digit);
              }}
             onPlaceTrade={() => void executeTradeX(1)}
+            onAiScan={runTradeXAiScanner}
             onRefreshAnalysis={refreshAnalysis}
           />
           {tradeXMessage && <p className="tx-parent-message" role="status">{tradeXMessage}</p>}
@@ -3834,18 +3885,10 @@ export default function XTraderPage() {
           marketSignals={cashGrabMarketSignals}
           quote={status.data?.last_tick?.symbol === cashGrabSymbol ? status.data?.last_tick?.quote ?? null : null}
           stake={cashGrabStake}
-          tradeLimit={cashGrabTradeLimit}
           duration={cashGrabDuration}
-          syncBalance={cashGrabSyncBalance}
-          accountBalance={currentAccountBalance}
+          stakeMode={cashGrabStakeMode}
           currency={currentAccount?.currency ?? "USD"}
-          balancePercentage={cashGrabBalancePercentage}
           multiplier={cashGrabMultiplier}
-          jdyAi2={cashGrabJdyAi2}
-          jdyAi2Status={cashGrabJdyAi2Status}
-          jdyAi3={cashGrabJdyAi3}
-          jdyAi3Available={canUseJdyAi3}
-          jdyAi3Status={cashGrabJdyAi3Status}
           autoSwitchSafestPair={cashGrabAutoSwitchSafestPair}
           autoSwitchSafestPairStatus={cashGrabAutoSwitchSafestPairStatus}
           autoSwitchSafestPairRecommendation={cashGrabAutoSwitchRecommendation}
@@ -3856,8 +3899,6 @@ export default function XTraderPage() {
           liveConfirmed={liveConfirmed}
           isPlacingTrade={bulkBuyMutation.isPending}
           recentTrades={cashGrabRows}
-          sessionPnl={cashGrabHistorySessionPnl}
-          tradeCount={cashGrabTradeCount}
           clearArmed={cashGrabClearArmed}
           historyFading={historyFading}
           onDirectionChange={setCashGrabDirection}
@@ -3870,27 +3911,9 @@ export default function XTraderPage() {
             }
           }}
           onStakeChange={setCashGrabStake}
-          onTradeLimitChange={setCashGrabTradeLimit}
           onDurationChange={setCashGrabDuration}
-          onSyncBalanceChange={setCashGrabSyncBalance}
-          onBalancePercentageChange={setCashGrabBalancePercentage}
+          onStakeModeChange={setCashGrabStakeMode}
           onMultiplierChange={setCashGrabMultiplier}
-          onJdyAi2Change={(enabled) => {
-            setCashGrabJdyAi2(enabled);
-            setCashGrabJdyAi2Status(enabled ? "ready" : "off");
-          }}
-          onJdyAi3Change={(enabled) => {
-            setCashGrabJdyAi3(enabled);
-            setCashGrabJdyAi3Status(enabled ? "ready" : "off");
-            if (!enabled) {
-              if (cashGrabConfigRef.current) {
-                cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: false };
-              }
-              if (!cashGrabAutoSwitchSafestPair && cashGrabRunning) stopCashGrab();
-            } else if (cashGrabConfigRef.current) {
-              cashGrabConfigRef.current = { ...cashGrabConfigRef.current, jdyAi3: true };
-            }
-          }}
           onAutoSwitchSafestPairChange={(enabled) => {
             const currentConfig = cashGrabConfigRef.current;
             setCashGrabAutoSwitchSafestPair(enabled);
@@ -3912,16 +3935,12 @@ export default function XTraderPage() {
                 ...currentConfig,
                 autoSwitchSafestPair: true,
                 autoSelectBest: false,
-                // Safest-pair selection is separate from Shadows 3. Preserve the
-                // explicit JDY switch state when this control changes.
-                jdyAi3: cashGrabJdyAi3,
               }
               : null;
             setCashGrabAutoSwitchSafestPairStatus("watching");
             cashGrabAutoSwitchNextAtRef.current = 0;
             if (nextConfig) {
               cashGrabConfigRef.current = nextConfig;
-              if (cashGrabRunning) cashGrabRemainingTradesRef.current = Number.MAX_SAFE_INTEGER;
               if (!cashGrabRunning) void startCashGrab(nextConfig);
             }
           }}

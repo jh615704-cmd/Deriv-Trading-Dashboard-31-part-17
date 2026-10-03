@@ -220,7 +220,7 @@ router.post("/deriv/buy", async (req, res) => {
          ? 409
       : message.includes("cooldown")
         ? 429
-       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return")
+       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return") || message.includes("duration")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
           ? 504
@@ -261,14 +261,14 @@ router.post("/deriv/bulk-buy", async (req, res) => {
     return res.status(202).json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bulk buy request failed";
-    req.log.error({ err: error }, "Deriv bulk buy request failed");
+    req.log?.error({ err: error }, "Deriv bulk buy request failed");
     const status = isCredentialError(error)
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
       : message.includes("still settling") || message.includes("safety timeout")
         ? 409
-       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return")
+       : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return") || message.includes("duration")
         ? 400
         : message.includes("did not return a proposal") || message.includes("WebSocket is not ready")
           ? 504

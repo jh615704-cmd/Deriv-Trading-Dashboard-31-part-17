@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Activity, BarChart3, Play, RefreshCw } from "lucide-react";
+import AiScannerAction from "./ai-scanner-action";
 import DerivHistory, { type DerivHistoryRow } from "./deriv-history";
 
 export type BulkTraderType = "over-under" | "differs";
@@ -55,6 +56,7 @@ type Props = {
   onTradeCountChange: (count: number) => void;
   onLiveConfirmChange: (confirmed: boolean) => void;
   onTrade: (contractType: BulkTraderContractType, barrier?: number) => void;
+  onAiScan: () => Promise<string>;
   onRefreshAnalysis: () => void;
   onClearHistory: () => void;
 };
@@ -103,6 +105,7 @@ export default function BulkTraderPanel({
   onTradeCountChange,
   onLiveConfirmChange,
   onTrade,
+  onAiScan,
   onRefreshAnalysis,
   onClearHistory,
 }: Props) {
@@ -227,6 +230,10 @@ export default function BulkTraderPanel({
               {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed) || Boolean("disabled" in action && action.disabled)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{Boolean("disabled" in action && action.disabled) ? "Unavailable at this barrier" : visibleDigits.length ? `${displayPercentage(action.percentage)} observed` : "Collecting sample"}</small></button>)}
           </div>
           {type === "over-under" && (overUnavailable || underUnavailable) && <p className="bulk-contract-warning">Over 9 and Under 0 have no possible winning digit, so Deriv does not offer a return. Choose the other direction or another barrier.</p>}
+          <AiScannerAction
+            onScan={onAiScan}
+            disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed)}
+          />
           {isPlacingTrade && <div className="bulk-sending"><RefreshCw size={14} className="spin" />Sending contracts to Deriv…</div>}
         </aside>
       </div>
