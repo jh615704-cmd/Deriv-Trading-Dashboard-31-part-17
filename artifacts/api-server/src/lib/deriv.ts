@@ -407,6 +407,10 @@ function historyKey(item: Pick<DerivHistoryItem, "account_id" | "contract_id">) 
   return JSON.stringify([item.account_id, item.contract_id]);
 }
 
+function isDerivFlagSet(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 function upsertHistory(item: DerivHistoryItem) {
   const key = historyKey(item);
   if (item.status === "open") getState().activeContracts.set(key, item);
@@ -528,12 +532,14 @@ function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistory
   const record = raw as Record<string, unknown>;
   const contractId = record.contract_id ?? record.id;
   if (typeof contractId !== "string" || !contractId) return null;
+  const isSold = isDerivFlagSet(record.is_sold);
+  const reportedStatus = String(record.status ?? (isSold ? "closed" : fallbackStatus));
 
   const buyPrice = Number(record.buy_price ?? record.purchase_price ?? 0);
   const profit = Number(record.profit ?? 0);
   const reportedCurrentValue = record.bid_price
     ?? record.current_value
-    ?? (record.is_sold ? record.sell_price : undefined);
+    ?? (isSold ? record.sell_price : undefined);
   const currentValue = reportedCurrentValue == null
     ? buyPrice + profit
     : Number(reportedCurrentValue);
@@ -552,7 +558,10 @@ function normalizeHistory(raw: unknown, fallbackStatus = "closed"): DerivHistory
     current_value: Number.isFinite(currentValue) ? currentValue : buyPrice + profit,
     payout: Number(record.payout ?? 0),
     profit,
-    status: String(record.status ?? (record.is_sold ? "closed" : fallbackStatus)),
+    // Deriv can briefly report status "open" alongside is_sold=true. Trust the
+    // explicit sale flag so an already-closed contract cannot hold the user's
+    // single-trade slot indefinitely.
+    status: isSold && reportedStatus === "open" ? "closed" : reportedStatus,
     buy_time: record.purchase_time == null && record.buy_time == null
       ? null
       : Number(record.purchase_time ?? record.buy_time),
@@ -957,10 +966,12 @@ async function connectInternal() {
       } else if (message.msg_type === "proposal_open_contract") {
         const contract = message.proposal_open_contract;
         if (contract) {
+          const isSold = isDerivFlagSet(contract.is_sold);
+          const contractStatus = String(contract.status ?? "open");
           getState().lastContract = {
             contract_id: String(contract.contract_id ?? ""),
-            status: String(contract.status ?? "open"),
-            is_sold: Boolean(contract.is_sold),
+            status: isSold && contractStatus === "open" ? "closed" : contractStatus,
+            is_sold: isSold,
             profit: Number(contract.profit ?? 0),
             buy_price: Number(contract.buy_price ?? getState().lastBuy?.buy_price ?? 0),
             payout: Number(contract.payout ?? getState().lastBuy?.payout ?? 0),

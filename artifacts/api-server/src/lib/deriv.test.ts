@@ -579,6 +579,65 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
     });
   });
 
+  test("Deriv sale flags release a stale open status without treating zero as sold", async () => {
+    const result = await withSelectedAccount("sale-flag-settlement-user", () => deriv.bulkBuyContracts({
+      amount: 1,
+      duration: 1,
+      duration_unit: "t",
+      contract_type: "DIGITODD",
+      symbol: "R_75",
+      count: 1,
+      confirm_live_trade: true,
+    }));
+    const contractId = result.buys[0].contract_id;
+
+    await inUser("sale-flag-settlement-user", async () => {
+      const socket = latestSocket();
+      emitMessage(socket, {
+        msg_type: "proposal_open_contract",
+        proposal_open_contract: {
+          contract_id: contractId,
+          status: "open",
+          is_sold: "0",
+          buy_price: 1,
+          payout: 4.5,
+          bid_price: 1,
+          profit: 0,
+        },
+      });
+      assert.equal(deriv.getStatus().active_contract_count, 1, "string zero is not a sold flag");
+
+      emitMessage(socket, {
+        msg_type: "proposal_open_contract",
+        proposal_open_contract: {
+          contract_id: contractId,
+          status: "open",
+          is_sold: 1,
+          buy_price: 1,
+          payout: 4.5,
+          sell_price: 1.25,
+          profit: 0.25,
+          sell_time: 1_700_000_001,
+        },
+      });
+      assert.equal(deriv.getStatus().active_contract_count, 0);
+      assert.equal(deriv.getHistory()[0].status, "closed");
+      assert.equal(deriv.getStatus().last_contract?.is_sold, true);
+
+      const nextBatch = await deriv.bulkBuyContracts({
+        amount: 1,
+        duration: 1,
+        duration_unit: "t",
+        contract_type: "DIGITODD",
+        symbol: "R_75",
+        count: 1,
+        confirm_live_trade: true,
+      });
+      assert.equal(nextBatch.count, 1, "a new entry is allowed after the prior contract is confirmed sold");
+      assert.equal(deriv.getStatus().active_contract_count, 1);
+    });
+  });
+
   test("reconnect restores subscriptions for open contracts and fetches stale settlements", async () => {
     let contractId = "";
     await withSelectedAccount("reconnect-open-contract-user", async () => {
