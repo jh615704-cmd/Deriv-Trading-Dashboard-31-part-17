@@ -359,6 +359,9 @@ export default function XTraderPage() {
   const storedPatInvalid = errorMessage(accounts.error).includes("saved Deriv token is no longer readable");
   const status = useGetDerivStatus({ query: { enabled: connectedToken && canUseDeriv, retry: false, refetchInterval: 500, queryKey: getGetDerivStatusQueryKey() } });
   const history = useGetDerivHistory({ query: { enabled: connectedToken && canViewHistory, retry: false, refetchInterval: 1_000, queryKey: getGetDerivHistoryQueryKey() } });
+  const derivCapacityError = [accounts.error, status.error]
+    .map(errorMessage)
+    .find((message) => message.includes("Deriv session limit"));
   const tokenMutation = useTestDerivToken();
   const connectionMutation = useTestDerivConnection();
   const deleteTokenMutation = useDeleteDerivToken();
@@ -3383,6 +3386,7 @@ export default function XTraderPage() {
             <button onClick={() => void disconnect()} disabled={deleteTokenMutation.isPending}>Disconnect</button>
           </div>
         )}
+        {derivCapacityError && <p className="xt-inline-message error" role="alert">{derivCapacityError}</p>}
         {connectionMessage && <p className={`xt-inline-message ${connectionMessage.kind}${connectionMessageFading ? " fading" : ""}`} role="status" aria-live="polite">{connectionMessage.text}</p>}
         {tradeSlotMessage && <p className="xt-inline-message info" role="status" aria-live="polite">{tradeSlotMessage}</p>}
       </section>

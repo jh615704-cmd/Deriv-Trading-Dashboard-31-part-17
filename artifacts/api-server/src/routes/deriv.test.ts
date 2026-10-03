@@ -20,6 +20,9 @@ const userPats = new Map<string, string>();
 const observedPats: string[] = [];
 const historyRows: unknown[] = [];
 const sessionId = "admin-access-session";
+let forceCapacityError = false;
+
+class MockDerivCapacityError extends Error {}
 
 const db = {
   select() {
@@ -90,6 +93,7 @@ assert.equal(statusParse.success, true, JSON.stringify(statusParse));
 mock.module("../lib/deriv", {
   namedExports: {
     DerivCredentialError: class DerivCredentialError extends Error {},
+    DerivCapacityError: MockDerivCapacityError,
     getAccounts: async () => {
       observePat();
       return [status.account];
@@ -148,6 +152,7 @@ mock.module("../lib/deriv", {
     withUser: async (_userId: string, operation: () => Promise<unknown>) => operation(),
     withUserSerialized: async (_userId: string, operation: () => Promise<unknown>) => operation(),
     setUserPat: (userId: string, pat: string) => {
+      if (forceCapacityError) throw new MockDerivCapacityError("API process is at capacity");
       userPats.set(userId, pat);
     },
     disposeUser: (userId: string) => {
@@ -200,6 +205,13 @@ test("admin Deriv routes require the session PAT and forget it on disconnect", a
 
     const accountsResponse = await fetch(`${baseUrl}/deriv/accounts`);
     assert.equal(accountsResponse.status, 200);
+
+    forceCapacityError = true;
+    const capacityResponse = await fetch(`${baseUrl}/deriv/accounts`);
+    assert.equal(capacityResponse.status, 503);
+    assert.deepEqual(await readJson(capacityResponse), { error: "API process is at capacity" });
+    assert.equal(credentials.has(sessionId), true, "capacity rejection must not erase the saved PAT");
+    forceCapacityError = false;
 
     const statusResponse = await fetch(`${baseUrl}/deriv/status`);
     assert.equal(statusResponse.status, 200, JSON.stringify(await readJson(statusResponse)));

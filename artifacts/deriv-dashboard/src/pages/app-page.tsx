@@ -44,6 +44,9 @@ export default function AppPage() {
   const accountsQuery = useGetDerivAccounts({ query: { queryKey: getGetDerivAccountsQueryKey(), refetchInterval: 5000, enabled: hasToken } });
   const statusQuery = useGetDerivStatus({ query: { queryKey: getGetDerivStatusQueryKey(), refetchInterval: 1500, enabled: hasToken } });
    const historyQuery = useGetDerivHistory({ query: { queryKey: getGetDerivHistoryQueryKey(), refetchInterval: 1000, enabled: hasToken } });
+  const loadErrorMessage = [accountsQuery.error, statusQuery.error]
+    .map((error) => (error as { data?: { error?: string } } | null)?.data?.error)
+    .find((message): message is string => typeof message === 'string');
   
   const testConnection = useTestDerivConnection();
   const buyContract = useBuyDerivContract();
@@ -246,7 +249,7 @@ export default function AppPage() {
       {hasError && (
         <div className="error-banner" data-testid="status-load-error">
           <CircleAlert size={18} />
-          <div><strong>We could not read the Deriv workspace.</strong><p>Check the API server, then try the connection test again.</p></div>
+          <div><strong>We could not read the Deriv workspace.</strong><p>{loadErrorMessage ?? 'Check the API server, then try the connection test again.'}</p></div>
           <button type="button" className="text-button" data-testid="button-retry-load" onClick={() => { accountsQuery.refetch(); statusQuery.refetch(); }}>Retry</button>
         </div>
       )}

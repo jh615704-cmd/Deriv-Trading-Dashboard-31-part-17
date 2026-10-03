@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { performance } from "node:perf_hooks";
 import { after, before, beforeEach, describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -14,6 +15,7 @@ let proposalNumber = 0;
 let proposalPayoutOverride: number | null = null;
 let buyPayoutOverride: number | null = null;
 const sockets: FakeWebSocket[] = [];
+const testUserIds = new Set<string>();
 let mockPortfolioContracts: SocketMessage[] = [];
 const buySendCountsAtAck: number[] = [];
 
@@ -161,6 +163,7 @@ function mockDerivRest() {
 }
 
 async function inUser<T>(userId: string, operation: () => Promise<T>) {
+  testUserIds.add(userId);
   deriv.setUserPat(userId, "test-pat");
   return deriv.withUser(userId, operation);
 }
@@ -183,6 +186,8 @@ before(() => {
 });
 
 beforeEach(() => {
+  for (const userId of testUserIds) deriv.disposeUser(userId);
+  testUserIds.clear();
   buyBehavior = "ack";
   proposalNumber = 0;
   proposalPayoutOverride = null;
@@ -194,6 +199,69 @@ beforeEach(() => {
 
 after(() => {
   deriv.stopDeriv();
+});
+
+describe("Deriv per-process session capacity", { concurrency: false }, () => {
+  test("supports staged 1, 2, and 4 mock sessions and rejects a fifth without trading", async () => {
+    const baselineRss = process.memoryUsage().rss;
+    const stages: Array<{
+      sessions: number;
+      elapsedMs: number;
+      rssMiB: number;
+      openSockets: number;
+    }> = [];
+    const openedUsers: string[] = [];
+
+    for (const target of [1, 2, 4]) {
+      const pendingUsers = Array.from(
+        { length: target - openedUsers.length },
+        (_, index) => `capacity-load-${target}-${index}`,
+      );
+      const startedAt = performance.now();
+      await Promise.all(
+        pendingUsers.map(async (userId) => {
+          await inUser(userId, () => deriv.selectAccount("DOT123"));
+          openedUsers.push(userId);
+        }),
+      );
+      const memory = process.memoryUsage();
+      const openSockets = sockets.filter(
+        (socket) => socket.readyState === FakeWebSocket.OPEN,
+      ).length;
+
+      assert.equal(openSockets, target);
+      stages.push({
+        sessions: target,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        rssMiB: Math.round((memory.rss / 1024 / 1024) * 10) / 10,
+        openSockets,
+      });
+    }
+
+    assert.throws(
+      () => deriv.setUserPat("capacity-load-overflow", "test-pat"),
+      (error: unknown) => error instanceof deriv.DerivCapacityError,
+    );
+    assert.equal(
+      sockets.filter((socket) => socket.readyState === FakeWebSocket.OPEN).length,
+      4,
+    );
+    assert.equal(
+      sockets.some((socket) =>
+        socket.sent.some((message) => message.buy || message.sell),
+      ),
+      false,
+      "the capacity test must not submit trade messages",
+    );
+
+    console.log(JSON.stringify({
+      test: "mocked_deriv_session_capacity",
+      baselineRssMiB: Math.round((baselineRss / 1024 / 1024) * 10) / 10,
+      stages,
+      fifthSessionRejected: true,
+      tradeMessagesSent: 0,
+    }));
+  });
 });
 
 describe("Deriv market subscriptions", { concurrency: false }, () => {

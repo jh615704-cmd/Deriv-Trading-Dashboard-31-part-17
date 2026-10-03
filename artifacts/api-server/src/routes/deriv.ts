@@ -37,6 +37,7 @@ import {
   setUserPat,
   disposeUser,
   DerivCredentialError,
+  DerivCapacityError,
 } from "../lib/deriv";
 import { db, derivCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -52,6 +53,10 @@ function isCredentialError(error: unknown): error is Error {
     || error instanceof DerivCredentialError;
 }
 
+function isCapacityError(error: unknown): error is DerivCapacityError {
+  return error instanceof DerivCapacityError;
+}
+
 async function withCredential<T>(
   userId: string,
   operation: () => Promise<T>,
@@ -65,14 +70,15 @@ async function withCredential<T>(
       .limit(1);
     let hasStoredCredential = Boolean(credential);
     if (credential) {
+      let pat: string;
       try {
-        const pat = decryptPat(credential.encryptedPat);
-        setUserPat(userId, pat);
+        pat = decryptPat(credential.encryptedPat);
       } catch {
         await db.delete(derivCredentialsTable).where(eq(derivCredentialsTable.clerkUserId, userId));
         hasStoredCredential = false;
         throw new InvalidStoredCredentialError("The saved Deriv token is no longer readable. Enter it again to reconnect.");
       }
+      setUserPat(userId, pat);
     }
     if (!hasStoredCredential) throw new MissingDerivCredentialError("Connect a Deriv token first");
     try {
@@ -93,6 +99,10 @@ router.get("/deriv/accounts", async (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json(accounts);
   } catch (error) {
+    if (isCapacityError(error)) {
+      res.status(503).json({ error: error.message });
+      return;
+    }
     if (isCredentialError(error)) {
       res.status(401).json({ error: error.message });
       return;
@@ -109,6 +119,10 @@ router.get("/deriv/status", (_req, res) => {
       res.json(GetDerivStatusResponse.parse(status));
     })
     .catch((error) => {
+       if (isCapacityError(error)) {
+         res.status(503).json({ error: error.message });
+         return;
+       }
        const missingCredential = isCredentialError(error);
        res.status(missingCredential ? 401 : 502).json({
         error: missingCredential ? error.message : "Unable to refresh Deriv balance",
@@ -121,6 +135,9 @@ router.get("/deriv/history", (req, res) => {
   withCredential(res.locals.userId, async () => getHistory(), false)
     .then((history) => res.json(GetDerivHistoryResponse.parse(history)))
      .catch((error) => {
+       if (isCapacityError(error)) {
+         return res.status(503).json({ error: error.message });
+       }
        const missingCredential = isCredentialError(error);
        if (!missingCredential) req.log.error({ err: error }, "Unable to load Deriv history");
        return res.status(missingCredential ? 401 : 502).json({
@@ -134,6 +151,9 @@ router.delete("/deriv/history", (_req, res) => {
   withCredential(res.locals.userId, async () => clearHistory(), false)
     .then((result) => res.json(result))
      .catch((error) => {
+       if (isCapacityError(error)) {
+         return res.status(503).json({ error: error.message });
+       }
        const missingCredential = isCredentialError(error);
        return res.status(missingCredential ? 401 : 502).json({
        error: missingCredential ? error.message : "Unable to clear Deriv history",
@@ -146,6 +166,10 @@ router.post("/deriv/test-connection", async (req, res) => {
     const result = TestDerivConnectionResponse.parse(await withCredential(res.locals.userId, testConnection, true));
     res.json(result);
   } catch (error) {
+    if (isCapacityError(error)) {
+      res.status(503).json({ error: error.message });
+      return;
+    }
     if (isCredentialError(error)) {
       res.status(401).json({ error: error.message });
       return;
@@ -166,6 +190,9 @@ router.post("/deriv/proposals", async (req, res) => {
     return res.status(202).json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv proposal request failed");
+    if (isCapacityError(error)) {
+      return res.status(503).json({ error: error.message });
+    }
      const missingCredential = isCredentialError(error);
      return res.status(missingCredential ? 401 : 503).json({
        error: missingCredential ? error.message : "Deriv WebSocket is not ready",
@@ -182,6 +209,9 @@ router.post("/deriv/select-account", async (req, res) => {
     return res.json(result);
   } catch (error) {
     req.log.error({ err: error }, "Deriv account selection failed");
+    if (isCapacityError(error)) {
+      return res.status(503).json({ error: error.message });
+    }
      const missingCredential = isCredentialError(error);
      return res.status(missingCredential ? 401 : 502).json({ error: missingCredential ? error.message : "Unable to select account" });
   }
@@ -196,6 +226,9 @@ router.post("/deriv/select-symbol", async (req, res) => {
     );
     return res.json(result);
   } catch (error) {
+    if (isCapacityError(error)) {
+      return res.status(503).json({ error: error.message });
+    }
     const message = error instanceof Error ? error.message : "Unable to select market";
      const missingCredential = isCredentialError(error);
      return res.status(missingCredential ? 401 : 400).json({ error: missingCredential ? error.message : message });
@@ -212,7 +245,9 @@ router.post("/deriv/buy", async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Buy request failed";
     req.log.error({ err: error }, "Deriv live buy request failed");
-     const status = isCredentialError(error)
+     const status = isCapacityError(error)
+       ? 503
+       : isCredentialError(error)
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
@@ -241,7 +276,9 @@ router.post("/deriv/sell", async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Contract close request failed";
     req.log.error({ err: error }, "Deriv contract close request failed");
-    const status = isCredentialError(error)
+    const status = isCapacityError(error)
+      ? 503
+      : isCredentialError(error)
       ? 401
       : message.includes("WebSocket is not ready")
         ? 504
@@ -262,7 +299,9 @@ router.post("/deriv/bulk-buy", async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bulk buy request failed";
     req.log?.error({ err: error }, "Deriv bulk buy request failed");
-    const status = isCredentialError(error)
+    const status = isCapacityError(error)
+      ? 503
+      : isCredentialError(error)
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
@@ -289,7 +328,9 @@ router.post("/deriv/dual-buy", async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Dual buy request failed";
     req.log.error({ err: error }, "Deriv dual buy request failed");
-    const status = isCredentialError(error)
+    const status = isCapacityError(error)
+      ? 503
+      : isCredentialError(error)
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403

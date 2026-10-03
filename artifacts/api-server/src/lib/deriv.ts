@@ -155,6 +155,19 @@ export class DerivCredentialError extends Error {
   }
 }
 
+export const MAX_DERIV_USER_SESSIONS_PER_PROCESS = 4;
+
+export class DerivCapacityError extends Error {
+  readonly status = 503;
+
+  constructor() {
+    super(
+      `This API instance is at its Deriv session limit (${MAX_DERIV_USER_SESSIONS_PER_PROCESS}). Try again later.`,
+    );
+    this.name = "DerivCapacityError";
+  }
+}
+
 function createState() {
 return {
   socket: null as WebSocket | null,
@@ -218,6 +231,13 @@ const operationTails = new Map<string, Promise<void>>();
 const userContext = new AsyncLocalStorage<string>();
 let generationSequence = 0;
 const runtimeIdleTimeoutMs = 30 * 60 * 1000;
+
+function assertRuntimeCapacity(userId: string) {
+  if (!runtimes.has(userId) && runtimes.size >= MAX_DERIV_USER_SESSIONS_PER_PROCESS) {
+    throw new DerivCapacityError();
+  }
+}
+
 const runtimeReaper = setInterval(() => {
   const cutoff = Date.now() - runtimeIdleTimeoutMs;
   for (const [userId, runtime] of runtimes) {
@@ -237,6 +257,7 @@ function getState(): any {
   if (!activeUser) throw new Error("Authenticated Deriv user is required");
   let runtime = runtimes.get(activeUser);
   if (!runtime) {
+    assertRuntimeCapacity(activeUser);
     runtime = createState();
     runtime.generation = ++generationSequence;
     runtimes.set(activeUser, runtime);
@@ -272,6 +293,7 @@ export function setUserPat(userId: string, pat: string) {
     return;
   }
   if (current) disposeUser(userId);
+  assertRuntimeCapacity(userId);
   const runtime = createState();
   runtime.pat = pat;
   runtime.shuttingDown = false;
