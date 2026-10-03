@@ -216,7 +216,7 @@ router.post("/deriv/buy", async (req, res) => {
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
-       : message.includes("still settling") || message.includes("safety timeout")
+       : message.includes("still settling") || message.includes("checking open contracts") || message.includes("safety timeout")
          ? 409
       : message.includes("cooldown")
         ? 429
@@ -266,7 +266,7 @@ router.post("/deriv/bulk-buy", async (req, res) => {
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
-      : message.includes("still settling") || message.includes("safety timeout")
+      : message.includes("still settling") || message.includes("checking open contracts") || message.includes("safety timeout")
         ? 409
        : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return") || message.includes("duration")
         ? 400
@@ -293,7 +293,7 @@ router.post("/deriv/dual-buy", async (req, res) => {
       ? 401
       : message.includes("disabled") || message.includes("real account")
       ? 403
-      : message.includes("still settling") || message.includes("safety timeout")
+      : message.includes("still settling") || message.includes("checking open contracts") || message.includes("safety timeout")
         ? 409
        : message.includes("not available") || message.includes("balance") || message.includes("confirmation") || message.includes("offers no return")
         ? 400

@@ -14,6 +14,8 @@ let proposalNumber = 0;
 let proposalPayoutOverride: number | null = null;
 let buyPayoutOverride: number | null = null;
 const sockets: FakeWebSocket[] = [];
+let mockPortfolioContracts: SocketMessage[] = [];
+const buySendCountsAtAck: number[] = [];
 
 class FakeWebSocket extends EventEmitter {
   static readonly CONNECTING = 0;
@@ -62,6 +64,14 @@ function emitMessage(socket: FakeWebSocket, message: SocketMessage) {
 }
 
 function handleClientMessage(socket: FakeWebSocket, message: SocketMessage) {
+  if (message.portfolio) {
+    emitMessage(socket, {
+      msg_type: "portfolio",
+      portfolio: { contracts: mockPortfolioContracts },
+    });
+    return;
+  }
+
   if (message.proposal) {
     proposalNumber += 1;
     const proposalId = `proposal-${proposalNumber}`;
@@ -103,6 +113,7 @@ function handleClientMessage(socket: FakeWebSocket, message: SocketMessage) {
     return;
   }
 
+  buySendCountsAtAck.push(socket.sent.filter((sent) => sent.buy).length);
   emitMessage(socket, {
     msg_type: "buy",
     ...(message.req_id == null ? {} : { req_id: message.req_id }),
@@ -176,6 +187,8 @@ beforeEach(() => {
   proposalNumber = 0;
   proposalPayoutOverride = null;
   buyPayoutOverride = null;
+  mockPortfolioContracts = [];
+  buySendCountsAtAck.length = 0;
   sockets.length = 0;
 });
 
@@ -542,9 +555,87 @@ describe("Deriv buy acknowledgement safety", { concurrency: false }, () => {
     }));
 
     assert.equal(result.count, 2);
+    assert.deepEqual(buySendCountsAtAck, [2, 2], "all batch buy requests must be sent before the first acknowledgement");
     await inUser("bulk-buy-user", async () => {
       assert.equal(deriv.getHistory().length, 2);
       assert.ok(deriv.getHistory().every((trade: { status: string }) => trade.status === "open"));
+      assert.equal(deriv.getStatus().active_contract_count, 2);
+      deriv.clearHistory();
+      assert.equal(deriv.getHistory().length, 0);
+      assert.equal(deriv.getStatus().active_contract_count, 2, "clearing visible history must not clear the active-contract guard");
+      await assert.rejects(
+        deriv.bulkBuyContracts({
+          amount: 1,
+          duration: 1,
+          duration_unit: "t",
+          contract_type: "DIGITOVER",
+          barrier: 3,
+          symbol: "R_75",
+          count: 1,
+          confirm_live_trade: true,
+        }),
+        /previous contract is still settling/,
+      );
+    });
+  });
+
+  test("reconnect restores subscriptions for open contracts and fetches stale settlements", async () => {
+    let contractId = "";
+    await withSelectedAccount("reconnect-open-contract-user", async () => {
+      const result = await deriv.bulkBuyContracts({
+        amount: 1,
+        duration: 1,
+        duration_unit: "t",
+        contract_type: "DIGITODD",
+        symbol: "R_75",
+        count: 1,
+        confirm_live_trade: true,
+      });
+      contractId = result.buys[0].contract_id;
+      mockPortfolioContracts = [{
+        contract_id: contractId,
+        account_id: "DOT123",
+        buy_price: result.buys[0].buy_price,
+        payout: result.buys[0].payout,
+        purchase_time: result.buys[0].start_time,
+        contract_type: "DIGITODD",
+        underlying_symbol: "R_75",
+        status: "open",
+      }];
+      latestSocket().close();
+    });
+
+    await new Promise((resolve) => setImmediate(resolve));
+    await withSelectedAccount("reconnect-open-contract-user", async () => {
+      const socket = latestSocket();
+      assert.ok(
+        socket.sent.some((message) =>
+          message.proposal_open_contract === 1
+          && message.contract_id === contractId
+          && message.subscribe === 1,
+        ),
+        "the reconnect must resubscribe to every still-open contract",
+      );
+      assert.equal(deriv.getStatus().open_contracts_ready, true);
+      assert.equal(deriv.getStatus().active_contract_count, 1);
+
+      emitMessage(socket, {
+        msg_type: "proposal_open_contract",
+        proposal_open_contract: {
+          contract_id: contractId,
+          account_id: "DOT123",
+          buy_price: 1,
+          payout: 4.5,
+          sell_price: 4.5,
+          profit: 3.5,
+          status: "won",
+          is_sold: 1,
+          contract_type: "DIGITODD",
+          underlying: "R_75",
+          sell_time: 1_700_000_001,
+        },
+      });
+      assert.equal(deriv.getStatus().active_contract_count, 0);
     });
   });
 

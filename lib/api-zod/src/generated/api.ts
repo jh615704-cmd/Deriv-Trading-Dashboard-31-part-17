@@ -345,6 +345,8 @@ export const GetDerivAccountsResponse = zod.array(GetDerivAccountsResponseItem)
 /**
  * @summary Get Deriv connection status
  */
+export const getDerivStatusResponseActiveContractCountMin = 0;
+
 export const getDerivStatusResponseLastDigitMin = 0;
 export const getDerivStatusResponseLastDigitMax = 9;
 
@@ -435,6 +437,8 @@ export const GetDerivStatusResponse = zod.object({
   "current_spot": zod.number().optional(),
   "expiry_time": zod.number().int().nullish()
 }),zod.null()]).optional(),
+  "open_contracts_ready": zod.boolean().describe('Whether the current account\'s open-contract portfolio has been checked on this WebSocket connection.'),
+  "active_contract_count": zod.number().int().min(getDerivStatusResponseActiveContractCountMin).describe('Number of contracts the server currently considers open for the selected account.'),
   "bot_running": zod.boolean(),
   "symbol": zod.string(),
   "currency": zod.string(),
@@ -476,6 +480,8 @@ export const GetDerivStatusResponse = zod.object({
 /**
  * @summary Test the Deriv REST and WebSocket connection
  */
+export const testDerivConnectionResponseStatusActiveContractCountMin = 0;
+
 export const testDerivConnectionResponseStatusLastDigitMin = 0;
 export const testDerivConnectionResponseStatusLastDigitMax = 9;
 
@@ -576,6 +582,8 @@ export const TestDerivConnectionResponse = zod.object({
   "current_spot": zod.number().optional(),
   "expiry_time": zod.number().int().nullish()
 }),zod.null()]).optional(),
+  "open_contracts_ready": zod.boolean().describe('Whether the current account\'s open-contract portfolio has been checked on this WebSocket connection.'),
+  "active_contract_count": zod.number().int().min(testDerivConnectionResponseStatusActiveContractCountMin).describe('Number of contracts the server currently considers open for the selected account.'),
   "bot_running": zod.boolean(),
   "symbol": zod.string(),
   "currency": zod.string(),
@@ -655,6 +663,8 @@ export const RequestDerivProposalResponse = zod.object({
 export const SelectDerivAccountBody = zod.object({
   "account_id": zod.string().min(1)
 })
+
+export const selectDerivAccountResponseActiveContractCountMin = 0;
 
 export const selectDerivAccountResponseLastDigitMin = 0;
 export const selectDerivAccountResponseLastDigitMax = 9;
@@ -746,6 +756,8 @@ export const SelectDerivAccountResponse = zod.object({
   "current_spot": zod.number().optional(),
   "expiry_time": zod.number().int().nullish()
 }),zod.null()]).optional(),
+  "open_contracts_ready": zod.boolean().describe('Whether the current account\'s open-contract portfolio has been checked on this WebSocket connection.'),
+  "active_contract_count": zod.number().int().min(selectDerivAccountResponseActiveContractCountMin).describe('Number of contracts the server currently considers open for the selected account.'),
   "bot_running": zod.boolean(),
   "symbol": zod.string(),
   "currency": zod.string(),
@@ -793,6 +805,8 @@ export const SelectDerivAccountResponse = zod.object({
 export const SelectDerivSymbolBody = zod.object({
   "symbol": zod.string().min(1)
 })
+
+export const selectDerivSymbolResponseActiveContractCountMin = 0;
 
 export const selectDerivSymbolResponseLastDigitMin = 0;
 export const selectDerivSymbolResponseLastDigitMax = 9;
@@ -884,6 +898,8 @@ export const SelectDerivSymbolResponse = zod.object({
   "current_spot": zod.number().optional(),
   "expiry_time": zod.number().int().nullish()
 }),zod.null()]).optional(),
+  "open_contracts_ready": zod.boolean().describe('Whether the current account\'s open-contract portfolio has been checked on this WebSocket connection.'),
+  "active_contract_count": zod.number().int().min(selectDerivSymbolResponseActiveContractCountMin).describe('Number of contracts the server currently considers open for the selected account.'),
   "bot_running": zod.boolean(),
   "symbol": zod.string(),
   "currency": zod.string(),

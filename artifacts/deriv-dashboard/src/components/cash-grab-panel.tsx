@@ -68,6 +68,7 @@ export interface CashGrabPanelProps {
   running: boolean;
   stopping?: boolean;
   isConnected: boolean;
+  tradeSlotBlocked: boolean;
   isReal: boolean;
   liveConfirmed: boolean;
   isPlacingTrade: boolean;
@@ -119,6 +120,7 @@ export default function CashGrabPanel({
   running,
   stopping = false,
   isConnected,
+  tradeSlotBlocked,
   isReal,
   liveConfirmed,
   isPlacingTrade,
@@ -141,7 +143,7 @@ export default function CashGrabPanel({
 }: CashGrabPanelProps) {
   const [marketMenuOpen, setMarketMenuOpen] = useState(false);
   const interactionDisabled = running || isPlacingTrade;
-  const canStart = isConnected && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
+  const canStart = isConnected && !tradeSlotBlocked && (!isReal || liveConfirmed) && !isPlacingTrade && !stopping;
   const selectedSymbol = symbols.find((item) => item.value === symbol);
   const selectedSignal = marketSignals.find((item) => item.symbol === symbol);
   const liveRate = selectedSignal
@@ -412,6 +414,7 @@ export default function CashGrabPanel({
           <button type="button" className="df-guide" onClick={onOpenGuide}><BookOpen size={13} /> Guide</button>
         </div>
         {!isConnected && <p className="cash-grab-status-note">Connect Deriv to place a Rise/Fall contract.</p>}
+        {tradeSlotBlocked && <p className="cash-grab-status-note" role="status">New entries stay paused until Deriv confirms that all open contracts have settled.</p>}
         {isReal && !liveConfirmed && <p className="cash-grab-status-note">Confirm live funds before starting.</p>}
         <p className="cash-grab-status-note">Cash Grab runs one contract at a time until stopped. The account balance is checked before each entry.</p>
       </form>

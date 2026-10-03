@@ -69,6 +69,8 @@ function observePat() {
 const status = {
   connected: true,
   authorized: true,
+  open_contracts_ready: true,
+  active_contract_count: 0,
   account: {
     id: "DOT123",
     type: "demo" as const,

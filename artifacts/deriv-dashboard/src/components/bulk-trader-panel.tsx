@@ -45,6 +45,7 @@ type Props = {
   isReal: boolean;
   liveConfirmed: boolean;
   isPlacingTrade: boolean;
+  tradeSlotMessage: string | null;
   historyFading: boolean;
   clearArmed: boolean;
   onSymbolChange: (symbol: string) => void;
@@ -94,6 +95,7 @@ export default function BulkTraderPanel({
   isReal,
   liveConfirmed,
   isPlacingTrade,
+  tradeSlotMessage,
   historyFading,
   clearArmed,
   onSymbolChange,
@@ -226,13 +228,14 @@ export default function BulkTraderPanel({
           <label><small>STAKE · MIN 0.35</small><div className="bulk-money"><span>USD</span><input data-testid="input-bulk-stake" type="number" min=".35" step=".01" value={stake} onChange={(event) => onStakeChange(Math.max(.35, Number(event.target.value) || .35))} /></div><b>No artificial maximum</b></label>
            <label><small>BULK TRADES</small><div className="bulk-choice-row bulk-count-row">{countOptions.map((option) => <button type="button" data-testid={`button-count-${option}`} key={option} className={tradeCount === option ? "active" : ""} onClick={() => onTradeCountChange(option)}>{option}</button>)}</div><b>Contracts are quoted first, then sent together and tracked separately</b></label>
           {isReal && <label className="bulk-live-confirm"><input data-testid="input-confirm-live-funds" type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirmChange(event.target.checked)} /><span><b>Confirm live funds</b>Real-money contracts will be sent from the selected account.</span></label>}
+          {tradeSlotMessage && <p className="bulk-contract-warning" role="status">{tradeSlotMessage}</p>}
           <div className={`bulk-trader-actions action-count-${actionButtons.length}`}>
-              {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed) || Boolean("disabled" in action && action.disabled)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{Boolean("disabled" in action && action.disabled) ? "Unavailable at this barrier" : visibleDigits.length ? `${displayPercentage(action.percentage)} observed` : "Collecting sample"}</small></button>)}
+              {actionButtons.map((action) => <button type="button" data-testid={`button-trade-${action.type.toLowerCase()}`} key={action.label} disabled={!isConnected || isPlacingTrade || Boolean(tradeSlotMessage) || (isReal && !liveConfirmed) || Boolean("disabled" in action && action.disabled)} onClick={() => fireAction(action.type)}><span><Play size={13} fill="currentColor" />{action.label}</span><small>{Boolean("disabled" in action && action.disabled) ? "Unavailable at this barrier" : visibleDigits.length ? `${displayPercentage(action.percentage)} observed` : "Collecting sample"}</small></button>)}
           </div>
           {type === "over-under" && (overUnavailable || underUnavailable) && <p className="bulk-contract-warning">Over 9 and Under 0 have no possible winning digit, so Deriv does not offer a return. Choose the other direction or another barrier.</p>}
           <AiScannerAction
             onScan={onAiScan}
-            disabled={!isConnected || isPlacingTrade || (isReal && !liveConfirmed)}
+            disabled={!isConnected || isPlacingTrade || Boolean(tradeSlotMessage) || (isReal && !liveConfirmed)}
           />
           {isPlacingTrade && <div className="bulk-sending"><RefreshCw size={14} className="spin" />Sending contracts to Deriv…</div>}
         </aside>

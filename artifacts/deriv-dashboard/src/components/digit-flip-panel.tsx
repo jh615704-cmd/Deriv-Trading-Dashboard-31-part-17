@@ -54,6 +54,7 @@ export type DigitFlipPanelProps = {
   clearTradesArmed: boolean;
   historyFading: boolean;
   isPlacingTrade?: boolean;
+  entryBlocked?: boolean;
   disabled?: boolean;
   onMarketTypeChange: (value: DigitFlipMarketType) => void;
   onSymbolChange: (value: string) => void;
@@ -175,6 +176,7 @@ export default function DigitFlipPanel({
   clearTradesArmed,
   historyFading,
   isPlacingTrade = false,
+  entryBlocked = false,
   disabled = false,
   onMarketTypeChange,
   onSymbolChange,
@@ -431,14 +433,14 @@ export default function DigitFlipPanel({
           <label><span>TAKE PROFIT</span><input type="number" min=".01" step=".01" value={takeProfit} onChange={(event) => onTakeProfitChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
           <label><span>STOP LOSS</span><input type="number" min=".01" step=".01" value={stopLoss} onChange={(event) => onStopLossChange(Math.max(.01, Number(event.target.value) || .01))} disabled={disabled || running} /></label>
         </div>
-        <AiScannerAction onScan={onAiScan} disabled={disabled || isPlacingTrade || running} />
+        <AiScannerAction onScan={onAiScan} disabled={disabled || isPlacingTrade || running || entryBlocked} />
         <div className="df-session-strip">
           <span><small>STAKE</small><b>{currentStake.toFixed(2)}</b></span>
           <span><small>SESSION P/L</small><b className={sessionPnl < 0 ? "loss" : ""}>{sessionPnl >= 0 ? "+" : ""}{sessionPnl.toFixed(2)}</b></span>
           <span><small>TRADES</small><b>{tradeCount}</b></span>
         </div>
         <div className="df-action-row">
-          <button type="button" className={running ? "df-stop" : "df-run"} onClick={onRunStop} disabled={disabled || isPlacingTrade}>{running ? <><CircleStop size={16} /> Stop DigitFlip</> : <><Play size={16} fill="currentColor" /> Run DigitFlip</>}</button>
+          <button type="button" className={running ? "df-stop" : "df-run"} onClick={onRunStop} disabled={disabled || isPlacingTrade || (!running && entryBlocked)}>{running ? <><CircleStop size={16} /> Stop DigitFlip</> : <><Play size={16} fill="currentColor" /> Run DigitFlip</>}</button>
           <button type="button" className="df-reset" onClick={onReset} disabled={disabled}><RotateCcw size={15} /> Reset</button>
           <button type="button" className="df-guide" onClick={onGuide} disabled={disabled}>Guide</button>
         </div>

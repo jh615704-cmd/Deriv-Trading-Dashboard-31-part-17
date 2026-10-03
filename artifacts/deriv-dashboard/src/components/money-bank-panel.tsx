@@ -62,6 +62,7 @@ export type MoneyBankJdyDecision = MoneyBankScannerRecommendation & {
 
 type MoneyBankPanelProps = {
   isConnected: boolean;
+  tradeSlotBlocked: boolean;
   running: boolean;
   isReal: boolean;
   liveConfirmed: boolean;
@@ -147,6 +148,7 @@ const money = (value: number, currency = "USD") =>
 
 export function MoneyBankPanel({
   isConnected,
+  tradeSlotBlocked,
   running,
   isReal,
   liveConfirmed,
@@ -227,6 +229,7 @@ export function MoneyBankPanel({
       onStop();
       return;
     }
+    if (tradeSlotBlocked) return;
     onStart({
       symbol,
       growthRate,
@@ -529,7 +532,7 @@ export function MoneyBankPanel({
         {isReal && !liveConfirmed && (
           <label className="money-bank-live-confirm"><input type="checkbox" checked={liveConfirmed} onChange={(event) => onLiveConfirm(event.target.checked)} /><span>Confirm live funds</span></label>
         )}
-        <button type="button" className={`money-bank-start ${running ? "stop" : ""}`} onClick={submitStart} disabled={!isConnected || (isReal && !liveConfirmed)}>
+        <button type="button" className={`money-bank-start ${running ? "stop" : ""}`} onClick={submitStart} disabled={!isConnected || (!running && tradeSlotBlocked) || (isReal && !liveConfirmed)}>
            {closing ? <><RefreshCw size={15} className="money-bank-spin" /> Closing contracts…</> : running ? <><Square size={15} /> Stop Accumulator</> : <><Play size={15} /> Start Accumulator</>}
         </button>
         <button type="button" className="money-bank-reset" onClick={() => { onGrowthRateChange(4); onTakeProfitTicksChange(5); onStrategyChange("budget"); }} disabled={running} title="Reset core settings">

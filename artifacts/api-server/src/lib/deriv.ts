@@ -82,6 +82,8 @@ export type DerivHistoryItem = {
 export type DerivStatus = {
   connected: boolean;
   authorized: boolean;
+  open_contracts_ready: boolean;
+  active_contract_count: number;
   account: DerivAccount | null;
   last_tick: DerivTick | null;
   last_proposal: DerivProposal | null;
@@ -179,7 +181,9 @@ return {
     timer: NodeJS.Timeout;
   }>(),
   lastContract: null as DerivContract | null,
+  openContractsReady: false,
   history: [] as DerivHistoryItem[],
+  activeContracts: new Map<string, DerivHistoryItem>(),
   lastProposalContractType: "",
   lastProposalSymbol: defaultSymbol,
   lastProposalInput: null as ProposalInput | null,
@@ -325,17 +329,32 @@ function rejectSellWaiters(message: string) {
   getState().sellWaiters.clear();
 }
 
-function hasActiveContract() {
+function getActiveContractCount() {
   const runtime = getState();
   const activeAccountId = runtime.account?.id ?? runtime.selectedAccountId;
-  return runtime.pendingBuyInputs.size > 0
-    || runtime.history.some((item: DerivHistoryItem) =>
-      item.account_id === activeAccountId && item.status === "open",
-    )
-    || Boolean(runtime.lastContract && !runtime.lastContract.is_sold && runtime.lastContract.status === "open");
+  const activeContractIds = new Set(
+    [...runtime.activeContracts.values()]
+      .filter((item: DerivHistoryItem) => item.account_id === activeAccountId && item.status === "open")
+      .map((item: DerivHistoryItem) => item.contract_id),
+  );
+  if (
+    runtime.lastContract?.contract_id
+    && !runtime.lastContract.is_sold
+    && runtime.lastContract.status === "open"
+  ) {
+    activeContractIds.add(runtime.lastContract.contract_id);
+  }
+  return activeContractIds.size + runtime.pendingBuyInputs.size;
+}
+
+function hasActiveContract() {
+  return getActiveContractCount() > 0;
 }
 
 function assertNoActiveContract() {
+  if (!getState().openContractsReady) {
+    throw new Error("Deriv is still checking open contracts. Wait for the portfolio check to finish before sending another trade.");
+  }
   if (hasActiveContract()) {
     throw new Error("The previous contract is still settling. Wait for it to finish before sending another trade.");
   }
@@ -389,7 +408,10 @@ function historyKey(item: Pick<DerivHistoryItem, "account_id" | "contract_id">) 
 }
 
 function upsertHistory(item: DerivHistoryItem) {
-  if (getState().hiddenHistoryIds.has(historyKey(item))) return;
+  const key = historyKey(item);
+  if (item.status === "open") getState().activeContracts.set(key, item);
+  else getState().activeContracts.delete(key);
+  if (getState().hiddenHistoryIds.has(key)) return;
   const existing = getState().history.findIndex((entry: DerivHistoryItem) =>
     entry.account_id === item.account_id && entry.contract_id === item.contract_id,
   );
@@ -803,6 +825,7 @@ async function connectInternal() {
         socket.close();
         return;
       }
+      ownerRuntime.openContractsReady = false;
       logger.info({ accountId: account.id }, "Deriv WebSocket connected");
       send({ balance: 1, subscribe: 1 });
       for (const symbol of supportedSymbols) send({ ticks: symbol, subscribe: 1 });
@@ -970,10 +993,34 @@ async function connectInternal() {
         const contracts = Array.isArray(message.portfolio?.contracts)
           ? message.portfolio.contracts
           : [];
+        const portfolioContractIds = new Set<string>();
         for (const contract of contracts) {
           const historyItem = normalizeHistory(contract, "open");
-          if (historyItem) upsertHistory(historyItem);
+          if (!historyItem) continue;
+          upsertHistory(historyItem);
+          if (historyItem.status === "open") {
+            portfolioContractIds.add(historyItem.contract_id);
+            send({
+              proposal_open_contract: 1,
+              contract_id: historyItem.contract_id,
+              subscribe: 1,
+            });
+          }
         }
+        const activeAccountId = getState().account?.id ?? getState().selectedAccountId;
+        for (const historyItem of getState().history as DerivHistoryItem[]) {
+          if (
+            historyItem.account_id === activeAccountId
+            && historyItem.status === "open"
+            && !portfolioContractIds.has(historyItem.contract_id)
+          ) {
+            // A contract may have settled while this socket was disconnected.
+            // Fetch its final state instead of leaving a stale open row blocking
+            // every later trade.
+            send({ proposal_open_contract: 1, contract_id: historyItem.contract_id });
+          }
+        }
+        getState().openContractsReady = true;
       }
     });
 
@@ -984,6 +1031,7 @@ async function connectInternal() {
       }
       getState().socket = null;
       getState().account = null;
+      getState().openContractsReady = false;
       rejectProposalWaiters("Deriv WebSocket disconnected before the proposal was returned");
       rejectBuyWaiters("Deriv WebSocket disconnected before the contract purchase was acknowledged");
       rejectSellWaiters("Deriv WebSocket disconnected before the contract could be sold");
@@ -1030,6 +1078,8 @@ export function getStatus(): DerivStatus {
   return {
     connected: getState().socket?.readyState === WebSocket.OPEN,
     authorized: getState().socket?.readyState === WebSocket.OPEN,
+    open_contracts_ready: getState().openContractsReady,
+    active_contract_count: getActiveContractCount(),
     account: getState().account,
     last_tick: getState().lastTick,
     last_proposal: getState().lastProposal,
@@ -1146,7 +1196,7 @@ export async function selectAccount(accountId: string) {
   const accounts = getState().accounts.length ? getState().accounts : await loadAccountsFromDeriv();
   const account = accounts.find((item: DerivAccount) => item.id === accountId);
   if (!account) throw new Error("That account is not available");
-  if (account.id !== getState().selectedAccountId) {
+  if (getState().selectedAccountId && account.id !== getState().selectedAccountId) {
     assertNoActiveContract();
   }
 
@@ -1158,6 +1208,7 @@ export async function selectAccount(accountId: string) {
   getState().lastProposal = null;
   getState().lastBuy = null;
   getState().lastContract = null;
+  getState().openContractsReady = false;
   rejectBuyWaiters("Deriv account changed before the contract purchase was acknowledged");
   getState().lastProposalContractType = "";
   getState().lastProposalSymbol = defaultSymbol;

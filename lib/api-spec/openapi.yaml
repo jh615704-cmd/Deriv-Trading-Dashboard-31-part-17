@@ -988,7 +988,7 @@ components:
           type: [string, "null"]
     DerivStatus:
       type: object
-      required: [connected, authorized, bot_running, symbol, currency, max_trade_amount, market_signals]
+      required: [connected, authorized, bot_running, symbol, currency, max_trade_amount, market_signals, open_contracts_ready, active_contract_count]
       properties:
         connected:
           type: boolean
@@ -1014,6 +1014,13 @@ components:
           anyOf:
             - $ref: "#/components/schemas/DerivContract"
             - type: "null"
+        open_contracts_ready:
+          type: boolean
+          description: Whether the current account's open-contract portfolio has been checked on this WebSocket connection.
+        active_contract_count:
+          type: integer
+          minimum: 0
+          description: Number of contracts the server currently considers open for the selected account.
         bot_running:
           type: boolean
         symbol:

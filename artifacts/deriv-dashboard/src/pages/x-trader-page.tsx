@@ -612,6 +612,16 @@ export default function XTraderPage() {
   currentAccountBalanceRef.current = currentAccountBalance;
   const isReal = currentAccount?.type === "real";
   const isConnected = Boolean(status.data?.connected && status.data?.authorized);
+  const activeContractCount = status.data?.active_contract_count ?? 0;
+  const openContractsReady = status.data?.open_contracts_ready === true;
+  const tradeSlotBlocked = !openContractsReady || activeContractCount > 0;
+  const tradeSlotMessage = !isConnected
+    ? null
+    : !openContractsReady
+      ? "Deriv is checking open contracts. New trade entries are paused until that check finishes."
+      : activeContractCount > 0
+        ? `Waiting for ${activeContractCount} open Deriv contract${activeContractCount === 1 ? "" : "s"} to settle before another trade can start.`
+        : null;
   const volatilityMarkets = markets.filter(([market]) => !market.startsWith("JD"));
   const moneyBankMarkets = volatilityMarkets.filter(([market]) =>
     (MONEY_BANK_AUTO_SYMBOLS as readonly string[]).includes(market),
@@ -1364,11 +1374,11 @@ export default function XTraderPage() {
     };
   };
 
-  const refreshTradeResults = () => {
+  const refreshTradeResults = async () => {
     // The buy acknowledgement and the contract stream update arrive
     // independently. Refresh immediately, then once more after the stream
     // has had time to append the contract to recent history.
-    void Promise.all([
+    await Promise.all([
       queryClient.refetchQueries({ queryKey: getGetDerivStatusQueryKey(), type: "active" }),
       queryClient.refetchQueries({ queryKey: getGetDerivHistoryQueryKey(), type: "active" }),
       queryClient.refetchQueries({ queryKey: getGetDerivAccountsQueryKey(), type: "active" }),
@@ -1487,10 +1497,10 @@ export default function XTraderPage() {
         kind: "info",
         text: "Deriv accepted the EDGE trade. Trade history is temporarily unavailable, so automatic entries are paused; Deriv still checks settlement before another trade.",
       });
-      refreshTradeResults();
+      await refreshTradeResults();
       return;
     }
-    refreshTradeResults();
+    await refreshTradeResults();
     } finally {
       edgeActionLockRef.current = false;
       edgeSettlementLockRef.current = false;
@@ -1543,10 +1553,10 @@ export default function XTraderPage() {
         kind: "info",
         text: "Deriv accepted the EDGE dual trade. Trade history is temporarily unavailable, so automatic entries are paused; Deriv still checks settlement before another trade.",
       });
-      refreshTradeResults();
+      await refreshTradeResults();
       return;
     }
-    refreshTradeResults();
+    await refreshTradeResults();
     } finally {
       edgeActionLockRef.current = false;
       edgeSettlementLockRef.current = false;
@@ -1803,7 +1813,7 @@ export default function XTraderPage() {
         moneyBankOpenContractIdRef.current = contractId;
       }
       setMoneyBankTradeCount((value) => value + 1);
-      refreshTradeResults();
+      await refreshTradeResults();
     } finally {
       moneyBankActionLockRef.current = false;
       if (!moneyBankRunningRef.current) await closeMoneyBankContracts();
@@ -2109,7 +2119,7 @@ export default function XTraderPage() {
         setConnectionMessage({ kind: "info", text: "Cash Grab is still waiting for the current Rise/Fall contract to settle. No next contract will open until it is cleared." });
         return;
       }
-      refreshTradeResults();
+      await refreshTradeResults();
     } catch (error) {
       if (contractConfirmed) {
         setConnectionMessage({
@@ -2499,6 +2509,10 @@ export default function XTraderPage() {
       setTradeXMessage("Trade X is already sending. Wait for the current request to finish.");
       return false;
     }
+    if (tradeSlotBlocked) {
+      setTradeXMessage(tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new trade was sent.");
+      return false;
+    }
     const config = tradeXConfigRef.current;
     const entryDigit = digitOverride ?? (config.manualSelect
       ? config.selectedDigit
@@ -2544,7 +2558,7 @@ export default function XTraderPage() {
        await claimFeatureRows(tradeXClaimedHistoryIdsRef.current, latestRows, ["DIGITDIFF"]);
       setTradeXTradesSent((value) => value + count);
       setTradeXMessage(`${count === 1 ? "Trade X trade" : `${count} Trade X trades`} sent on ${symbolOverride ?? config.symbol} Digit Differs ${entryDigit} for ${durationOverride} ${durationOverride === 1 ? "tick" : "ticks"}.`);
-      refreshTradeResults();
+      await refreshTradeResults();
       return true;
     } catch (error) {
       setTradeXMessage(errorMessage(error));
@@ -2558,6 +2572,9 @@ export default function XTraderPage() {
     if (!tradeXEnabled || !isConnected) throw new Error("Enable Trade X and connect Deriv before scanning.");
     if (running) throw new Error("Stop the active EDGE run before using the one-shot scanner.");
     const freshStatus = await status.refetch();
+    if (!freshStatus.data?.open_contracts_ready || (freshStatus.data.active_contract_count ?? 0) > 0) {
+      throw new Error(tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new trade was sent.");
+    }
     const signals = (freshStatus.data?.market_signals ?? []) as AiScannerMarketSignal[];
     const symbols = tradeXSymbols
       .filter((item) => item.marketType === tradeXMarketType)
@@ -2660,6 +2677,10 @@ export default function XTraderPage() {
 
   const executeDigitFlip = async () => {
     if (digitFlipActionLockRef.current || !isConnected) return false;
+    if (tradeSlotBlocked) {
+      setConnectionMessage({ kind: "info", text: tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new trade was sent." });
+      return false;
+    }
     if (isReal && !liveConfirmed) {
       setConnectionMessage({ kind: "error", text: "Confirm live funds before sending a DigitFlip trade." });
       return false;
@@ -2722,7 +2743,7 @@ export default function XTraderPage() {
         digitFlipClaimedHistoryIdsRef.current.add(result.buy.contract_id);
       }
       setDigitFlipTradeCount((value) => value + 1);
-      refreshTradeResults();
+      await refreshTradeResults();
       return true;
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -2987,6 +3008,10 @@ export default function XTraderPage() {
       setConnectionMessage({ kind: "info", text: "Bulk Trader is already sending. Wait for the current request to finish." });
       return false;
     }
+    if (tradeSlotBlocked) {
+      setConnectionMessage({ kind: "info", text: tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new batch was sent." });
+      return false;
+    }
     if (!isConnected) {
       setConnectionMessage({ kind: "error", text: "Connect Deriv before sending a Bulk Trader contract." });
       return false;
@@ -3018,7 +3043,7 @@ export default function XTraderPage() {
       if (!result.buys.length) throw new Error("Deriv did not acknowledge any contracts for this setup.");
       result.buys.forEach((buy) => bulkClaimedHistoryIdsRef.current.add(buy.contract_id));
       await claimFeatureRows(bulkClaimedHistoryIdsRef.current, beforeRows, [contractType]);
-      refreshTradeResults();
+      await refreshTradeResults();
       return true;
     } catch (error) {
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -3033,6 +3058,9 @@ export default function XTraderPage() {
     if (bulkActionLockRef.current || bulkBuyMutation.isPending) throw new Error("Bulk Trader is already sending a batch.");
     if (!hasCurrentLiveConfirmation()) throw new Error("Confirm live funds before sending the scanned Bulk Trader batch.");
     const freshStatus = await status.refetch();
+    if (!freshStatus.data?.open_contracts_ready || (freshStatus.data.active_contract_count ?? 0) > 0) {
+      throw new Error(tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new batch was sent.");
+    }
     const signals = (freshStatus.data?.market_signals ?? []) as AiScannerMarketSignal[];
     const candidate = chooseBulkScannerCandidate(
       signals,
@@ -3068,6 +3096,10 @@ export default function XTraderPage() {
   const fireTrade = async (contractType: "DIGITOVER" | "DIGITUNDER") => {
     if (edgeActionLockRef.current || edgeSettlementLockRef.current) return;
     if (!isConnected) return;
+    if (tradeSlotBlocked) {
+      setConnectionMessage({ kind: "info", text: tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new trade was sent." });
+      return;
+    }
     if (currentAccountBalance == null) {
       setConnectionMessage({ kind: "error", text: "EDGE is paused until the selected account balance is available." });
       return;
@@ -3119,10 +3151,10 @@ export default function XTraderPage() {
           kind: "info",
           text: "Deriv accepted the EDGE trade. Trade history is temporarily unavailable; Deriv still checks settlement before another trade.",
         });
-        refreshTradeResults();
+        await refreshTradeResults();
         return;
       }
-      await queryClient.invalidateQueries();
+      await refreshTradeResults();
     } catch (error) {
       martingaleWatchRef.current = null;
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -3135,6 +3167,10 @@ export default function XTraderPage() {
   const fireDualTrade = async () => {
     if (edgeActionLockRef.current || edgeSettlementLockRef.current) return;
     if (!isConnected) return;
+    if (tradeSlotBlocked) {
+      setConnectionMessage({ kind: "info", text: tradeSlotMessage ?? "Deriv has not confirmed that the previous contract settled. No new dual batch was sent." });
+      return;
+    }
     if (currentAccountBalance == null) {
       setConnectionMessage({ kind: "error", text: "EDGE is paused until the selected account balance is available." });
       return;
@@ -3182,10 +3218,10 @@ export default function XTraderPage() {
           kind: "info",
           text: "Deriv accepted the EDGE dual trade. Trade history is temporarily unavailable; Deriv still checks settlement before another trade.",
         });
-        refreshTradeResults();
+        await refreshTradeResults();
         return;
       }
-      await queryClient.invalidateQueries();
+      await refreshTradeResults();
     } catch (error) {
       martingaleWatchRef.current = null;
       setConnectionMessage({ kind: "error", text: errorMessage(error) });
@@ -3269,6 +3305,7 @@ export default function XTraderPage() {
   const activityText = running ? "EDGE RUNNING" : "EDGE STOPPED";
   const edgeBalanceReady = currentAccountBalance != null && currentAccountBalance > 0;
   const canTrade = isConnected && !running && edgeBalanceReady
+    && !tradeSlotBlocked
     && (!isReal || (Boolean(status.data?.live_trading_enabled) && liveConfirmed))
     && Boolean(currentAccount) && stake <= Number(edgeAccountBalance)
     && stake <= (currentAccountBalance ?? 0);
@@ -3347,6 +3384,7 @@ export default function XTraderPage() {
           </div>
         )}
         {connectionMessage && <p className={`xt-inline-message ${connectionMessage.kind}${connectionMessageFading ? " fading" : ""}`} role="status" aria-live="polite">{connectionMessage.text}</p>}
+        {tradeSlotMessage && <p className="xt-inline-message info" role="status" aria-live="polite">{tradeSlotMessage}</p>}
       </section>
 
       <section className="xt-feature-card xt-feature-card-cash-grab" id="cash-grab-feature">
@@ -3470,6 +3508,7 @@ export default function XTraderPage() {
           isReal={Boolean(isReal)}
           liveConfirmed={liveConfirmed}
           isPlacingTrade={bulkBuyMutation.isPending}
+          tradeSlotMessage={tradeSlotMessage}
           historyFading={historyFading}
           clearArmed={bulkTraderClearArmed}
            onSymbolChange={(next) => { setBulkTraderAutoSelectBest(false); setBulkTraderSymbol(next); void selectMarket(next); }}
@@ -3526,6 +3565,7 @@ export default function XTraderPage() {
            historyFading={historyFading}
           isPlacingTrade={digitFlipBuyMutation.isPending}
           disabled={!isConnected}
+          entryBlocked={tradeSlotBlocked}
           onMarketTypeChange={(next) => {
             setDigitFlipMarketType(next);
              if (next === "auto") {
@@ -3787,7 +3827,7 @@ export default function XTraderPage() {
             lastDigit={lastDigit}
             isPlacingTrade={bulkBuyMutation.isPending}
             isRefreshingAnalysis={analysisTickCount === 0 && !isConnected}
-            disabled={running || !isConnected}
+            disabled={running || !isConnected || tradeSlotBlocked}
             onMarketTypeChange={setTradeXMarketType}
             onSymbolChange={(next) => { setTradeXSymbol(next); void selectMarket(next); }}
             onTradeTypeChange={() => undefined}
@@ -3815,6 +3855,7 @@ export default function XTraderPage() {
        {edge2Enabled && canUseMoneyBank && (
         <MoneyBankPanel
           isConnected={isConnected}
+          tradeSlotBlocked={tradeSlotBlocked}
           running={moneyBankRunning}
           closing={moneyBankClosing}
           isReal={isReal}
@@ -3884,6 +3925,7 @@ export default function XTraderPage() {
       {cashGrabEnabled && canUseCashGrab && (
         <CashGrabPanel
           direction={cashGrabDirection}
+          tradeSlotBlocked={tradeSlotBlocked}
           symbol={cashGrabSymbol}
           bestSymbol={cashGrabBestSymbol}
           autoSelectBest={cashGrabAutoSelectBest}

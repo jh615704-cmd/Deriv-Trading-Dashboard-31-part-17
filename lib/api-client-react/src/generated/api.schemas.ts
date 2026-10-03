@@ -339,6 +339,13 @@ export interface DerivStatus {
   last_proposal?: DerivProposal | null;
   last_buy?: DerivBuy | null;
   last_contract?: DerivContract | null;
+  /** Whether the current account's open-contract portfolio has been checked on this WebSocket connection. */
+  open_contracts_ready: boolean;
+  /**
+     * Number of contracts the server currently considers open for the selected account.
+     * @minimum 0
+     */
+  active_contract_count: number;
   bot_running: boolean;
   symbol: string;
   currency: string;
