@@ -233,6 +233,62 @@ export class ResponseParseError extends Error {
   }
 }
 
+export class ApiTransportError extends Error {
+  readonly name = "ApiTransportError";
+  readonly method: string;
+  readonly url: string;
+  readonly requestId: string;
+  readonly tradeOutcomeUncertain: boolean;
+  readonly cause: unknown;
+
+  constructor(
+    cause: unknown,
+    requestInfo: { method: string; url: string },
+    requestId: string,
+  ) {
+    const pathname = getPathname(requestInfo.url);
+    const tradeOutcomeUncertain = isTradeMutation(requestInfo.method, pathname);
+    const recoveryMessage = tradeOutcomeUncertain
+      ? pathname.endsWith("/sell")
+        ? "The connection dropped before the server confirmed the close. The contract may already be closed. Refresh Deriv history before trying to close it again."
+        : "The connection dropped before the server confirmed the trade. The contract may already be open. Refresh Deriv history before sending it again."
+      : `The dashboard API could not be reached for ${requestInfo.method} ${pathname}. Check your connection and retry.`;
+
+    super(`${recoveryMessage} Reference: ${requestId}`);
+    Object.setPrototypeOf(this, new.target.prototype);
+
+    this.method = requestInfo.method;
+    this.url = pathname;
+    this.requestId = requestId;
+    this.tradeOutcomeUncertain = tradeOutcomeUncertain;
+    this.cause = cause;
+  }
+}
+
+function getPathname(url: string): string {
+  try {
+    return new URL(url, "http://localhost").pathname;
+  } catch {
+    return url.split("?", 1)[0] || "/";
+  }
+}
+
+function isTradeMutation(method: string, pathname: string): boolean {
+  return method === "POST" && /^\/api\/deriv\/(?:buy|bulk-buy|dual-buy|sell)$/.test(pathname);
+}
+
+function createRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isAbortError(error: unknown, signal?: AbortSignal | null): boolean {
+  return signal?.aborted === true
+    || (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError");
+}
+
 async function parseJsonBody(
   response: Response,
   requestInfo: { method: string; url: string },
@@ -359,8 +415,9 @@ export async function customFetch<T = unknown>(
   }
 
   const requestInfo = { method, url: resolveUrl(input) };
-
-  const response = await fetch(input, {
+  const requestId = createRequestId();
+  headers.set("x-client-request-id", requestId);
+  const requestInit: RequestInit = {
     ...init,
     method,
     headers,
@@ -368,7 +425,29 @@ export async function customFetch<T = unknown>(
     // explicit so the session survives the shared preview proxy as well as
     // same-origin navigation.
     credentials: init.credentials ?? "same-origin",
-  });
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(input, requestInit);
+  } catch (error) {
+    if (isAbortError(error, init.signal)) throw error;
+
+    // Reads are safe to replay after a transient browser/proxy failure.
+    // A trade mutation is deliberately never retried: the server may have
+    // completed it even if the browser did not receive its response.
+    if (method !== "GET" && method !== "HEAD") {
+      throw new ApiTransportError(error, requestInfo, requestId);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      response = await fetch(input, requestInit);
+    } catch (retryError) {
+      if (isAbortError(retryError, init.signal)) throw retryError;
+      throw new ApiTransportError(retryError, requestInfo, requestId);
+    }
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

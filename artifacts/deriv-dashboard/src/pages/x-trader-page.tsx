@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetAccessSessionQueryKey,
+  ApiTransportError,
   useGetAccessSession,
   useDeleteDerivToken,
   useGetDerivAccounts,
@@ -2114,6 +2115,11 @@ export default function XTraderPage() {
         setConnectionMessage({
           kind: "error",
           text: `Cash Grab contract was confirmed by Deriv, but its settlement history could not be refreshed: ${errorMessage(error)}. Cash Grab is paused to prevent overlapping trades.`,
+        });
+      } else if (error instanceof ApiTransportError && error.tradeOutcomeUncertain) {
+        setConnectionMessage({
+          kind: "error",
+          text: `Cash Grab trade status is unconfirmed. ${errorMessage(error)} Cash Grab is paused; confirm there is no open Rise/Fall contract in Deriv before restarting.`,
         });
       } else {
         setConnectionMessage({ kind: "error", text: `Cash Grab could not place the contract: ${errorMessage(error)}` });

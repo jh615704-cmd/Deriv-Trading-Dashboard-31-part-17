@@ -1,4 +1,5 @@
 import express, { type Express } from "express";
+import { randomUUID } from "node:crypto";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -12,6 +13,12 @@ app.set("trust proxy", 1);
 app.use(
   pinoHttp({
     logger,
+    genReqId(req) {
+      const clientRequestId = req.headers["x-client-request-id"];
+      return typeof clientRequestId === "string" && /^[a-z0-9-]{12,64}$/i.test(clientRequestId)
+        ? clientRequestId
+        : randomUUID();
+    },
     serializers: {
       req(req) {
         return {
