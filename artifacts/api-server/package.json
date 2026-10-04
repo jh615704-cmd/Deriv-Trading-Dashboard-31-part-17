@@ -9,6 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "test": "../../scripts/node_modules/.bin/tsx --test --experimental-test-module-mocks src/lib/deriv.test.ts src/routes/deriv.test.ts",
     "capacity:demo": "../../scripts/node_modules/.bin/tsx scripts/deriv-demo-capacity.ts",
+    "capacity:demo:smoke": "../../scripts/node_modules/.bin/tsx scripts/deriv-demo-capacity.ts --single-demo-smoke",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

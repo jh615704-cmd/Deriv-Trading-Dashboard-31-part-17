@@ -9,7 +9,8 @@ const demoPats = [
   process.env.DERIV_DEMO_TEST_PAT_3,
   process.env.DERIV_DEMO_TEST_PAT_4,
 ];
-const stageTargets = [1, 2, 4];
+const singleSessionSmoke = process.argv.includes("--single-demo-smoke");
+const stageTargets = singleSessionSmoke ? [1] : [1, 2, 4];
 const stageHoldMs = 10_000;
 const symbols = [
   "R_10", "R_25", "R_50", "R_75", "R_100",
@@ -21,13 +22,14 @@ type DerivMessage = Record<string, any>;
 type DerivAccount = Record<string, any>;
 
 function requireDemoTestConfig() {
-  if (demoPats.some((value) => !value)) {
+  const requiredPats = singleSessionSmoke ? demoPats.slice(0, 1) : demoPats;
+  if (requiredPats.some((value) => !value)) {
     throw new Error("Set the four dedicated DERIV_DEMO_TEST_PAT_1..4 secrets before running this probe.");
   }
   if (!appId) {
     throw new Error("Set DERIV_APP_ID before running this probe.");
   }
-  if (new Set(demoPats).size !== demoPats.length) {
+  if (!singleSessionSmoke && new Set(demoPats).size !== demoPats.length) {
     throw new Error("Use four distinct demo PATs; the probe will not open multiple sessions for one PAT.");
   }
 }
@@ -260,7 +262,7 @@ function roundMiB(bytes: number) {
 
 async function run() {
   requireDemoTestConfig();
-  const pats = demoPats as string[];
+  const pats = (singleSessionSmoke ? demoPats.slice(0, 1) : demoPats) as string[];
   const accountOptions = await Promise.all(pats.map((pat) => getDemoAccounts(pat)));
   const accountIds = assignDistinctDemoAccounts(accountOptions);
   if (!accountIds) {
@@ -302,9 +304,12 @@ async function run() {
     }
 
     console.log(JSON.stringify({
-      test: "deriv_demo_read_only_connection_capacity",
+      test: singleSessionSmoke
+        ? "deriv_demo_read_only_single_session_smoke"
+        : "deriv_demo_read_only_connection_capacity",
       stages: report,
       baselineRssMiB: roundMiB(baseline.rss),
+      validatesConcurrentCapacity: !singleSessionSmoke,
       tradeMessagesSent: 0,
       accountIdsLogged: false,
       credentialsLogged: false,
