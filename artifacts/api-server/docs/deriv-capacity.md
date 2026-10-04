@@ -14,6 +14,8 @@ This estimate excludes bursts from initial connections, retries, account changes
 
 ## Verification
 
+**Never load-test with live accounts or live trades.** The external probe is restricted to isolated demo accounts and read-only requests; it never sends proposals, buys, or sells.
+
 `pnpm --filter @workspace/api-server test` includes staged 1-, 2-, and 4-session tests using mocked REST and WebSockets. It verifies the fifth session is rejected, established sessions remain open, and no buy or sell messages are sent. Those tests do not contact Deriv and do not establish demo-service or deployment capacity.
 
 An optional external check is available as `pnpm --filter @workspace/api-server capacity:demo`. It requires four dedicated secrets (`DERIV_DEMO_TEST_PAT_1` through `_4`) and `DERIV_APP_ID`, with one PAT for each distinct isolated demo account. It checks all four accounts before opening any sockets, rejects duplicate accounts or PATs, aborts if an account has open positions, opens read-only sessions in stages of 1, 2, and 4, and closes them afterward. It sends account, OTP, portfolio, profit-table, balance-subscription, and market-tick requests only. It does not request proposals or send buy/sell messages. PATs and account IDs are not printed. Never substitute `DERIV_API_TOKEN`.

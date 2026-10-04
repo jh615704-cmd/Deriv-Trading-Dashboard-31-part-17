@@ -23,3 +23,4 @@
 - [Trading protection test isolation](trading-protection-test-isolation.md) — API trade tests must isolate persisted admin entry shields before asserting Deriv behavior.
 - [Real-account balance inspection](real-account-inspection.md) — account selection for inspection is separate from authorization to place live trades.
 - [Replit multi-artifact deployment](replit-multi-artifact-deployment.md) — publishing deploys this project's artifacts together; deployment target changes apply to the whole project.
+- [Deriv capacity testing](deriv-capacity-testing.md) — load tests must use isolated demo-only sessions; never send live trade traffic.

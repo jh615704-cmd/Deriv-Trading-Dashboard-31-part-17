@@ -249,11 +249,14 @@ async function run() {
   try {
     for (const target of stageTargets) {
       const batchSize = target - sessions.length;
+      const firstNewSessionIndex = sessions.length;
+      const stageSessions: DemoSession[] = [];
       const startedAt = performance.now();
       await Promise.all(
-        Array.from({ length: batchSize }, (_, offset) => sessions.length + offset)
+        Array.from({ length: batchSize }, (_, offset) => firstNewSessionIndex + offset)
           .map(async (index) => {
             const session = await openReadOnlySession(pats[index], accountIds[index]);
+            stageSessions.push(session);
             sessions.push(session);
           }),
       );
@@ -263,7 +266,7 @@ async function run() {
         sessions: target,
         stageConnectMs: Math.round(performance.now() - startedAt),
         meanSessionReadyMs: Math.round(
-          batch.reduce((sum, session) => sum + session.latencyMs, 0) / batch.length,
+          stageSessions.reduce((sum, session) => sum + session.latencyMs, 0) / stageSessions.length,
         ),
         ticksReceived: sessions.reduce((sum, session) => sum + session.tickCount, 0),
         rssMiB: roundMiB(memory.rss),
