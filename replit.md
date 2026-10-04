@@ -10,7 +10,7 @@ A demo-first operations dashboard for loading Deriv accounts, testing the REST a
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DERIV_APP_ID`, `DERIV_API_TOKEN`, `DASHBOARD_API_KEY`, `DERIV_ALLOW_LIVE_TRADING`
+- Required server env: `DERIV_APP_ID`, `SESSION_SECRET`. Set `DERIV_ALLOW_LIVE_TRADING=true` only when live trading is intentionally enabled.
 
 ## Stack
 
@@ -31,6 +31,7 @@ A demo-first operations dashboard for loading Deriv accounts, testing the REST a
 ## Architecture decisions
 
 - Deriv PATs authenticate REST requests; the server obtains an OTP WebSocket URL before opening the authenticated stream.
+- Each user enters their own PAT in the dashboard; it is encrypted in the database and is not loaded from the shared `DERIV_API_TOKEN` secret. `DERIV_APP_ID` identifies the API application, not the user's Deriv account.
 - Demo accounts are preferred automatically when no `DERIV_ACCOUNT_ID` is configured.
 - Proposal requests are separate from trade execution; this dashboard does not expose a buy endpoint.
 - Live buys require a selected real account, the server live-trading flag, a matching proposal, and explicit UI confirmation.
@@ -46,7 +47,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 ## Gotchas
 
 - After changing `lib/api-spec/openapi.yaml`, run `pnpm --filter @workspace/api-spec run codegen`.
-- Keep `DERIV_API_TOKEN` and `DASHBOARD_API_KEY` in Replit Secrets; never commit or display them.
+- Keep `SESSION_SECRET` in Replit Secrets. Never commit or display a Deriv PAT.
 
 ## Pointers
 

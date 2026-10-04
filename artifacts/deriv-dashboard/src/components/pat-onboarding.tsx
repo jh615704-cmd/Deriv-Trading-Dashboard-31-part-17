@@ -27,7 +27,7 @@ export function PatOnboarding() {
 
       queryClient.setQueryData(getGetDerivTokenStatusQueryKey(), {
         has_token: true,
-        expires_at: null,
+        expires_at: expiresAt || null,
         last_verified_at: new Date().toISOString(),
       });
       const connection = await testConnectionMutation.mutateAsync();

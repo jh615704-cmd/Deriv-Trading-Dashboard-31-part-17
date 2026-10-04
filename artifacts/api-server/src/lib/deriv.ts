@@ -607,7 +607,9 @@ async function derivRequest(pathname: string, init: RequestInit = {}) {
     const message = body.errors?.[0]?.message ?? `Deriv REST request failed (${response.status})`;
     if (response.status === 401 || response.status === 403) {
       throw new DerivCredentialError(
-        "Deriv rejected this PAT or its permissions. Connect a PAT with Options read and trade scopes.",
+        response.status === 401
+          ? "Deriv rejected this PAT. Enter a valid token to reconnect."
+          : "Deriv denied this request. The PAT may be missing a required permission; check its scopes before replacing it.",
         response.status,
       );
     }

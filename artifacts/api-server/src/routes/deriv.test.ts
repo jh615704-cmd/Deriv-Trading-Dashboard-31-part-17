@@ -21,8 +21,15 @@ const observedPats: string[] = [];
 const historyRows: unknown[] = [];
 const sessionId = "admin-access-session";
 let forceCapacityError = false;
+let forcePermissionError = false;
+let forceInvalidCredentialError = false;
 
 class MockDerivCapacityError extends Error {}
+class MockDerivCredentialError extends Error {
+  constructor(readonly status: number) {
+    super("PAT is missing a required permission");
+  }
+}
 
 const db = {
   select() {
@@ -92,10 +99,12 @@ assert.equal(statusParse.success, true, JSON.stringify(statusParse));
 
 mock.module("../lib/deriv", {
   namedExports: {
-    DerivCredentialError: class DerivCredentialError extends Error {},
+    DerivCredentialError: MockDerivCredentialError,
     DerivCapacityError: MockDerivCapacityError,
     getAccounts: async () => {
       observePat();
+      if (forcePermissionError) throw new MockDerivCredentialError(403);
+      if (forceInvalidCredentialError) throw new MockDerivCredentialError(401);
       return [status.account];
     },
     getStatus: async () => {
@@ -167,7 +176,8 @@ const { default: tokenRouter } = await import("./token.ts");
 
 const app = express();
 app.use(express.json());
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
+  Object.assign(req, { log: { error() {}, warn() {} } });
   res.locals.userId = sessionId;
   next();
 });
@@ -331,6 +341,68 @@ test("history route accepts decimal Rise/Fall price barriers outside the digit r
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     historyRows.length = 0;
+    credentials.clear();
+    userPats.delete(sessionId);
+  }
+});
+
+test("a Deriv 403 permission denial preserves the valid saved PAT", async () => {
+  const enteredPat = "permission-denied-test-pat";
+  credentials.clear();
+  userPats.delete(sessionId);
+  credentials.set(sessionId, {
+    clerkUserId: sessionId,
+    encryptedPat: encryptPat(enteredPat),
+    expiresAt: null,
+    lastVerifiedAt: new Date(),
+  });
+  forcePermissionError = true;
+
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/deriv/accounts`);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await readJson(response), { error: "PAT is missing a required permission" });
+    assert.equal(credentials.has(sessionId), true);
+    assert.equal(userPats.get(sessionId), enteredPat);
+  } finally {
+    forcePermissionError = false;
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    credentials.clear();
+    userPats.delete(sessionId);
+  }
+});
+
+test("a Deriv 401 invalid-token response clears the rejected saved PAT", async () => {
+  const enteredPat = "invalid-token-test-pat";
+  credentials.clear();
+  userPats.delete(sessionId);
+  credentials.set(sessionId, {
+    clerkUserId: sessionId,
+    encryptedPat: encryptPat(enteredPat),
+    expiresAt: null,
+    lastVerifiedAt: new Date(),
+  });
+  forceInvalidCredentialError = true;
+
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/deriv/accounts`);
+    assert.equal(response.status, 401);
+    assert.match(String((await readJson(response)).error), /Enter your PAT again/);
+    assert.equal(credentials.has(sessionId), false);
+    assert.equal(userPats.has(sessionId), false);
+  } finally {
+    forceInvalidCredentialError = false;
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     credentials.clear();
     userPats.delete(sessionId);
   }
