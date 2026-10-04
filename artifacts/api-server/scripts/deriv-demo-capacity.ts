@@ -56,22 +56,45 @@ function getAccounts(body: DerivMessage): DerivAccount[] {
   return [];
 }
 
-async function getDemoAccount(pat: string) {
+async function getDemoAccounts(pat: string) {
   const response = await derivRequest(pat, "/trading/v1/options/accounts");
-  const demoAccount = getAccounts(response).find((account) => {
+  const accountIds = getAccounts(response).flatMap((account) => {
     const id = String(account.account_id ?? account.accountId ?? account.loginid ?? account.id ?? "");
-    return account.account_type === "demo"
-      || account.type === "demo"
-      || id.startsWith("DOT");
+    const isDemo = String(account.account_type ?? account.type ?? "").toLowerCase() === "demo"
+      || id.toUpperCase().startsWith("DOT");
+    return isDemo && id ? [id] : [];
   });
-  if (!demoAccount) {
+  const uniqueAccountIds = [...new Set(accountIds)];
+  if (uniqueAccountIds.length === 0) {
     throw new Error("The supplied PAT has no identifiable demo Options account; no connection was opened.");
   }
-  const accountId = String(
-    demoAccount.account_id ?? demoAccount.accountId ?? demoAccount.loginid ?? demoAccount.id ?? "",
-  );
-  if (!accountId) throw new Error("Deriv returned a demo account without an account ID.");
-  return accountId;
+  return uniqueAccountIds;
+}
+
+function assignDistinctDemoAccounts(accountOptions: string[][]): string[] | null {
+  const assignment: Array<string | undefined> = new Array(accountOptions.length);
+  const order = accountOptions
+    .map((options, index) => ({ index, options }))
+    .sort((left, right) => left.options.length - right.options.length)
+    .map(({ index }) => index);
+  const assignedIds = new Set<string>();
+
+  function assign(position: number): boolean {
+    if (position === order.length) return true;
+    const patIndex = order[position];
+    for (const accountId of accountOptions[patIndex]) {
+      if (assignedIds.has(accountId)) continue;
+      assignedIds.add(accountId);
+      assignment[patIndex] = accountId;
+      if (assign(position + 1)) return true;
+      assignedIds.delete(accountId);
+      assignment[patIndex] = undefined;
+    }
+    return false;
+  }
+
+  if (!assign(0)) return null;
+  return assignment as string[];
 }
 
 async function getOtpUrl(pat: string, accountId: string) {
@@ -238,9 +261,13 @@ function roundMiB(bytes: number) {
 async function run() {
   requireDemoTestConfig();
   const pats = demoPats as string[];
-  const accountIds = await Promise.all(pats.map((pat) => getDemoAccount(pat)));
-  if (new Set(accountIds).size !== accountIds.length) {
-    throw new Error("Each PAT must resolve to a different demo account; no WebSocket sessions were opened.");
+  const accountOptions = await Promise.all(pats.map((pat) => getDemoAccounts(pat)));
+  const accountIds = assignDistinctDemoAccounts(accountOptions);
+  if (!accountIds) {
+    const uniqueAccountCount = new Set(accountOptions.flat()).size;
+    throw new Error(
+      `The four PATs expose only ${uniqueAccountCount} distinct demo account(s); no WebSocket sessions were opened.`,
+    );
   }
   const sessions: DemoSession[] = [];
   const report: Array<Record<string, number>> = [];
