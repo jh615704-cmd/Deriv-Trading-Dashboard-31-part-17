@@ -14,3 +14,9 @@ Treat Deriv REST 401 and 403 responses differently: a 401 can mean the PAT was r
 **Why:** Deleting credentials after a permission denial forces users to re-enter valid tokens and obscures the actual problem.
 
 **How to apply:** In Deriv credential middleware, clear the stored PAT only for confirmed authentication failures; keep valid credentials intact on permission errors and return the permission status to the client.
+
+Keep PATs separate per user; do not make one shared Replit PAT available to all app users. Use the account IDs returned by Deriv for account selection, not the Deriv app/client ID. The selected notification channel is an in-dashboard warning, not Telegram.
+
+**Why:** The project owner chose per-user account isolation and account selection from Deriv's authenticated response; a client ID identifies the app, not the account.
+
+**How to apply:** Preserve per-user credential storage and in-dashboard PAT warnings unless the project owner explicitly changes these choices.

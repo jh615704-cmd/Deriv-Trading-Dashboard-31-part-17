@@ -12,6 +12,7 @@ import AppPage from '@/pages/app-page';
 import SettingsPage from '@/pages/settings';
 import { AccessGate } from '@/components/access-gate';
 import SignInPage from '@/pages/sign-in';
+import { DerivCredentialWarning } from '@/components/deriv-credential-warning';
 
 const queryClient = new QueryClient();
 
@@ -47,7 +48,7 @@ function App() {
       <ThemeProvider>
         <TooltipProvider>
           <WouterRouter base={basePath}>
-             <QueryClientProvider client={queryClient}><AccessGate><Router /></AccessGate></QueryClientProvider>
+             <QueryClientProvider client={queryClient}><AccessGate><DerivCredentialWarning /><Router /></AccessGate></QueryClientProvider>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
@@ -60,7 +61,7 @@ function App() {
       <ThemeProvider>
         <TooltipProvider>
           <WouterRouter base={basePath}>
-             <QueryClientProvider client={queryClient}><AccessGate><Router /></AccessGate></QueryClientProvider>
+             <QueryClientProvider client={queryClient}><AccessGate><DerivCredentialWarning /><Router /></AccessGate></QueryClientProvider>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
